@@ -7,10 +7,12 @@ extension DictationPipeline {
     func finish(
         _ heard: Transcription, seeing appContext: AppContext,
         correctionSeeing correctionContext: AppContext, finalPiece: Bool = false,
-        recording metrics: any MetricsRecording, for mine: Int
+        recording metrics: any MetricsRecording, for mine: Int,
+        correcting corrector: (any WordCorrecting)? = nil
     ) async -> Piece {
         // The dictionary before the tidier: a correction is argued from the sentence as heard.
-        let corrected = await correct(heard, seeing: correctionContext, recording: metrics)
+        let corrected = await correct(
+            heard, seeing: correctionContext, recording: metrics, correcting: corrector)
         let cleaned = await tidy(
             heard, saying: corrected, seeing: appContext, finalPiece: finalPiece,
             recording: metrics, for: mine)
@@ -20,17 +22,22 @@ extension DictationPipeline {
     /// Puts the user's own spellings in, leaving the transcript alone if it cannot. §19.
     func correct(
         _ transcription: Transcription, seeing appContext: AppContext,
-        recording metrics: any MetricsRecording
+        recording metrics: any MetricsRecording, acrossSeams seams: PieceSeams? = nil,
+        correcting chosen: (any WordCorrecting)? = nil
     ) async -> CorrectedTranscript {
         // Moving a word needs evidence, candidates, a score and the gate, so any one off leaves the words as heard.
         let correcting: [QualityLayer] = [.evidenceCapture, .candidateGeneration, .scoring, .overrideGate]
         guard correcting.allSatisfy(layers.isOn) else { return .unchanged(transcription.text) }
-        let corrector = runningCorrector
+        let corrector = chosen ?? runningCorrector
         do {
             let weighed =
                 try await metrics.measuringInTime(.correction, clock: clock) {
                     try await withStageTimeout(StageTimeout.quick, clock: clock) { [corrector] in
-                        try await corrector.weigh(transcription, seeing: appContext)
+                        if let seams {
+                            try await corrector.weighAcrossSeams(transcription, at: seams, seeing: appContext)
+                        } else {
+                            try await corrector.weigh(transcription, seeing: appContext)
+                        }
                     }
                 } ?? WeighedCorrections(corrections: [])
             // The commonest answer, and not worth rebuilding a string to arrive at itself.
@@ -47,18 +54,19 @@ extension DictationPipeline {
     /// Gives the dictionary a joined transcript, keeping only proposals that cross a piece boundary.
     func correctAcrossSeams(
         _ pieces: [Piece], in joined: Piece, seeing appContext: AppContext,
-        recording metrics: any MetricsRecording
+        recording metrics: any MetricsRecording, correcting corrector: (any WordCorrecting)? = nil
     ) async -> Piece {
         guard pieces.count > 1 else { return joined }
         let boundaries = pieces.dropLast().reduce(into: [Int]()) { result, piece in
             result.append((result.last ?? 0) + piece.heard.text.spokenWordCount)
         }
-        let proposed = await correct(joined.heard, seeing: appContext, recording: metrics).corrections
-        let crossings = proposed.filter { correction in
-            boundaries.contains {
-                correction.wordRange.lowerBound < $0 && correction.wordRange.upperBound > $0
-            } && !joined.corrected.corrections.contains { $0.wordRange.overlaps(correction.wordRange) }
-        }
+        let seams = PieceSeams(
+            boundaries: boundaries, changed: joined.corrected.corrections.map(\.wordRange))
+        let proposed = await correct(
+            joined.heard, seeing: appContext, recording: metrics, acrossSeams: seams,
+            correcting: corrector
+        ).corrections
+        let crossings = proposed.filter { seams.admits($0.wordRange) }
         guard !crossings.isEmpty else { return joined }
 
         var correctedText = joined.corrected.text
@@ -172,6 +180,8 @@ extension DictationPipeline {
     /// Recognised pieces cleaned as one dictation's are, from the dictionary to the snippets; nothing is inserted.
     public func clean(_ heard: [Transcription], seeing appContext: AppContext) async -> CleanedDictation {
         let (situation, _) = tidyingFrame(seeing: appContext)
+        // One corrector for the whole dictation, so its pieces share one correction budget.
+        let corrector = await runningCorrector.fixed()
         var pieces: [Piece] = []
         for (index, piece) in heard.enumerated() {
             // A dictation number never under way, so no piece's record joins a real dictation's account.
@@ -179,10 +189,11 @@ extension DictationPipeline {
                 await finish(
                     piece, seeing: appContext, correctionSeeing: appContext,
                     finalPiece: index == heard.indices.last, recording: NoOpMetricsRecorder(),
-                    for: generation + 1))
+                    for: generation + 1, correcting: corrector))
         }
         let joined = await join(
-            pieces, going: situation, seeing: appContext, recording: NoOpMetricsRecorder())
+            pieces, going: situation, seeing: appContext, recording: NoOpMetricsRecorder(),
+            correcting: corrector)
         return CleanedDictation(
             pieces: pieces.map(\.cleaned.text),
             text: joined.map { LatinScript.enforced($0.expanded.text) })
@@ -191,12 +202,12 @@ extension DictationPipeline {
     /// The pieces joined, corrected across their seams, finished as a message and expanded; nil when nothing is writable.
     func join(
         _ pieces: [Piece], going situation: Situation, seeing appContext: AppContext,
-        recording metrics: any MetricsRecording
+        recording metrics: any MetricsRecording, correcting corrector: (any WordCorrecting)? = nil
     ) async -> JoinedDictation? {
         let formatter = DestinationFormatter.standard(for: situation)
         let joined = PieceJoiner.join(pieces, under: formatter, steps: runningCleaner.cleaningSteps)
         let correctedAtSeams = await correctAcrossSeams(
-            pieces, in: joined, seeing: appContext, recording: metrics)
+            pieces, in: joined, seeing: appContext, recording: metrics, correcting: corrector)
         let whole = await finishMessage(correctedAtSeams, going: situation, seeing: appContext)
         // Dictation writes Latin letters only, including snippet expansions. See `Docs/latin-output.md`.
         let written = LatinScript.enforced(whole.cleaned.text)
