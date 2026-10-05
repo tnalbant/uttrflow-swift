@@ -272,6 +272,22 @@ Measured with `make bakeoff ARGS="--baselines-only"` as the judge:
 Every trim costs corpus cases, and the largest saving is a tenth of a second on a wait that working
 ahead has already taken out of the user's way. The prompt stays as it is.
 
+## Whether the model throttles a burst of pieces
+
+A long dictation sends one tidying request per piece in quick succession, and the app is an agent
+application that is rarely in front. Apple's model has a rate-limit failure, which the router records
+as `rateLimited` and answers with the rules. `uttrflow-dev burst` sends dictations of several pieces,
+one after another or all at once with `--concurrent`, and prints the rate-limited requests per 1,000
+sent and the first piece in a burst that was throttled.
+
+From a command-line process on an Apple M5 Pro under heavy load, no request was throttled: 0 of 50
+sent five to a dictation one after another (typical 3.39 s, slowest 4.17 s), and 0 of 30 sent five
+at once (typical 3.82 s, slowest 5.44 s). Started together, the five wait on one another rather
+than fail, so a burst of pieces costs time, not the model's answer.
+
+The menu-bar app with another application in front has not been measured: that needs the app
+itself sending the bursts, and it is the condition the limit is most likely to apply to.
+
 ## Reproducing the numbers
 
 `uttrflow-dev transcribe <file>` prints transcription and tidying separately for one file,
