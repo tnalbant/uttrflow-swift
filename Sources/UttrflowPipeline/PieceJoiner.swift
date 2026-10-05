@@ -82,7 +82,8 @@ enum PieceJoiner {
     static func seamed(
         _ pieces: [String], heard: [String] = [], under formatter: DestinationFormatter
     ) -> [String] {
-        let joined = joiningSpokenMarksAcrossSeams(joiningAmountsAcrossSeams(pieces, heard: heard))
+        let joined = recleaningMarksAcrossSeams(
+            joiningSpokenMarksAcrossSeams(joiningAmountsAcrossSeams(pieces, heard: heard)))
         // A piece tidied to nothing has no seam, so each seam is judged against the next piece with words.
         let worded = joined.indices.filter { !joined[$0].allSatisfy(\.isWhitespace) }
         let heard = heard.count == joined.count ? worded.map { heard[$0] } : []
@@ -146,6 +147,50 @@ enum PieceJoiner {
             joined[index] = ""
         }
         return joined
+    }
+
+    /// Reads a mark name the pause cut from the word it follows by cleaning both pieces as one, so the cleaner's own judgement decides.
+    private static func recleaningMarksAcrossSeams(_ pieces: [String]) -> [String] {
+        var joined = pieces
+        let worded = joined.indices.filter { !joined[$0].allSatisfy(\.isWhitespace) }
+        for (previous, next) in zip(worded, worded.dropFirst()) {
+            guard let (head, tail) = recleaned(joined[previous], before: joined[next]) else { continue }
+            joined[previous] = head
+            joined[next] = tail
+        }
+        return joined
+    }
+
+    /// The two pieces with a mark name at the seam written as its mark, when the spoken-punctuation pass changes only that name.
+    private static func recleaned(_ head: String, before tail: String) -> (String, String)? {
+        let headWords = head.split(whereSeparator: \.isWhitespace)
+        let tailWords = tail.split(whereSeparator: \.isWhitespace)
+        for mark in SpokenCommands.marks
+        where !mark.placement.attachesAfter && ![.joining, .standalone].contains(mark.placement) {
+            for fromHead in 0..<mark.words.count {
+                let fromTail = mark.words.count - fromHead
+                // A piece that is only the name is `joiningSpokenMarksAcrossSeams`'s to read.
+                guard headWords.count > fromHead, tailWords.count >= fromTail,
+                    fromHead > 0 || tailWords.count > fromTail,
+                    (headWords.suffix(fromHead) + tailWords.prefix(fromTail)).map({
+                        WordShape(String($0)).key
+                    })
+                        == mark.words
+                else { continue }
+                let window = headWords + tailWords
+                let cleaned = SpokenPunctuationPass().apply(Draft(text: window.joined(separator: " "))).text
+                    .split(whereSeparator: \.isWhitespace)
+                let marked = headWords.count - fromHead - 1
+                guard cleaned.count == window.count - mark.words.count,
+                    cleaned[..<marked] == window[..<marked],
+                    cleaned[(marked + 1)...] == window[(marked + 1 + mark.words.count)...],
+                    cleaned[marked] != window[marked]
+                else { return nil }
+                let rest = fromTail < tailWords.count ? String(tail[tailWords[fromTail].startIndex...]) : ""
+                return (String(head[..<headWords[marked].startIndex]) + cleaned[marked], rest)
+            }
+        }
+        return nil
     }
 
     /// Keeps a spoken mark as words when a nearby determiner introduces its name.
