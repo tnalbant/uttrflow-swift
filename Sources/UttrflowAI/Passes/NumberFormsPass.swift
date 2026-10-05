@@ -43,6 +43,12 @@ public struct NumberFormsPass: PieceCleaningPass {
         "minutes", "hours",
     ]
 
+    /// Romanised Hindi amount, unit and time words after which a Hindi number is written in digits.
+    static let hindiMeasures: Set<String> = [
+        "rupaye", "rupaiye", "rupay", "rupee", "rupees", "paise", "kilo", "gram", "litre", "minute", "minat",
+        "ghante", "ghanta", "baje", "din", "saal", "mahine", "hafte", "tareekh", "tarikh",
+    ]
+
     /// The separator words of a spoken numeric date and the mark each is written as.
     static let dateSeparators: [String: String] = ["slash": "/", "stroke": "/", "dash": "-"]
 
@@ -211,6 +217,7 @@ public struct NumberFormsPass: PieceCleaningPass {
         if let decade = decade(at: position, keys: keys, shapes: shapes) {
             return decade
         }
+        if let amount = hindiAmount(at: position, keys: keys, shapes: shapes, digits: digits) { return amount }
 
         if (keys[position] == "negative" || keys[position] == "minus"), joined(position + 1, shapes),
             !subtracts(at: position, keys: keys, shapes: shapes)
@@ -576,6 +583,21 @@ public struct NumberFormsPass: PieceCleaningPass {
         else { return false }
         guard index > 0, !startsASentence(index, shapes) else { return true }
         return LexicalClass.tag(ofWordAt: index - 1, in: keys) != .pronoun
+    }
+
+    /// A romanised Hindi number before an amount, unit or time word, as "paanch sau rupaye" for "500 rupaye".
+    private static func hindiAmount(
+        at position: Int, keys: [String], shapes: [WordShape], digits: DigitGrouping
+    ) -> Phrase? {
+        var end = position
+        while end < keys.count, end == position || joined(end, shapes), NumberWords.hindi[keys[end]] != nil {
+            end += 1
+            if !shapes[end - 1].suffix.isEmpty { break }
+        }
+        guard let read = NumberWords.hindiCardinal(keys[position..<end]) else { return nil }
+        let unit = position + read.count
+        guard joined(unit, shapes), hindiMeasures.contains(keys[unit]) else { return nil }
+        return Phrase(text: NumberWords.render(read.value, grouping: digits), count: read.count)
     }
 
     /// The keys from `start` up to the first word that carries punctuation.

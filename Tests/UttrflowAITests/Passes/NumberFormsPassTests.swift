@@ -917,4 +917,39 @@ struct NumberWordsTests {
         // A cell keeps its separators: the corpus's own reference for a spreadsheet is "12,000".
         #expect(DestinationFormatter.standard(for: .spreadsheet).digits == .thousands)
     }
+
+    @Test(
+        "writes a romanised Hindi number in digits only before an amount, unit or time word",
+        arguments: [
+            ("paanch sau rupaye de do", "500 rupaye de do"),
+            ("do hazaar rupaye bhejo", "2000 rupaye bhejo"),
+            ("do hazaar paanch sau rupaye", "2500 rupaye"),
+            ("ek lakh rupaye", "100,000 rupaye"),
+            ("teen crore rupees", "30,000,000 rupees"),
+            ("pachas rupaye", "50 rupaye"),
+            ("sau rupaye", "100 rupaye"),
+            ("das kilo chawal", "10 kilo chawal"),
+            ("do litre doodh", "2 litre doodh"),
+            ("paanch minute ruko", "5 minute ruko"),
+            ("teen ghante lagenge", "3 ghante lagenge"),
+            ("chaar baje milte hain", "4 baje milte hain"),
+            ("bees saal ho gaye", "20 saal ho gaye"),
+            ("saat din baad", "7 din baad"),
+            ("chhah mahine", "6 mahine"),
+            ("do sau pachas gram", "250 gram"),
+            ("pachchis tareekh ko", "25 tareekh ko"),
+            ("assi paise", "80 paise"),
+            ("do hafte", "2 hafte"),
+            ("paanch lakh pachas hazaar rupaye", "550,000 rupaye"),
+            ("main do din mein aaunga", "main 2 din mein aaunga"),
+            ("do baatein karni hain", "do baatein karni hain"),
+            ("hum saath chalenge", "hum saath chalenge"),
+            ("paanch sau log aaye", "paanch sau log aaye"),
+            ("ek baar aur", "ek baar aur"),
+            ("ek, rupaye", "ek, rupaye"),
+        ]
+    )
+    func hindiAmounts(input: String, expected: String) {
+        #expect(cleaned(input, by: NumberFormsPass()) == expected)
+    }
 }

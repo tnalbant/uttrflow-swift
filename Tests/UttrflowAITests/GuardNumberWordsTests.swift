@@ -97,4 +97,19 @@ struct GuardNumberWordsTests {
     func changedHindiQuantity(original: String, rewritten: String) {
         #expect(MeaningPreservationGuard().verdict(original: original, rewritten: rewritten) != .accepted)
     }
+
+    @Test(
+        "the guard reads a composed Hindi amount and refuses a changed one",
+        arguments: [
+            ("paanch sau rupaye de do", "500 rupaye de do", true),
+            ("do hazaar paanch sau rupaye", "2500 rupaye", true),
+            ("ek lakh rupaye", "1,00,000 rupaye", true),
+            ("paanch sau rupaye de do", "5000 rupaye de do", false),
+            ("do hazaar rupaye", "200 rupaye", false),
+        ]
+    )
+    func composedHindiAmount(original: String, rewritten: String, accepted: Bool) {
+        let verdict = MeaningPreservationGuard().verdict(original: original, rewritten: rewritten)
+        #expect((verdict == .accepted) == accepted)
+    }
 }
