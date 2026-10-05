@@ -448,12 +448,26 @@ struct MultiWordCorrectionTests {
         ])
     func recasesASureWord(heard: String, written: String) throws {
         let utterance = CorrectionFixtures.spoken(heard)
-        let proposals = WordCorrectionEngine().proposals(for: utterance, against: Self.cased)
+        // "docker" is an English word, so its capital needs the screen; "YOY" is not, so it needs none.
+        let proposals = WordCorrectionEngine().proposals(
+            for: utterance, against: Self.cased, seeing: CorrectionFixtures.showing("Pull the Docker image"))
         let only = try #require(proposals.only)
         #expect(only.reason == .spelledAsInDictionary)
         #expect(only.heardConfidence == 0.95)
         let words = utterance.words.map(\.text)
         #expect(WordCorrection.applying(proposals, to: words).joined(separator: " ") == written)
+    }
+
+    @Test(
+        "leaves an English word in the heard case unless the screen writes it the entry's way beside a heard word"
+    )
+    func keepsAnOrdinaryWordLowerCase() {
+        let utterance = CorrectionFixtures.spoken("The docker image is too large to deploy.")
+        #expect(WordCorrectionEngine().proposals(for: utterance, against: Self.cased).isEmpty)
+        #expect(
+            WordCorrectionEngine().proposals(
+                for: utterance, against: Self.cased, seeing: CorrectionFixtures.showing("Docker Valkey")
+            ).isEmpty)
     }
 
     @Test(
