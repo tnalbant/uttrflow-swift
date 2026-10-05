@@ -114,7 +114,7 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
         let marked = AddedMarkCheck.checked(finished, against: spoken).text
         return TransformationResult(
             text: marked, producedBy: kind,
-            cleaning: CleaningRecord(draft: draft, ran: pipeline.ids),
+            cleaning: Self.record(before: draft, after: polished, ran: pipeline.ids + finishing.ids),
             entriesTaken: taken.compactMap(\.entryID))
     }
 
@@ -135,6 +135,13 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
         let floor = try await RuleBasedTransformer(steps: steps).transform(request)
         let unchanged = MeaningPreservationGuard.grammarTokens(floor.text).map(\.matching) == tokens.map(\.matching)
         return unchanged ? floor : nil
+    }
+
+    /// One account of the passes on both sides of the model, a step that ran on both sides counted once.
+    private static func record(before: Draft, after: Draft, ran: [PassID]) -> CleaningRecord {
+        CleaningRecord.merging([
+            CleaningRecord(draft: before, ran: ran), CleaningRecord(draft: after, ran: ran),
+        ])
     }
 
     /// The caret's echo the finishing pipeline took back, which the model did answer with and the guard must see.

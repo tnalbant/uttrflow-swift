@@ -214,6 +214,18 @@ struct GenerativeTextTransformerTests {
                 == "We went to London and Tokyo.")
     }
 
+    @Test("records what the passes after the model changed in its answer")
+    func recordsFinishingPasses() async throws {
+        let sut = GenerativeTextTransformer(
+            kind: .foundationModels,
+            model: FakeCleanupModel { _ in "the room is booked, do you need a projector?" })
+
+        let result = try await sut.transform(request("the room is booked do you need a projector"))
+        #expect(result.text == "The room is booked, do you need a projector?")
+        let rewrites = result.cleaning?.changes.flatMap(\.replaced) ?? []
+        #expect(rewrites.contains(CleaningRecord.Rewrite(from: "the", to: "The")))
+    }
+
     /// The passes under the destination's own policies, which is what the model is handed.
     @Test("runs the pre-model passes under the destination the words are going to")
     func runsThePassesForTheDestination() async throws {
