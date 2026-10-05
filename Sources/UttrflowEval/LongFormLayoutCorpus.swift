@@ -3,7 +3,7 @@ import UttrflowCore
 
 extension EvaluationCorpus {
     /// Kept out of `all`, so its length does not move the per-case gates sized for single sentences.
-    public static let longForm: [EvaluationCase] = [
+    static let longForm: [EvaluationCase] = [
         longFormCase(
             "rambling-email-two-topics",
             "hi priya so the move to the new office is still on for the twentieth and the movers come at eight in the morning please have your desk packed the night before and label every box with your name and floor number new paragraph on a different note the quarterly review moves to thursday the twenty third at two because the board meeting took the tuesday slot and we will use the large room on the fourth floor so bring your slides on a stick in case the screen sharing plays up again thanks owen",
@@ -55,20 +55,20 @@ extension EvaluationCorpus {
 }
 
 /// How to speak a long-form case with the system synthesiser: its words, with each pause written as silence.
-public struct LongFormRecipe: Sendable, Equatable {
+struct LongFormRecipe: Sendable, Equatable {
     /// Words a minute `say` speaks at its default rate, which the length estimate assumes.
-    public static let wordsPerMinute = 175.0
+    static let wordsPerMinute = 175.0
     /// The silence written after each paused word, longer than the windowing's sentence pause so a cut can fall there.
-    public static let pauseSeconds = 1.0
+    static let pauseSeconds = 1.0
 
     /// The text handed to `SaySynthesizer`, with `[[slnc]]` commands where the case pauses.
-    public let script: String
+    let script: String
     /// Roughly how long the audio runs, in seconds.
-    public let estimatedSeconds: Double
+    let estimatedSeconds: Double
     /// The longest run of speech with no written pause, in seconds, which past the recogniser's window forces a cut.
-    public let longestUnbrokenSeconds: Double
+    let longestUnbrokenSeconds: Double
 
-    public init(_ testCase: EvaluationCase) {
+    init(_ testCase: EvaluationCase) {
         let words = WordTokens.words(testCase.spoken, .display)
         let paused = Set(testCase.pausedAfter)
         let silence = "[[slnc \(Int(Self.pauseSeconds * 1000))]]"
