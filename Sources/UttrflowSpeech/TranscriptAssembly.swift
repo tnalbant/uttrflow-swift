@@ -8,6 +8,7 @@ struct WhisperTranscriptWindow: Sendable {
     let segments: [RawSegment]
     let effort: DecodeEffort
     let tokensUsed: Int
+    let promptPositions: Int
     let vocabularyPrompt: [String]
 }
 
@@ -35,6 +36,7 @@ enum TranscriptAssembly {
             segments: windows.flatMap(\.segments),
             effort: windows.reduce(.none) { $0.adding($1.effort) },
             tokensUsed: windows.reduce(0) { $0 + $1.tokensUsed },
+            promptPositions: windows.first?.promptPositions ?? 0,
             vocabularyPrompt: windows.first?.vocabularyPrompt ?? [])
     }
 

@@ -5,8 +5,13 @@ public import UttrflowCore
 public enum CappedDecodeRetry {
     /// The most retries, so a decode that cannot make progress gives up rather than spinning.
     public static let maxRetries = 10
-    /// A token count past which a decode is treated as having stopped because the decoder ran out of positions, not at an end-of-text token. WhisperKit's 223-position shared decode budget leaves room for about 47 Hindi words or 200+ English ones, so this catches Hindi without firing on English.
+    /// With no prompt, a token count past which a decode is treated as having stopped because the decoder ran out of positions, not at an end-of-text token. WhisperKit's 223-position shared decode budget leaves room for about 47 Hindi words or 200+ English ones, so this catches Hindi without firing on English.
     public static let tokenCapThreshold = 215
+
+    /// The cap threshold once a prompt has taken `promptPositions` of the same 223 positions, so a prompted decode that ran out is still caught.
+    public static func tokenCapThreshold(promptPositions: Int) -> Int {
+        tokenCapThreshold - max(0, promptPositions)
+    }
     /// A word longer than this is taken to be the fragment the recogniser stretched to fill the rest of the audio after the decoder stopped mid-word; the previous word's end is where the real decode stopped.
     public static let fragmentWordDuration: Duration = .milliseconds(900)
     /// The recogniser's fixed window; a segment that ends at one without inner timestamps is where a window collapsed.
@@ -49,6 +54,7 @@ public enum CappedDecodeRetry {
             segments: retried.segments,
             effort: biased.effort.addingRetry(retried.effort),
             tokensUsed: retried.tokensUsed,
+            promptPositions: retried.promptPositions,
             vocabularyPrompt: retried.vocabularyPrompt)
     }
 
@@ -82,6 +88,7 @@ public enum CappedDecodeRetry {
         var languageProbability: Double?
         var totalEffort = DecodeEffort.none
         var totalTokensUsed = 0
+        var promptPositions = 0
         var vocabularyPrompt: [String] = []
         var remaining = samples
         var sliceStartSeconds = 0.0
@@ -102,6 +109,7 @@ public enum CappedDecodeRetry {
             languageProbability = result.languageProbability ?? languageProbability
             totalEffort = totalEffort.adding(result.effort)
             totalTokensUsed += result.tokensUsed
+            promptPositions = result.promptPositions
             vocabularyPrompt = result.vocabularyPrompt
 
             let sliceDuration = Duration.seconds(Double(remaining.count) / sampleRate)
@@ -109,7 +117,7 @@ public enum CappedDecodeRetry {
             // The token count is the reliable signal — a recogniser that reports it has run out of room at ~223 positions. A backend that does not report tokens falls back to the segment-end heuristic.
             let hitCap =
                 result.tokensUsed > 0
-                ? result.tokensUsed >= tokenCapThreshold
+                ? result.tokensUsed >= tokenCapThreshold(promptPositions: result.promptPositions)
                 : result.appearsCapped(audioDuration: sliceDuration)
             // A collapsed window is checked first; otherwise the recogniser may stretch the final fragment word to the audio end, so the last *normal* word is where it stopped.
             let cutoff: Double? =
@@ -172,6 +180,7 @@ public enum CappedDecodeRetry {
             segments: accumulatedSegments,
             effort: totalEffort,
             tokensUsed: totalTokensUsed,
+            promptPositions: promptPositions,
             vocabularyPrompt: vocabularyPrompt
         )
     }
