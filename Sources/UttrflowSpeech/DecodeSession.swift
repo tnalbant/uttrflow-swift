@@ -45,6 +45,8 @@ struct DecodeSession {
         var nextToken: Int
         var hasAlignment = false
         var isFirstTokenLogProbTooLow = false
+        /// The model's probability of no speech, read where the start-of-transcript token is fed.
+        var noSpeechProb: Float = 0
         var timings = TranscriptionTimings()
     }
 
@@ -83,7 +85,11 @@ struct DecodeSession {
         let output = try await predict()
         progress.timings.decodingPredictions += Date().timeIntervalSince(inferenceStart)
         let nonInferenceStart = Date()
-        let logits = filters.reduce(try Self.logits(of: output)) {
+        let rawLogits = try Self.logits(of: output)
+        if index == inputs.initialPrompt.firstIndex(of: tokenizer.specialTokens.startOfTranscriptToken) {
+            progress.noSpeechProb = Self.probability(of: tokenizer.specialTokens.noSpeechToken, in: rawLogits)
+        }
+        let logits = filters.reduce(rawLogits) {
             $1.filterLogits($0, withTokens: progress.tokens)
         }
         progress.timings.decodingFiltering += Date().timeIntervalSince(nonInferenceStart)
@@ -140,6 +146,16 @@ struct DecodeSession {
     private static func logits(of output: TextDecoderMLMultiArrayOutputType) throws -> MLMultiArray {
         guard let logits = output.logits else { throw WhisperError.decodingLogitsFailed("Missing logits") }
         return logits
+    }
+
+    /// The softmax probability of `token` over unfiltered logits, as Whisper reads its no-speech probability.
+    static func probability(of token: Int, in logits: MLMultiArray) -> Float {
+        let count = logits.count
+        guard token >= 0, token < count else { return 0 }
+        let values = (0..<count).map { logits[$0].floatValue }
+        let peak = values.max() ?? 0
+        let total = values.reduce(Float(0)) { $0 + exp($1 - peak) }
+        return exp(values[token] - peak) / total
     }
 
     /// Keeps the sampled token past the prefill and writes this step's keys, values and alignment into the cache.

@@ -119,12 +119,11 @@ final class ParityDecoder: TextDecoding {
         windows.withLock { $0.append(window) }
     }
 
+    /// The decode itself; the average and no-speech signals, and the verdict on them, differ by design.
     static func identical(_ lhs: DecodingResult, _ rhs: DecodingResult) -> Bool {
         lhs.tokens == rhs.tokens && lhs.tokenLogProbs == rhs.tokenLogProbs && lhs.text == rhs.text
-            && lhs.avgLogProb.bitPattern == rhs.avgLogProb.bitPattern
             && lhs.compressionRatio.bitPattern == rhs.compressionRatio.bitPattern
             && lhs.language == rhs.language && lhs.temperature == rhs.temperature
-            && lhs.fallback?.fallbackReason == rhs.fallback?.fallbackReason
             && lhs.timings?.totalDecodingLoops == rhs.timings?.totalDecodingLoops
             && bytes(lhs.cache?.alignmentWeights) == bytes(rhs.cache?.alignmentWeights)
             && bytes(lhs.cache?.keyCache) == bytes(rhs.cache?.keyCache)

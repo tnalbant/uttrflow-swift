@@ -94,7 +94,7 @@ public enum VocabularyPrompt {
             prefixTokens: nil,
             suppressBlank: false,
             suppressTokens: [],
-            // Whisper's own tests for a window of repetition, low confidence or silence.
+            // Whisper's tests for repetition, low confidence and silence; `DecodeSession` computes each signal.
             compressionRatioThreshold: 2.4,
             logProbThreshold: fallback.logProbThreshold,
             firstTokenLogProbThreshold: -1.5,

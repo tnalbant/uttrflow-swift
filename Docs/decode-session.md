@@ -28,15 +28,26 @@ fallback ladder downstream see the same `DecodingResult`:
   answering `false` past the prefill each end the window;
 - the result is cut from start of transcript to end of text, with the same average
   log-probability, compression ratio, language and fallback verdict;
-- the no-speech probability stays 0, as the library writes it, until it is computed for real.
+
+## What the session reports differently
+
+Two fallback signals are computed here because the library's are not live:
+
+- **No-speech probability.** The library writes a constant 0, so `noSpeechThreshold` could never
+  fire. The session reads the softmax probability of the no-speech token from the unfiltered
+  logits of the step that feeds the start-of-transcript token, as Whisper defines it.
+- **Average log-probability.** The library averages from the start-of-transcript token, so the
+  forced tokens' zeros dilute a short piece's mean. The session averages the sampled tokens only.
+
+Both feed the fallback verdict and the segment seeker. `DecodeSessionSignalTests` fails if either
+signal stops moving, or if a threshold the shipping options set has no signal behind it.
 
 ## The parity gate
 
 `Tests/UttrflowSpeechTests/DecodeSessionParityProbe.swift` installs a decoder that, for every
 greedy window, decodes copies of the same inputs through the library loop and through the
 session, alternating which runs first, and compares the results byte for byte: tokens,
-per-token log-probabilities, text, average log-probability, compression ratio, language,
-fallback reason, step count, and the key and alignment caches the word timings are read
+per-token log-probabilities, text, compression ratio, language, step count, and the key and alignment caches the word timings are read
 from. It also transcribes each clip three times and checks the word timings never vary.
 
 ```bash
@@ -54,7 +65,7 @@ voice, and 5 seconds of digital silence. Each clip transcribed three times.
 
 | Measure | Library loop | Session |
 |---|---|---|
-| Greedy windows compared | 75 | 75 identical, byte for byte |
+| Greedy windows compared | 75 | 75 identical, byte for byte (measured before the two signals changed) |
 | Decoder steps | 7,185 | 7,185 |
 | Mean time per step | 22.31 ms | 22.65 ms |
 | Word timings across three runs | | 1 distinct result per clip |
