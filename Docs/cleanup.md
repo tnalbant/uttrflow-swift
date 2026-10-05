@@ -164,7 +164,9 @@ a prompt line that is not measured is a guess (`Docs/bakeoff.md`).
 Which layer owns each formatting class — `rules`, `model` or `both` — is
 `FormattingClass.ownership`, and `Docs/formatting-matrix.md` prints it beside each class's
 cases. Under `both`, the passes after the model have the last word. `FormattingOwnershipTests`
-fails a class whose named pass no shipped pipeline runs.
+fails a class whose named pass no shipped pipeline runs. `PromptLineTags` tags every bullet
+line of the contract and each block with the classes it asks for; `PromptLineTagsTests` fails an
+untagged line, and the lines that still ask the model for a `rules` class are a set that never grows.
 
 ## Words spelled letter by letter
 
