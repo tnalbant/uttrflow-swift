@@ -114,6 +114,27 @@ enum PieceJoiner {
         }
     }
 
+    /// Whether the passes that read a spoken number, time or address read one across the cut, so only one piece writes it.
+    static func unitRunsAcross(
+        _ head: String, into tail: String, under formatter: DestinationFormatter, digits: DigitGrouping
+    ) -> Bool {
+        let headWords = head.split(whereSeparator: \.isWhitespace).suffix(longestSpokenUnit)
+        let tailWords = tail.split(whereSeparator: \.isWhitespace).prefix(longestSpokenUnit)
+        guard !headWords.isEmpty, !tailWords.isEmpty else { return false }
+        let units = CleaningPipeline(piece: [
+            SpokenPunctuationPass(destination: formatter.destination),
+            NumberFormsPass(policy: formatter.numbers, digits: digits),
+        ])
+        func read(_ words: [Substring]) -> [String] {
+            units.run(Draft(text: words.joined(separator: " "))).text
+                .split(whereSeparator: \.isWhitespace).map { WordShape(String($0)).key }
+        }
+        return read(Array(headWords + tailWords)) != read(Array(headWords)) + read(Array(tailWords))
+    }
+
+    /// The most words either side of a cut that one spoken number, time or address is read from.
+    static let longestSpokenUnit = 8
+
     /// Attaches standalone spoken marks to adjacent words across piece boundaries.
     private static func joiningSpokenMarksAcrossSeams(_ pieces: [String]) -> [String] {
         guard pieces.count > 1 else { return pieces }
