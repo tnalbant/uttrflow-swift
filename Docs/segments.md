@@ -33,7 +33,7 @@ nothing serves yet, and it always names an open issue.
 | Clinicians | gap #3813, packs #3659 | unknown: probe #3587 | unknown: probe #3587 | unknown: probe #3587 | class 1: a wrong drug, dose or negation | patient data, which [offline.md](offline.md) keeps on the Mac |
 | Lawyers | gap #3813, packs #3659 | unknown: probe #3587 | unknown: probe #3587 | unknown: probe #3587 | class 1: a dropped negation or wrong number | client data, as above |
 | Researchers | `researcher` segment slice (author-year citations and reference entries) | `researcher` segment slice | unknown: probe #3587 | unknown: probe #4980 | class 1 for a term or number (`technical`, `digits`) | no extra need known |
-| People who rely on voice because of a motor or vision impairment | as their other rows | as their other rows | unknown: probe #3587 | [hands-free session](#a-hands-free-session): start by key only #5539, stop by voice #4314 #4319 | every correction needs the command key and no edit command exists: gap #2389 | no extra need known |
+| People who rely on voice because of a motor or vision impairment | as their other rows | as their other rows | unknown: probe #3587 | [hands-free session](#a-hands-free-session): stop by voice #4314 #4319 | every correction needs the command key and no edit command exists: gap #2389 | no extra need known |
 | Non-native English speakers | `properNouns` stressor; accent cohorts, [measuring-accuracy.md](measuring-accuracy.md) | as their other rows | unknown: probe #4527 | as their other rows | class 1; accent confusions #4511 | no extra need known |
 | Hinglish speakers | `multilingual` category, [eval-context-cases.md](eval-context-cases.md); Indian pack #4301 | as their other rows | unknown: probe #3587 | spoken command names per language #4351; self-correction triggers #4051 | class 1 for Devanagari or a translation, [latin-output.md](latin-output.md) | no extra need known |
 | Speakers with speech differences | `falseStarts` stressor | as their other rows | slow and effortful speech: gap #3804; pause length #4052 | as their other rows | class 1 for an over-deleted word: gap #3779 | no extra need known |
@@ -53,7 +53,7 @@ counting key presses and what VoiceOver is told: `swift test --filter HandsFreeS
 
 | Step | Key presses | VoiceOver hears | Gap |
 |---|---|---|---|
-| Start | 2: a double tap | "Listening." twice | key only #5539; announced twice #5538 |
+| Start | 0: the menu bar Talk button, which Voice Control can click, or the Start Dictation intent | "Listening." | none; by key, a double tap announced twice #5538 |
 | Dictate | 0 | nothing | none |
-| Stop | 2: a double tap | "Inserted:" and the words | stop by voice #4314, #4319 |
+| Stop | 0: the same control again (Stop); by key, a double tap | "Inserted:" and the words | stop by voice #4314, #4319 |
 | Correct | 1: a hold of the command key | "That isn't an edit command Uttrflow knows" | no edit command #2389 |

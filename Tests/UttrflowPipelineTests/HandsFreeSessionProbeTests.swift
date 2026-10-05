@@ -65,19 +65,14 @@ private actor HandsFreeProbe {
         await Task.yield()
     }
 
-    /// One press and release of a key, short enough to count as a tap.
-    private func tap(_ route: UtteranceRoute) async {
-        presses += 1
-        await controller.handle(.pressed, from: route)
-        clock.advance(by: DictationController<ManualClock>.minimumHold - .milliseconds(1))
-        await controller.handle(.released, from: route)
+    /// The menu bar's Talk button or the Start Dictation intent, which Voice Control and Siri reach.
+    func startFromControl() async {
+        _ = await controller.command(.start)
     }
 
-    /// A double tap of the dictation key, the one hands-free gesture.
-    func doubleTap() async {
-        await tap(.dictation)
-        clock.advance(by: .milliseconds(120))
-        await tap(.dictation)
+    /// The same control again (Stop), the gesture a control-started recording shows.
+    func stopFromControl() async {
+        _ = await controller.command(.stop)
     }
 
     /// A hold of the command key while speaking, the only way to say an edit command.
@@ -115,12 +110,12 @@ struct HandsFreeSessionProbeTests {
         await probe.listen()
         var steps: [ProbeStep] = []
 
-        await probe.doubleTap()
+        await probe.startFromControl()
         steps.append(await probe.step("start"))
 
         steps.append(await probe.step("dictate"))
 
-        await probe.doubleTap()
+        await probe.stopFromControl()
         try await probe.waitForIdle()
         steps.append(await probe.step("stop"))
 
@@ -131,11 +126,9 @@ struct HandsFreeSessionProbeTests {
         for step in steps {
             print("hands-free probe: \(step.name) keyPresses=\(step.keyPresses) said=\(step.announcements)")
         }
-        #expect(steps.map(\.keyPresses) == [2, 0, 2, 1])
-        #expect(steps.map(\.keyPresses).reduce(0, +) == 5)
-        #expect(
-            steps[0].announcements == ["Listening.", "Listening."],
-            "each tap of the double tap opens the microphone")
+        #expect(steps.map(\.keyPresses) == [0, 0, 0, 1])
+        #expect(steps.map(\.keyPresses).reduce(0, +) == 1)
+        #expect(steps[0].announcements == ["Listening."], "a control opens the microphone once")
         #expect(steps[2].announcements.contains { $0.hasPrefix("Inserted:") })
         #expect(
             steps[3].announcements.last
