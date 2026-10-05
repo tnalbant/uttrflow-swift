@@ -323,6 +323,22 @@ struct DictationPipelineRecordingTests {
         #expect(await speech.transcribeCalls.events.last?.options.vocabulary == ["NewName"])
     }
 
+    @Test("recogniser bias switched off sends the recogniser no vocabulary")
+    func recogniserBiasOff() async {
+        let speech = FakeSpeechEngine(transcribeOutcome: .success(.fixture(text: said)))
+        let pipeline = DictationPipeline(
+            capture: FakeAudioCaptureEngine(), speech: speech, cleaner: FakeTranscriptCleaner(),
+            context: FakeContextEngine(context: .fixture()), inserter: FakeTextInserter(),
+            speechWords: { _ in ["Uttrflow"] },
+            recordings: FakeRecordingKeeper(waiting: [recording]),
+            clipboard: FakeTextInserter(.success(InsertionAttempt(.clipboard))),
+            layers: QualityLayers(enabled: QualityLayers().enabled.subtracting([.recogniserBias])))
+
+        await pipeline.retry(recording.id)
+
+        #expect(await speech.transcribeCalls.events.map(\.options.vocabulary) == [[]])
+    }
+
     @Test("a multi-piece dictation resolves vocabulary once and shares it with every piece")
     func dictationReadsVocabularyOnce() async {
         let words = WordsInTurn(["Uttrflow"])

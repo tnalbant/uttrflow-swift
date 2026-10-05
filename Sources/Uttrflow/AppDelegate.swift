@@ -1295,7 +1295,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     pasteboard: announcingPasteboard,
                     secretClassifier: { ClipKindDetector.kind(of: $0) == .secret })
             ]),
-            profile: settings.profile
+            profile: settings.profile,
+            layers: QualityLayers { key in
+                let defaults = UserDefaults.standard
+                return defaults.object(forKey: key) == nil ? nil : defaults.bool(forKey: key)
+            }
         )
         self.pipeline = pipeline
 

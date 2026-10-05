@@ -22,6 +22,9 @@ extension DictationPipeline {
         _ transcription: Transcription, seeing appContext: AppContext,
         recording metrics: any MetricsRecording
     ) async -> CorrectedTranscript {
+        // Moving a word needs evidence, candidates, a score and the gate, so any one off leaves the words as heard.
+        let correcting: [QualityLayer] = [.evidenceCapture, .candidateGeneration, .scoring, .overrideGate]
+        guard correcting.allSatisfy(layers.isOn) else { return .unchanged(transcription.text) }
         let corrector = runningCorrector
         do {
             let proposed =
@@ -126,6 +129,7 @@ extension DictationPipeline {
         if finalPiece { await runningCleaner.reserveFinalPiece(situation) }
         // Not `.rules`: no pass ran over these words, and a record that says otherwise cannot be read.
         let untidied = TransformationResult(text: text, producedBy: .untidied)
+        guard layers.isOn(.formatting) else { return untidied }
 
         do {
             let tidied = try await metrics.measuringInTime(.transformation, clock: clock) {
@@ -204,6 +208,7 @@ extension DictationPipeline {
         let heard = Transcription(text: phrase)
         let nowhere = AppContext()
         let corrected = await correct(heard, seeing: nowhere, recording: NoOpMetricsRecorder())
+        guard layers.isOn(.formatting) else { return LatinScript.enforced(corrected.text) }
         let situation = SituationResolver.resolve(from: nowhere, overrides: runningOverrides)
         let spoken = heard.saying(corrected)
         let piece = TransformationRequest(

@@ -32,6 +32,16 @@ never from a network source. `QualityLayers.ablation(only:without:)` builds the 
 eval run asks for, and refuses an unknown name. A new layer is added as a case with `defaultOn`
 false, measured, then turned on in a reviewed pull request.
 
+`DictationPipeline` takes the set as `layers` and a layer that is off leaves its stage's input as it
+came: recogniser bias off sends the recogniser no vocabulary; evidence capture, candidate
+generation, scoring or the override gate off stops the dictionary moving any word; formatting off
+leaves each piece untidied. `uttrflow-bakeoff --layers a,b` runs only those layers and
+`--without a` drops one; the run header names the layers it had on, results of a non-default set are
+stored apart, and `--against` refuses a baseline run with other layers unless
+`--allow-difference layers`. Each layer's latency budget is the p95-plus-headroom row of the stage it
+runs in, mapped in `LAYER_STAGES` in `Scripts/perf_budget_audit.py`; the audit fails a layer with no
+stage or a stage with no row, and prints each layer still awaiting a measurement with its reason.
+
 ## Rules that hold across every layer
 
 1. **Doing nothing is the default.** A layer that is unsure leaves the words as heard. Only the

@@ -19,6 +19,8 @@ public actor DictationPipeline {
     private let learner: any DictationLearning
     private let vocabulary: any VocabularyLearning
     let metrics: any MetricsRecording
+    /// Which quality layers run; a layer that is off leaves its stage's input as it came.
+    let layers: QualityLayers
     /// Where the account of what the clean-up steps did to each dictation goes.
     private let cleaningRecorder: any CleaningRecording
     /// The apps the user has told Uttrflow to treat as somewhere other than the table says.
@@ -124,14 +126,16 @@ public actor DictationPipeline {
         earlyPoll: Duration = .seconds(1),
         pollClock: any Clock<Duration> = ContinuousClock(),
         speechLoadLimit: Duration = StageTimeout.speechModelLoad,
-        commands: EditCommandRegistry = EditCommandRegistry()
+        commands: EditCommandRegistry = EditCommandRegistry(),
+        layers: QualityLayers = QualityLayers()
     ) {
         self.capture = capture
         self.speech = speech
         self.cleaner = cleaner
         self.context = context
         self.inserter = inserter
-        self.speechWords = speechWords
+        self.speechWords = layers.isOn(.recogniserBias) ? speechWords : { @Sendable _ in [] }
+        self.layers = layers
         self.corrector = corrector
         self.snippets = snippets
         self.learner = learner
