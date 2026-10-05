@@ -158,7 +158,9 @@ public enum DestinationRules {
             bundlePrefixes: [
                 mail, outlook, "com.superhuman", "com.readdle.smartemail",
             ],
-            hostSuffixes: ["mail.google.com", "outlook.office.com", "outlook.live.com", "mail.superhuman.com"],
+            hostSuffixes: [
+                "mail.google.com", "outlook.office.com", "outlook.live.com", "mail.superhuman.com",
+            ],
             titleContains: ["Gmail", "Mail", "Outlook", "Spark", "Superhuman"],
             nameWords: ["mail", "outlook", "spark", "superhuman"],
             kind: .email
