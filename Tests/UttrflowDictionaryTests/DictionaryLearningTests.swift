@@ -1,10 +1,14 @@
 // Tests for what a week of dictations teaches the dictionary.
 
 import Foundation
+import Synchronization
 import UttrflowCore
 import Testing
 
 @testable import UttrflowDictionary
+
+/// How many dictations each store has been told, so each lands on its own day unless a test says otherwise.
+private let dictationsSoFar = Mutex<[ObjectIdentifier: Int]>([:])
 
 /// One dictation told to the store as the pipeline tells it; returns the words it taught, usually none.
 @discardableResult
@@ -14,9 +18,14 @@ private func dictate(
     writing wrote: String? = nil,
     titled title: String? = nil,
     over selection: String? = nil,
-    at moment: Date = epoch
+    at given: Date? = nil
 ) async throws -> [String] {
-    try await store.learn(
+    let count = dictationsSoFar.withLock { counts in
+        defer { counts[ObjectIdentifier(store), default: 0] += 1 }
+        return counts[ObjectIdentifier(store), default: 0]
+    }
+    let moment = given ?? epoch.addingTimeInterval(Double(count) * 86_400)
+    return try await store.learn(
         heard: heard,
         wrote: wrote ?? heard,
         seeing: AppContext(

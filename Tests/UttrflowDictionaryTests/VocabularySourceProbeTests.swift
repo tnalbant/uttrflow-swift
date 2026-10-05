@@ -51,7 +51,7 @@ private func probe(_ persona: ProbePersona) -> [Source: SourceYield] {
         for heard in day.dictated {
             for (source, seen) in [(Source.title, day.title), (.typed, typedScreen)] {
                 let terms = LearnableWords.seenAndSaid(heard: heard, seeing: AppContext(documentName: seen))
-                keep(ledgers[source, default: SightingLedger()].record(terms), from: source, day: dayNumber)
+                keep(ledgers[source, default: SightingLedger()].record(terms, on: dayNumber).learnt, from: source, day: dayNumber)
             }
         }
         for correction in day.corrections {

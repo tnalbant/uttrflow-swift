@@ -94,7 +94,7 @@ struct PersonalDictionaryStoreTests {
             #expect(
                 try await store.learn(
                     heard: "Colin", wrote: "Colin", seeing: colinContext,
-                    at: epoch.addingTimeInterval(Double(day))
+                    at: epoch.addingTimeInterval(Double(day) * 86_400)
                 )
                 .isEmpty)
         }
@@ -103,7 +103,7 @@ struct PersonalDictionaryStoreTests {
         #expect(
             try await store.learn(
                 heard: "Colin", wrote: "Colin", seeing: colinContext,
-                at: epoch.addingTimeInterval(3)
+                at: epoch.addingTimeInterval(3 * 86_400)
             )
             .isEmpty)
         #expect(await store.allEntries().isEmpty)
