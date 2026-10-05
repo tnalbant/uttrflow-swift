@@ -348,6 +348,49 @@ struct SpokenAddressTests {
     }
 
     @Test(
+        "writes a file reference's line and column joined to the file",
+        arguments: [
+            ("the error is in main dot py colon forty two colon seven", "the error is in main.py:42:7"),
+            ("see main dot py colon forty", "see main.py:40"),
+            ("open router dot swift colon one hundred eighteen", "open router.swift:118"),
+            ("check app dot js colon twelve", "check app.js:12"),
+            ("the warning is at config dot yaml colon three colon one", "the warning is at config.yaml:3:1"),
+            ("look at index dot html colon two hundred", "look at index.html:200"),
+            ("line utils dot rs colon one thousand two hundred five", "line utils.rs:1205"),
+            ("parser dot ts colon nine colon fourteen fails", "parser.ts:9:14 fails"),
+            ("notes dot md colon 7", "notes.md:7"),
+            ("edit src slash app slash main dot swift colon forty two", "edit src/app/main.swift:42"),
+            (
+                "open tests slash unit slash parser dot py colon ten colon three",
+                "open tests/unit/parser.py:10:3"
+            ),
+            ("dist slash bundle dot js colon one colon two hundred", "dist/bundle.js:1:200"),
+            ("connect to localhost colon three thousand", "connect to localhost:3000"),
+            ("ssh to ten dot zero dot zero dot one colon twenty two", "ssh to 10.0.0.1:22"),
+            ("open example dot com colon eight thousand eighty", "open example.com:8080"),
+            ("the file is main dot py colon forty two.", "the file is main.py:42."),
+            ("data dot csv colon five colon six", "data.csv:5:6"),
+            ("read schema dot json colon eighty eight", "read schema.json:88"),
+            ("in build dot sh colon fifteen", "in build.sh:15"),
+            ("go to readme dot txt colon one", "go to readme.txt:1"),
+        ]
+    )
+    func writesFileReferences(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
+        "leaves a colon that is not a reference to the clause rule",
+        arguments: [
+            "the ratio is three colon one", "the ratio is two colon one", "localhost is fine",
+            "main dot py is long", "one dot two", "note colon the build failed", "at five colon thirty",
+        ]
+    )
+    func leavesNonReferenceColons(input: String) {
+        #expect(cleaned(input, by: sut).firstMatch(of: /\S:\d/) == nil)
+    }
+
+    @Test(
         "leaves ordinary slashes, dots and colons as words",
         arguments: [
             "and slash or", "he made a slash with his sword", "use a dot here", "the dot com bubble",
