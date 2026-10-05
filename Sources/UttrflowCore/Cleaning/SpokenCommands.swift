@@ -35,6 +35,10 @@ public struct SpokenCommand: DataTableRow, Equatable {
         case leadIn
         /// An edit said under the editing key: the words up to `until` are found in the last insertion and replaced by the rest.
         case replace
+        /// A Markdown mark written before each line the selection touches, said under the editing key.
+        case lineMark
+        /// A Markdown mark written around the selection, closed by the same mark read backwards.
+        case spanMark
     }
 
     /// How many of the following words a casing command covers.
@@ -111,6 +115,8 @@ public enum SpokenCommands {
     public static let leadIns = rows(.leadIn)
     /// Edits that replace words in the last insertion, said only under the editing key.
     public static let replacements = rows(.replace)
+    /// Markdown structure said under the editing key: line marks, then span marks.
+    public static let markdown = rows(.lineMark) + rows(.spanMark)
 
     /// Whether `text` is a single bracket, opening or closing.
     public static func isBracket(_ text: String) -> Bool {

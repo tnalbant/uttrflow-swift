@@ -30,6 +30,12 @@ extension CaretStructure {
     }
 
     private static let proseExtensions: Set<String> = ["md", "markdown", "txt"]
+    private static let markdownExtensions: Set<String> = ["md", "markdown"]
+
+    /// Whether the document is a Markdown file, which is where raw Markdown marks render rather than show.
+    public static func isMarkdown(documentName: String?) -> Bool {
+        fileExtension(from: documentName).map(markdownExtensions.contains) ?? false
+    }
 
     private struct Markers {
         let line: [String]
