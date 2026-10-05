@@ -14,7 +14,7 @@ struct Bakeoff: AsyncParsableCommand {
         abstract: "Score clean-up engines against the evaluation corpus.",
         subcommands: [
             Footprint.self, Profile.self, Complete.self, Score.self, GPUMemory.self, ReloadLeaks.self,
-            SpeechShape.self,
+            SpeechShape.self, Marks.self,
         ]
     )
 
@@ -186,7 +186,7 @@ struct Bakeoff: AsyncParsableCommand {
     private func showSamples() async throws {
         for model in try selectedModels() {
             print("=== \(model.shortName) ===")
-            let cleanup = MLXCleanupModel(model: model)
+            let cleanup = MLXCandidateScorer(model: model)
             try await cleanup.prepare()
 
             let sampled =
@@ -317,7 +317,7 @@ struct Bakeoff: AsyncParsableCommand {
         let description = CandidateDescription(model)
         print("· \(description.name) — \(gigabytes(model.downloadBytes))")
 
-        let cleanup = MLXCleanupModel(model: model)
+        let cleanup = MLXCandidateScorer(model: model)
         let clock = ContinuousClock()
         let loadStart = clock.now
         do {
@@ -335,7 +335,7 @@ struct Bakeoff: AsyncParsableCommand {
         FileHandle.standardError.write(Data("\r\u{1B}[2K".utf8))
         print("  ready in \(seconds(loadStart.duration(to: clock.now)))s")
 
-        let transformer = GenerativeTextTransformer(kind: .localModel, model: cleanup)
+        let transformer = TextTransformers.local(cleanup)
         let report = await EvaluationRunner().run(
             label: description.name,
             onCase: { _ in FileHandle.standardError.write(Data(".".utf8)) }

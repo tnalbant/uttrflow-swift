@@ -175,9 +175,12 @@ public struct DecodeDumpStore: Sendable {
         }
         var dumps: [DecodeDump] = []
         for file in files {
+            guard let data = FileManager.default.contents(atPath: file.path) else {
+                throw .store(.couldNotRead(path: file.lastPathComponent, reason: "unreadable file"))
+            }
             let dump: DecodeDump
             do {
-                dump = try JSONDecoder().decode(DecodeDump.self, from: Data(contentsOf: file))
+                dump = try JSONDecoder().decode(DecodeDump.self, from: data)
             } catch {
                 throw .store(.couldNotRead(path: file.lastPathComponent, reason: "\(error)"))
             }
