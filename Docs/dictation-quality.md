@@ -115,6 +115,15 @@ exists for fitting, in Swift or in `Scripts/`.
 | Monotone calibration map | pool-adjacent-violators | `MonotoneCalibration.fit` |
 | Count table | a dictionary of counts | the layer's own reader format |
 
+A fit is bit-reproducible: the same rows give the same artifact digest in any process, on any
+thread count and on any Apple silicon Mac. Rows are read in the caller's array order, never by
+iterating a `Dictionary` or `Set`; sums run on one thread in that order; ties sort by a stated key
+(`MonotoneCalibration.fit` puts wrong before right at an equal score); a fit draws no randomness,
+and one that must draws from a seed it stores in its record. Stored floats keep 12 significant
+digits (`FitArtifact.stored`) and `digest` hashes that form, so a last-bit difference cannot change
+it. `FittingTests` pins the fixture's digest and refits on eight threads at once; it runs without
+`SWIFT_DETERMINISTIC_HASHING`.
+
 Fitting adds no dependency. A step that cannot be done in Swift (for example a one-off model
 conversion) names itself in its issue, pins every package by hash, and states how dependency
 scanning covers it, because `osv-scanner` and dependency review read only `Package.resolved`.

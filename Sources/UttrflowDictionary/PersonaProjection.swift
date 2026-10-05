@@ -23,7 +23,9 @@ enum PersonaProjection {
                 // A restore marks every revert on or before its day as ignored, never subtracted away.
                 if let marker = restored[row.subject], row.day <= marker { continue }
                 sign = -1
-            case .restore, .sighting: continue
+            case .restore, .sighting, .styleMessage, .styleWords, .styleSentences, .styleShortMessage,
+                .styleClosingStop, .spellingPreference, .spellingPreferenceCleared:
+                continue
             }
             let age = Double(max(0, today - row.day))
             let decay = WorkingSet.recencyHalfLifeInDays / (WorkingSet.recencyHalfLifeInDays + age)

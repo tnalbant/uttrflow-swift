@@ -21,7 +21,7 @@ struct DestinationFormatterTests {
             (.spreadsheet, .asSpoken, .never, .singleLine, .asSpoken, .always),
             (.sqlEditor, .fromInsertionPoint, .always, .preserveNewlines, .asSpoken, .always),
             (.codeEditor, .fromInsertionPoint, .never, .preserveNewlines, .asSpoken, .always),
-            (.terminal, .asSpoken, .never, .preserveNewlines, .asSpoken, .always),
+            (.terminal, .asSpoken, .never, .singleLine, .asSpoken, .always),
             (
                 .messaging, .fromInsertionPoint, .offForShortMessages(sentences: 2), .paragraphs,
                 .asSpoken, .fromTen
@@ -149,6 +149,7 @@ struct DestinationFormatterTests {
             #expect(formatter.owesFormatting(text) == expected, "\(destination)")
             #expect(!formatter.owesFormatting("Average handling time in minutes"), "\(destination)")
             #expect(!formatter.owesFormatting("average handling time, in minutes"), "\(destination)")
+            #expect(formatter.owesFormatting("version 2.4.1 at 9,000 rpm") == expected, "\(destination)")
         }
     }
 

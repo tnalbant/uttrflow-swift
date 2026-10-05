@@ -23,7 +23,7 @@ public enum QualityLayer: String, Sendable, CaseIterable {
     public var stageBudget: Duration {
         switch self {
         case .recogniserBias, .personaVocabulary, .evidenceCapture: StageTimeout.transcription
-        case .candidateGeneration, .scoring, .overrideGate: StageTimeout.quick
+        case .candidateGeneration, .scoring, .overrideGate: StageTimeout.correction
         case .formatting: StageTimeout.transformation
         }
     }

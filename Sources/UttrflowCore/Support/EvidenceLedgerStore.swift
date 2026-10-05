@@ -10,6 +10,10 @@ public struct EvidenceRow: Sendable, Equatable, Codable {
     /// The closed set of observations; a new fact is a new case, never a new counter.
     public enum Kind: String, Sendable, Codable, CaseIterable {
         case use, revert, restore, sighting
+        /// Style counts, keyed by destination; see ``StyleSignals``.
+        case styleMessage, styleWords, styleSentences, styleShortMessage, styleClosingStop
+        /// A respelling between two spellings of one listed word, and the user's deletion of it; see `SpellingPreferences`.
+        case spellingPreference, spellingPreferenceCleared
     }
 
     /// Which path produced the row.

@@ -272,7 +272,7 @@ def sidebar(active, recent="", tails=None):
       </div>"""
 
 
-def account_chip(initials="NB", name="Naveen Bhatt"):
+def account_chip(initials="AS", name="Avery Stone"):
     """`AccountChip`: a filled monogram, the signed-in name, and a disclosure chevron."""
     return (f'<div class="achip"><span class="aavatar">{initials}</span>'
             f'<span>{name}</span>'

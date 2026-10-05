@@ -55,8 +55,32 @@ public protocol WordCorrecting: Sendable {
         _ transcription: Transcription, seeing context: AppContext
     ) async throws(DictationChangeError) -> WeighedCorrections
 
+    /// The joined pieces weighed for changes that cross a seam and overlap none already made; ranges as `weigh`.
+    func weighAcrossSeams(
+        _ joined: Transcription, at seams: PieceSeams, seeing context: AppContext
+    ) async throws(DictationChangeError) -> WeighedCorrections
+
     /// This corrector held to what it knows now, so every piece of one dictation is corrected alike.
     func fixed() async -> any WordCorrecting
+}
+
+/// Where joined pieces meet, and the word ranges their own passes already changed.
+public struct PieceSeams: Sendable, Equatable {
+    /// Word indexes in the joined transcript at which one piece ends and the next begins.
+    public let boundaries: [Int]
+    /// Word ranges the pieces' own passes changed, which a seam change may not touch.
+    public let changed: [Range<Int>]
+
+    public init(boundaries: [Int], changed: [Range<Int>]) {
+        self.boundaries = boundaries
+        self.changed = changed
+    }
+
+    /// Whether a change over `range` spans a seam and leaves every earlier change alone.
+    public func admits(_ range: Range<Int>) -> Bool {
+        boundaries.contains { range.lowerBound < $0 && range.upperBound > $0 }
+            && !changed.contains { $0.overlaps(range) }
+    }
 }
 
 /// A corrector's changes and the runs it declined to change, which a later layer must leave as heard.
@@ -76,6 +100,14 @@ extension WordCorrecting {
         _ transcription: Transcription, seeing context: AppContext
     ) async throws(DictationChangeError) -> WeighedCorrections {
         WeighedCorrections(corrections: try await corrections(for: transcription, seeing: context))
+    }
+
+    /// A corrector with no running budget weighs the joined text whole and keeps the seam changes.
+    public func weighAcrossSeams(
+        _ joined: Transcription, at seams: PieceSeams, seeing context: AppContext
+    ) async throws(DictationChangeError) -> WeighedCorrections {
+        let weighed = try await weigh(joined, seeing: context)
+        return WeighedCorrections(corrections: weighed.corrections.filter { seams.admits($0.wordRange) })
     }
 
     /// A corrector that reads nothing that can change is already fixed.

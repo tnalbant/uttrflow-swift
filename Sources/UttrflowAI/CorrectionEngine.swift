@@ -28,6 +28,21 @@ public struct WordCorrectionEngine: Sendable {
         against dictionary: PhoneticIndex,
         seeing context: AppContext = .unknown
     ) -> CorrectionVerdict {
+        var budget = CorrectionBudget()
+        return verdict(
+            for: utterance, against: dictionary, seeing: context, spending: &budget,
+            hearing: utterance.words.count)
+    }
+
+    /// The verdict against a dictation's running budget: `hearing` new words, and only runs `considering` passes.
+    public func verdict(
+        for utterance: Utterance,
+        against dictionary: PhoneticIndex,
+        seeing context: AppContext = .unknown,
+        spending budget: inout CorrectionBudget,
+        hearing newWords: Int,
+        considering isConsidered: (Range<Int>) -> Bool = { _ in true }
+    ) -> CorrectionVerdict {
         let evidence = CorrectionEvidence(
             utterance: utterance, seeing: context, certainAt: Self.certaintyThreshold)
         var wanted: [WordCorrection] = []
@@ -42,12 +57,14 @@ public struct WordCorrectionEngine: Sendable {
         let recased = Self.recasings(of: utterance, against: dictionary)
         let chosen = Self.withoutOverlaps(
             wanted.filter { proposal in
-                !recased.contains { $0.wordRange.overlaps(proposal.wordRange) }
+                isConsidered(proposal.wordRange)
+                    && !recased.contains { $0.wordRange.overlaps(proposal.wordRange) }
             })
 
         // Each dictionary entry is one proposal, even when it replaces a multi-word run.
+        let fits = budget.admits(chosen.count, hearing: newWords)
         let proposals =
-            chosen.count <= Self.budget(for: utterance.words.count)
+            fits
             ? (recased + chosen).sorted { $0.wordRange.lowerBound < $1.wordRange.lowerBound } : recased
         // A run the budget abandoned was declined too, so it is held as heard like one the evidence could not carry.
         let abandoned = proposals.count < recased.count + chosen.count ? chosen.map(\.wordRange) : []
@@ -194,6 +211,25 @@ public struct WordCorrectionEngine: Sendable {
             taken.append(proposal)
         }
         return taken
+    }
+}
+
+/// A dictation's running count against the one-in-five budget, so cutting it into pieces never raises the limit.
+public struct CorrectionBudget: Sendable, Equatable {
+    /// Spoken words the dictation has offered the engine so far.
+    public private(set) var wordsHeard = 0
+    /// Changes the engine has proposed for the dictation so far, recasings aside.
+    public private(set) var changesMade = 0
+
+    /// An empty budget, for a new dictation.
+    public init() {}
+
+    /// Hears `newWords` more, then spends `changes` if the whole dictation stays within budget; false spends none.
+    mutating func admits(_ changes: Int, hearing newWords: Int) -> Bool {
+        wordsHeard += newWords
+        let fits = changesMade + changes <= WordCorrectionEngine.budget(for: wordsHeard)
+        if fits { changesMade += changes }
+        return fits
     }
 }
 

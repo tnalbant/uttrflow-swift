@@ -40,6 +40,8 @@ public enum SettingsEditor {
             try applyTidying(level, to: &updated, given: capabilities)
         case .spokenLanguage(let code, let isSpoken):
             try applyLanguage(code, isSpoken: isSpoken, to: &updated)
+        case .pauses(let pauses):
+            updated.profile.pauses = pauses
         case .appearance(let appearance):
             // No capability to check: every Mac can draw itself light or dark.
             updated.appearance = appearance
@@ -48,6 +50,11 @@ public enum SettingsEditor {
                 throw SettingsRejection(reason: "Choose a listed hands-free interval.")
             }
             updated.handsFreeDoubleTapMilliseconds = milliseconds
+        case .handsFreeHold(let milliseconds):
+            guard Settings.handsFreeHoldChoices.contains(milliseconds) else {
+                throw SettingsRejection(reason: "Choose a listed hold length.")
+            }
+            updated.handsFreeHoldMilliseconds = milliseconds
         case .retention(let days):
             try applyRetention(days: days, to: &updated)
         case .cleaningStep(let step, let isOn):
