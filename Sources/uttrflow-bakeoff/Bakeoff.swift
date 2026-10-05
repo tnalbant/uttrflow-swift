@@ -432,6 +432,7 @@ struct Bakeoff: AsyncParsableCommand {
         }
 
         printCapitalisation(of: byMultilingual)
+        printMarks(of: byMultilingual)
 
         if verbose {
             for measurement in measurements {
@@ -483,6 +484,37 @@ struct Bakeoff: AsyncParsableCommand {
                     + "all".padded(to: 16) + "".padded(to: 8) + percent(tally.accuracy).padded(to: 8)
                     + percent(lower.accuracy).padded(to: 8) + percent(spoken.accuracy)
                     + "  furthest below the recogniser: \(below)")
+        }
+    }
+
+    /// Precision, recall and F1 per punctuation mark over aligned words, then which mark was written for which.
+    private func printMarks(of measurements: [Measurement]) {
+        let header =
+            "candidate".padded(to: 17) + "params".padded(to: 8) + "mark".padded(to: 13)
+            + "wanted".padded(to: 8) + "made".padded(to: 8) + "prec".padded(to: 8) + "recall".padded(to: 8)
+            + "F1"
+        print("\nPunctuation by mark — placed by word alignment, so a dropped word moves no other mark\n")
+        print(header)
+        print(String(repeating: "─", count: header.count + 4))
+        for measurement in measurements {
+            let name =
+                measurement.description.name.padded(to: 17) + measurement.description.parameters.padded(to: 8)
+            guard let tally = measurement.report.marks else {
+                print(name + "(stored before marks were counted)")
+                continue
+            }
+            for mark in MarkClass.allCases {
+                guard let f1 = tally.f1(of: mark) else { continue }
+                print(
+                    name + mark.rawValue.padded(to: 13) + "\(tally.wanted[mark] ?? 0)".padded(to: 8)
+                        + "\(tally.produced[mark] ?? 0)".padded(to: 8)
+                        + (tally.precision(of: mark).map(percent) ?? "n/a").padded(to: 8)
+                        + (tally.recall(of: mark).map(percent) ?? "n/a").padded(to: 8) + percent(f1))
+            }
+            let swaps = tally.substitutions.flatMap { wanted, written in
+                written.map { "\(wanted.rawValue) as \($0.key.rawValue) \($0.value)" }
+            }.sorted()
+            print(name + "written in place: " + (swaps.isEmpty ? "none" : swaps.joined(separator: ", ")))
         }
     }
 
@@ -603,6 +635,8 @@ struct StoredReport: Codable, Sendable {
     let lowerCaseBaseline: CapitalisationTally?
     /// What the recogniser's own case scores on the same cases; `nil` like `capitalisation`.
     let spokenBaseline: CapitalisationTally?
+    /// Punctuation agreement per mark; `nil` in a result file older than the marks.
+    let marks: PunctuationTally?
     let medianSeconds: Double
     let slowestSeconds: Double
     let declinedCount: Int
@@ -670,6 +704,7 @@ struct StoredReport: Codable, Sendable {
         capitalisation = report.capitalisation
         lowerCaseBaseline = report.lowerCaseBaseline
         spokenBaseline = report.spokenBaseline
+        marks = report.marks
         medianSeconds = Self.seconds(report.medianDuration)
         slowestSeconds = Self.seconds(report.slowestDuration)
         declinedCount = report.declinedCount
