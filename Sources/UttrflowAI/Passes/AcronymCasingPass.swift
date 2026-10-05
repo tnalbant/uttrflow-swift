@@ -1,7 +1,7 @@
 public import UttrflowCore
 import UttrflowDictionary
 
-/// Writes an acronym said as one word, "api", in its known casing from the lexicon, dictionary and screen.
+/// Writes an acronym, tool or language name in its known casing from the lexicon, dictionary and screen.
 public struct AcronymCasingPass: WholeTextCleaningPass {
     public static let id: PassID = .acronymCasing
 
@@ -10,13 +10,13 @@ public struct AcronymCasingPass: WholeTextCleaningPass {
 
     public init(destination: Destination = .plain, vocabulary: [String] = [], onScreen: [String] = []) {
         let lexicon = TechnicalLexicon.terms
-            .filter { $0.category == .acronym && $0.applies(in: destination) }.map(\.id)
+            .filter { Self.namedCategories.contains($0.category) && $0.applies(in: destination) }.map(\.id)
         let own = vocabulary.filter { !$0.contains(where: \.isWhitespace) }.map { WordShape($0).core }
         let sighted = onScreen.flatMap { $0.split(whereSeparator: \.isWhitespace) }
             .map { WordShape(String($0)).core }
         var forms: [String: String] = [:]
-        // Later sources win: the user's casing beats the screen's, and the screen's beats the lexicon's.
-        for form in lexicon + sighted.filter(Self.isAcronym) + own.filter(Self.isAcronym) {
+        // Later sources win: the user's spelling beats the screen's, and the screen's beats the lexicon's.
+        for form in lexicon.filter(Self.isOneWord) + sighted.filter(Self.isAcronym) + own.filter(Self.isOneWord) {
             let key = form.lowercased()
             guard !GeneralVocabulary.isOrdinary(key) else { continue }
             forms[key] = form
@@ -42,6 +42,19 @@ public struct AcronymCasingPass: WholeTextCleaningPass {
         guard key.hasSuffix("s"), let form = forms[String(key.dropLast())], form.last?.isUppercase == true
         else { return nil }
         return form + "s"
+    }
+
+    /// The lexicon categories whose written form is a name with its own casing.
+    private static let namedCategories: Set<TechnicalTerm.Category> = [.acronym, .tool, .language]
+
+    /// The forms whose first letter is lower case, kept as written at a sentence start.
+    public var lowerCaseForms: [String: String] {
+        forms.filter { $0.value.first(where: \.isLetter)?.isLowercase == true }
+    }
+
+    /// Whether a written form is one word of letters and digits, which a single spoken word can match.
+    private static func isOneWord(_ form: String) -> Bool {
+        !form.isEmpty && form.allSatisfy { $0.isLetter || $0.isNumber }
     }
 
     /// Whether a written word holds a capital past its first letter; a name does not.

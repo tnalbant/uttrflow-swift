@@ -41,7 +41,38 @@ struct AcronymCasingPassTests {
     func dictionaryAndScreen() {
         let pass = AcronymCasingPass(vocabulary: ["KPIx", "Zorbix"], onScreen: ["Ship the OKRz soon"])
         #expect(
-            pass.apply(Draft(text: "the kpix and okrz for zorbix")).text == "the KPIx and OKRz for zorbix")
+            pass.apply(Draft(text: "the kpix and okrz for zorbix")).text == "the KPIx and OKRz for Zorbix")
+    }
+
+    @Test(
+        "writes a tool or language name in the lexicon's casing on the rules path",
+        arguments: [
+            ("we deploy on kubernetes with postgresql", "We deploy on Kubernetes with PostgreSQL."),
+            ("port the javascript to typescript", "Port the JavaScript to TypeScript."),
+            ("install numpy on linux", "Install NumPy on Linux."),
+        ])
+    func namedTools(input: String, expected: String) {
+        #expect(rules.run(Draft(text: input)).text == expected)
+    }
+
+    @Test("leaves an ordinary word that a lexicon name is spelled like")
+    func ordinaryNameKept() {
+        #expect(rules.run(Draft(text: "let it go now")).text == "Let it go now.")
+    }
+
+    @Test("lets the user's dictionary spelling beat the lexicon's, at a sentence start too")
+    func dictionaryBeatsLexicon() {
+        let pass = AcronymCasingPass(vocabulary: ["postgresql"])
+        #expect(pass.forms["postgresql"] == "postgresql")
+        let pipeline = CleaningPipeline.message(
+            for: .standard(for: .plain), situation: .unknown, vocabulary: ["postgresql"])
+        #expect(pipeline.run(Draft(text: "postgresql is up")).text == "postgresql is up.")
+    }
+
+    @Test("keeps a lexicon name written in lower case at a sentence start")
+    func lowerCaseNameAtStart() {
+        #expect(AcronymCasingPass().lowerCaseForms["ripgrep"] == "ripgrep")
+        #expect(rules.run(Draft(text: "it failed. ripgrep found it")).text == "It failed. ripgrep found it.")
     }
 
     @Test("reads only the acronyms that apply where the words are going")
