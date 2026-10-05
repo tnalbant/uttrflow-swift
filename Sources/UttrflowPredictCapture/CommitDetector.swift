@@ -221,8 +221,13 @@ public struct CommitDetector: Sendable, Equatable {
     }
 
     /// Takes the line a completion wrote as the one now standing, so an ending does not record what it replaced.
-    public mutating func accepted(_ text: String) {
+    public mutating func accepted(_ text: String) -> String? {
+        let superseded = committed == text.trimmingCharacters(in: .whitespacesAndNewlines) ? nil : committed
         pending = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let superseded {
+            committedPrior = superseded
+            committed = pending
+        }
         acceptedLine = pending
         observedLine = text
         lineBeforeRead = text
@@ -232,6 +237,7 @@ public struct CommitDetector: Sendable, Equatable {
         holdsInsertion = false
         holdsMutation = false
         span = nil
+        return superseded
     }
 
     /// Forgets the accepted baseline after the capture session determines the person undid it.

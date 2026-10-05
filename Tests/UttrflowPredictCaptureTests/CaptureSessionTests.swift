@@ -37,6 +37,10 @@ private actor FlakySink: CaptureSink {
     private var recordFailures: Int
     private var supersedeFailures: Int
     private var acceptFailures: Int
+    private var shouldSuspendNextRecord = false
+    private var recordSuspension: CheckedContinuation<Void, any Error>?
+    private var recordSuspensionWaiter: CheckedContinuation<Void, Never>?
+    private var isRecordSuspended = false
     private(set) var accepted: [String] = []
 
     init(recordFailures: Int = 0, supersedeFailures: Int = 0, acceptFailures: Int = 0) {
@@ -55,7 +59,17 @@ private actor FlakySink: CaptureSink {
 
     func record(
         _ text: String, in surface: Surface, after previous: String?, selfSourced: Bool, at moment: Date
-    ) throws {
+    ) async throws {
+        if shouldSuspendNextRecord {
+            shouldSuspendNextRecord = false
+            try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<Void, any Error>) in
+                recordSuspension = continuation
+                isRecordSuspended = true
+                recordSuspensionWaiter?.resume()
+                recordSuspensionWaiter = nil
+            }
+        }
         if recordFailures > 0 {
             recordFailures -= 1
             throw FlakySinkError.transient
@@ -69,6 +83,27 @@ private actor FlakySink: CaptureSink {
             throw FlakySinkError.transient
         }
         superseded.append((text, replacement))
+    }
+
+    func failNextRecordWrites(_ count: Int) {
+        recordFailures = count
+    }
+
+    func suspendNextRecordWrite() {
+        shouldSuspendNextRecord = true
+    }
+
+    func waitForSuspendedRecord() async {
+        guard !isRecordSuspended else { return }
+        await withCheckedContinuation { continuation in
+            recordSuspensionWaiter = continuation
+        }
+    }
+
+    func failSuspendedRecord() {
+        recordSuspension?.resume(throwing: FlakySinkError.transient)
+        recordSuspension = nil
+        isRecordSuspended = false
     }
 }
 
@@ -336,6 +371,112 @@ struct CaptureSessionTests {
             try await session.handle(.returnPressed(at: start.addingTimeInterval(2)), in: terminal)
                 == .nothing)
         #expect(await recorder.texts == ["git checkout main"])
+    }
+
+    @Test("An accepted extension followed by typing retires the idle draft it extended.")
+    func acceptedExtensionFollowedByTypingSupersedesIdleDraft() async throws {
+        let scratch = Scratch()
+        let recorder = Recorder()
+        let session = try await session(scratch, recorder, allowing: ["com.example.terminal"])
+        _ = try await session.handle(.keystroke("foo bar", at: start), in: terminal)
+        #expect(
+            try await session.handle(
+                .tick(at: start.addingTimeInterval(CommitDetector.idleInterval)), in: terminal)
+                == .recorded("foo bar"))
+
+        #expect(
+            try await session.accepted(
+                "foo bar baz", over: "foo bar", in: terminal,
+                at: start.addingTimeInterval(CommitDetector.idleInterval + 1))
+                == .recorded("foo bar baz"))
+        #expect(await recorder.superseded.map(\.text) == ["foo bar"])
+        #expect(await recorder.superseded.map(\.replacement) == ["foo bar baz"])
+        _ = try await session.handle(
+            .keystroke("foo bar baz!", at: start.addingTimeInterval(CommitDetector.idleInterval + 2)),
+            in: terminal)
+        #expect(
+            try await session.handle(
+                .returnPressed(at: start.addingTimeInterval(CommitDetector.idleInterval + 3)),
+                in: terminal) == .recorded("foo bar baz!"))
+
+        #expect(await recorder.superseded.map(\.text) == ["foo bar", "foo bar baz"])
+        #expect(await recorder.superseded.map(\.replacement) == ["foo bar baz", "foo bar baz!"])
+    }
+
+    @Test("A held accepted extension is retired after a typed continuation reaches the sink.")
+    func heldAcceptedExtensionFollowsTypedContinuation() async throws {
+        let scratch = Scratch()
+        let sink = FlakySink()
+        let session = try await session(scratch, sink, allowing: ["com.example.terminal"])
+        _ = try await session.handle(.keystroke("foo bar", at: start), in: terminal)
+        #expect(
+            try await session.handle(
+                .tick(at: start.addingTimeInterval(CommitDetector.idleInterval)), in: terminal)
+                == .recorded("foo bar"))
+        await sink.failNextRecordWrites(3)
+        await #expect(throws: FlakySinkError.self) {
+            _ = try await session.accepted(
+                "foo bar baz", over: "foo bar", in: terminal,
+                at: start.addingTimeInterval(CommitDetector.idleInterval + 1))
+        }
+
+        _ = try await session.handle(
+            .keystroke("foo bar baz!", at: start.addingTimeInterval(CommitDetector.idleInterval + 2)),
+            in: terminal)
+        #expect(
+            try await session.handle(
+                .returnPressed(at: start.addingTimeInterval(CommitDetector.idleInterval + 3)),
+                in: terminal) == .recorded("foo bar baz!"))
+        _ = try await session.handle(
+            .tick(at: start.addingTimeInterval(CommitDetector.idleInterval + 4)), in: terminal)
+
+        #expect(await sink.recorded == ["foo bar", "foo bar baz!", "foo bar baz"])
+        #expect(await sink.superseded.map(\.text) == ["foo bar baz", "foo bar", "foo bar baz"])
+        #expect(
+            await sink.superseded.map(\.replacement) == [
+                "foo bar baz!", "foo bar baz", "foo bar baz!",
+            ])
+    }
+
+    @Test("A continuation during a suspended acceptance write is retained when that write fails.")
+    func inFlightAcceptedExtensionFollowsTypedContinuation() async throws {
+        let scratch = Scratch()
+        let sink = FlakySink()
+        let session = try await session(scratch, sink, allowing: ["com.example.terminal"])
+        _ = try await session.handle(.keystroke("foo bar", at: start), in: terminal)
+        #expect(
+            try await session.handle(
+                .tick(at: start.addingTimeInterval(CommitDetector.idleInterval)), in: terminal)
+                == .recorded("foo bar"))
+
+        await sink.suspendNextRecordWrite()
+        let accepted = Task {
+            try await session.accepted(
+                "foo bar baz", over: "foo bar", in: terminal,
+                at: start.addingTimeInterval(CommitDetector.idleInterval + 1))
+        }
+        await sink.waitForSuspendedRecord()
+        _ = try await session.handle(
+            .keystroke("foo bar baz!", at: start.addingTimeInterval(CommitDetector.idleInterval + 2)),
+            in: terminal)
+        #expect(
+            try await session.handle(
+                .returnPressed(at: start.addingTimeInterval(CommitDetector.idleInterval + 3)),
+                in: terminal) == .recorded("foo bar baz!"))
+
+        await sink.failSuspendedRecord()
+        await #expect(throws: FlakySinkError.self) { _ = try await accepted.value }
+        #expect(await session.unwrittenAcceptanceCount() == 1)
+        _ = try await session.handle(
+            .tick(at: start.addingTimeInterval(CommitDetector.idleInterval + 4)), in: terminal)
+
+        #expect(await sink.recorded == ["foo bar", "foo bar baz!", "foo bar baz"])
+        #expect(await sink.superseded.map(\.text) == ["foo bar baz", "foo bar", "foo bar baz"])
+        #expect(
+            await sink.superseded.map(\.replacement) == [
+                "foo bar baz!", "foo bar baz", "foo bar baz!",
+            ])
+        #expect(await sink.accepted == ["foo bar baz"])
     }
 
     @Test("Typing more after accepting commits the whole line as it then stands.")
