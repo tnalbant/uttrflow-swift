@@ -77,6 +77,11 @@ and the class that moved, never alone.
   printing. A report whose rows move between runs is one nobody can compare with the last.
 - Language is detected by default, as the product does it. `--hint-language` exists to measure
   whether telling the engine helps, not as an assumption built in.
+- A decode's per-word evidence (log-probability, margin, entropy, alternatives, timing and the
+  fallback rung kept) is a `DecodeDump` in `decode-dumps/` inside the local corpus, keyed by the
+  audio digest and the engine identity, with no audio. A re-decode writes a second file, never
+  over the first, because fallback retries make two decodes of one clip differ. A fit reads
+  dumps only and refuses one made under another engine identity, naming the field that differs.
 
 ## Local recordings and the catalogue
 
