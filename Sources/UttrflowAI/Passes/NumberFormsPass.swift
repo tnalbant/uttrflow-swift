@@ -81,6 +81,7 @@ public struct NumberFormsPass: PieceCleaningPass {
         let present = draft.presentIndices
         let (shapes, live) = Self.splittingTensUnits(present.map { draft.shape(at: $0) }, of: present)
         let keys = shapes.map(\.key)
+        let grouped = Self.numeralGroupMembers(keys: keys, shapes: shapes, policy: policy, digits: digits)
         var position = 0
         while position < live.count {
             guard position == 0 || live[position - 1] != live[position] else {
@@ -109,7 +110,8 @@ public struct NumberFormsPass: PieceCleaningPass {
             }
             guard
                 let phrase = Self.phrase(
-                    at: position, keys: keys, shapes: shapes, policy: policy, digits: digits)
+                    at: position, keys: keys, shapes: shapes,
+                    policy: grouped.contains(position) ? .always : policy, digits: digits)
             else {
                 position += Self.parseOrdinal(at: position, keys: keys, shapes: shapes)?.count ?? 1
                 continue
@@ -124,6 +126,64 @@ public struct NumberFormsPass: PieceCleaningPass {
             position += phrase.count
         }
         return draft
+    }
+
+    /// Words between numbers that join them into one group written in one form.
+    static let coordinators = NumberCues.words(for: .coordinator)
+    /// Coordinators that join only a rising pair; a falling one is a clock reading such as "ten to six".
+    static let rangeWords = NumberCues.words(for: .range)
+
+    /// Number positions that `policy` leaves as words but that share a coordinated group with a numeral.
+    static func numeralGroupMembers(
+        keys: [String], shapes: [WordShape], policy: NumberPolicy, digits: DigitGrouping
+    ) -> Set<Int> {
+        guard policy != .always else { return [] }
+        // The number here: its words, value, and whether `policy` alone writes it as a numeral.
+        func member(at position: Int) -> (count: Int, value: Double?, isNumeral: Bool)? {
+            guard position < keys.count else { return nil }
+            if let written = NumberWords.digits(keys[position]) { return (1, Double(written), true) }
+            guard
+                let always = phrase(
+                    at: position, keys: keys, shapes: shapes, policy: .always, digits: digits)
+            else { return nil }
+            let own = phrase(at: position, keys: keys, shapes: shapes, policy: policy, digits: digits)
+            return (always.count, Double(always.text.filter { $0 != "," }), own != nil)
+        }
+        var members: Set<Int> = []
+        var position = 0
+        while position < keys.count {
+            guard var current = member(at: position) else {
+                position += 1
+                continue
+            }
+            var group = [(start: position, isNumeral: current.isNumeral)]
+            var coordinated = false
+            var end = position + current.count
+            // Only a comma or a coordinator sits between members, so "three apples and twelve pears" stays apart.
+            while end < keys.count, shapes[end].prefix.isEmpty {
+                let afterComma = shapes[end - 1].suffix == ","
+                guard afterComma || shapes[end - 1].suffix.isEmpty else { break }
+                var next = end
+                if coordinators.contains(keys[end]), joined(end + 1, shapes) {
+                    next += 1
+                    coordinated = true
+                } else if !afterComma {
+                    break
+                }
+                guard let following = member(at: next) else { break }
+                if rangeWords.contains(keys[end]), next > end {
+                    guard let low = current.value, let high = following.value, low < high else { break }
+                }
+                group.append((next, following.isNumeral))
+                current = following
+                end = next + following.count
+            }
+            if coordinated, group.contains(where: \.isNumeral) {
+                members.formUnion(group.filter { !$0.isNumeral }.map(\.start))
+            }
+            position = end
+        }
+        return members
     }
 
     /// Splits a written `tens-unit` word such as "twenty-one" into its two number words, each mapped to its draft index.

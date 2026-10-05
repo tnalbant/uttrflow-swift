@@ -26,6 +26,30 @@ struct NumberFormsPassTests {
     }
 
     @Test(
+        "writes every number of a coordinated group as a numeral once one of them is",
+        arguments: [
+            ("between five and fifteen", "between 5 and 15"),
+            ("three or twelve", "3 or 12"),
+            ("one, five and twenty", "1, 5 and 20"),
+            ("five, ten, and fifteen minutes", "5, 10, and 15 minutes"),
+            ("from five to fifteen people", "from 5 to 15 people"),
+            ("nine through eleven", "9 through 11"),
+            ("eight versus twelve", "8 versus 12"),
+            ("two or 30", "2 or 30"),
+            ("between 4 and nine", "between 4 and 9"),
+            ("one of the 12 people", "one of the 12 people"),
+            ("three apples and twelve pears", "three apples and 12 pears"),
+            ("one or two", "one or two"),
+            ("five, six and seven", "five, six and seven"),
+            ("one, five. Then twenty", "one, five. Then 20"),
+            ("ten to six", "10 to six"),
+        ]
+    )
+    func coordinatedGroups(input: String, expected: String) {
+        #expect(cleaned(input, by: NumberFormsPass(policy: .fromTen)) == expected)
+    }
+
+    @Test(
         "writes a number from ten up as a numeral, with commas only from ten thousand",
         arguments: [
             ("about fifteen people", "about 15 people"),

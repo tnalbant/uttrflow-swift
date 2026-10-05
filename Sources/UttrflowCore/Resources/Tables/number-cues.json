@@ -18,6 +18,12 @@
         { "id": "call", "cues": ["digitRun"] },
         { "id": "on", "cues": ["digitRun"] },
         { "id": "at", "cues": ["digitRun"] },
-        { "id": "was", "cues": ["digitRun"] }
+        { "id": "was", "cues": ["digitRun"] },
+        { "id": "and", "cues": ["coordinator"] },
+        { "id": "or", "cues": ["coordinator"] },
+        { "id": "to", "cues": ["coordinator", "range"] },
+        { "id": "through", "cues": ["coordinator", "range"] },
+        { "id": "versus", "cues": ["coordinator"] },
+        { "id": "vs", "cues": ["coordinator"] }
     ]
 }
