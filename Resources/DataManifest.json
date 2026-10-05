@@ -209,6 +209,15 @@
       "bytes": 1062
     },
     {
+      "path": "Sources/UttrflowCore/Resources/Tables/number-cues.json",
+      "origin": "authored",
+      "licence": "MIT",
+      "redistribution": true,
+      "note": "read through DataTable; see Docs/data-tables.md",
+      "sha256": "00125d832fe722ad50161286d8c1d13247cb2f23f369006f9f3d7c11ccf75c23",
+      "bytes": 896
+    },
+    {
       "path": "Sources/UttrflowCore/Resources/Tables/number-words.json",
       "origin": "authored",
       "licence": "MIT",
