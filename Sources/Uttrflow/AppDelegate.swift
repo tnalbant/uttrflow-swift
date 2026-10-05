@@ -97,6 +97,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private let history: DictationHistoryStore
     /// Each dictation's audio, kept beside it only until its words land. See `Docs/recordings.md`.
     private let recordings: RecordingStore
+    /// What the app observed about how this user speaks, under History's retention. See `Docs/learned-state.md`.
+    private let evidence: EvidenceLedgerStore?
     /// The user's own words, shared by all three parts of a dictation that read them.
     private let dictionary: PersonalDictionaryStore
     private let snippets: SnippetStore
@@ -297,6 +299,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         snippets = SnippetStore(file: SnippetStore.defaultFile(in: container), encryptedStore: encryptedStore)
         clipboard = ClipboardStore(
             file: ClipboardStore.defaultFile(in: container), encryptedStore: encryptedStore)
+        evidence = encryptedStore.map {
+            EvidenceLedgerStore(file: EvidenceLedgerStore.defaultFile(in: container), encryptedStore: $0)
+        }
         super.init()
         if clipboardPreferencesUnreadable {
             actionNotice = Self.clipboardPreferencesUnreadableNotice(
@@ -397,7 +402,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         personalisation: Self.personalisation(
             in: container, dictionary: dictionary, history: history, clipboard: clipboard,
             elsewhere: keptElsewhere(), running: { [weak self] in self?.completions },
-            encryptedStore: encryptedStore),
+            encryptedStore: encryptedStore, evidence: evidence),
         onChange: { [weak self] settings in self?.settingsChanged(to: settings) },
         // Through the same switch the main window uses, so one choice is never applied two ways.
         onRequest: { [weak self] change in self?.apply(change) },
@@ -512,10 +517,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             days: settings.clipboardRetentionDays, now: now,
             dictationDays: settings.transcriptRetentionDays)
         let previous = sweeping
-        sweeping = Task(priority: .utility) { [recordings, history, clipboard] in
+        sweeping = Task(priority: .utility) { [recordings, history, clipboard, evidence] in
             await previous?.value
             _ = await recordings.waiting(now: now)
             _ = await history.records(keeping: retention)
+            _ = await evidence?.rows(keeping: RetentionWindow(days: retention.days, now: now))
             _ = await clipboard.clips(keeping: clipboardRetention)
         }
     }
@@ -551,14 +557,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         in container: URL, dictionary: PersonalDictionaryStore, history: DictationHistoryStore,
         clipboard: ClipboardStore, elsewhere: KeptElsewhere = KeptElsewhere(),
         running: @escaping @Sendable @MainActor () -> SuggestionCoordinator? = { nil },
-        encryptedStore: EncryptedStore? = nil
+        encryptedStore: EncryptedStore? = nil, evidence: EvidenceLedgerStore? = nil
     ) -> FilePersonalisationStore {
         FilePersonalisationStore(
             dictionary: dictionary, history: history, clipboard: clipboard,
             suggestions: PredictCorpus(
                 container: container, running: running, encryptedStore: encryptedStore),
             met: { AppDelegate.applicationsTheLoopHasMet(in: container) },
-            elsewhere: elsewhere)
+            elsewhere: elsewhere, evidence: evidence)
     }
 
     /// Applications the completion loop has met, so the Suggestions list can offer a switch for each.
