@@ -111,6 +111,16 @@ as frequency. `DictionaryVocabulary` reads the ledger for it only while the `per
 quality layer is on, which it is not by default: the layer turns on only after the
 developer-vocabulary corpus measures `wer-biased` with it on and off.
 
+## Where the rows come from
+
+`EvidenceSources` (`Sources/Uttrflow/EvidenceSources.swift`) is the one place the app builds
+ledger rows outside `StyleSignals` and `SpellingPreferences`. A landed dictation writes one `use`
+row per dictionary entry `DictionaryAppearances.used` returns, after the dictionary counts the
+same set. Undoing a correction writes one `revert` row for its entry. The retention sweep
+backfills History's dictations from days before the ledger's first row, as `use` and style rows
+with provenance `migration`, once: a ledger holding any `migration` row is not backfilled again.
+No row carries a word of the text, and nothing leaves this Mac.
+
 ## Still open
 
 The downgrade rule for the ledger's own file belongs to the store compatibility contract. The
