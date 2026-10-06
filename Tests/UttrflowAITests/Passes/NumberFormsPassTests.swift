@@ -444,7 +444,7 @@ struct NumberFormsPassTests {
             ("meet at two thirty", "meet at 2:30"),
             ("I have two twenty dollar bills", "I have two 20 dollar bills"),
             ("take three fifteen minute breaks", "take three 15 minute breaks"),
-            ("we got a four oh four error", "we got a four oh four error"),
+            ("we got a four oh four error", "we got a 404 error"),
             ("ten am", "10 am"),
             ("ten a.m.", "10 a.m."),
             ("two oh five pm", "2:05 pm"),
