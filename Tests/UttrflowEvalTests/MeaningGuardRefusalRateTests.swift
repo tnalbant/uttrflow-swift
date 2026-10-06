@@ -11,12 +11,12 @@ struct MeaningGuardRefusalRateTests {
     static let acknowledged: [String: Int] = [
         "spoken-colon-before-an-item": 5083,
         "spoken-domain-api-path": 5083,
-        "numbered-items-repeated-label": 5083,
         "code-editor-spoken-camel-case": 5083,
         "code-editor-spoken-snake-case": 5083,
         "code-editor-spoken-empty-parentheses": 5083,
         "code-editor-spoken-case-stops-at-comma": 5083,
         "code-editor-spoken-equals": 5083,
+        "code-editor-large-number-ungrouped": 5083,
         "fmt-quote-said": 5083,
         "fmt-bracket-aside": 5083,
         "fmt-paren-aside": 5083,

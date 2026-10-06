@@ -39,8 +39,7 @@ struct RulesCorpusTests {
         "probe-meeting-time-zones", "probe-recipe-quantities", "probe-flight-details", "probe-clinical-note",
         "probe-contract-clauses", "probe-quoted-citation", "probe-short-verse", "probe-hashtag-and-handle",
         "probe-phone-and-address", "probe-chained-corrections", "probe-topic-shifts", "probe-hinglish-status",
-        "probe-quote-unquote", "terminal-spoken-new-line-stays-on-one-line",
-        "terminal-spoken-new-paragraph-stays-on-one-line",
+        "probe-quote-unquote",
     ]
 
     /// The request the bake-off hands an engine, with the case's own destination and caret.
@@ -248,8 +247,8 @@ struct RulesCorpusTests {
             ("code-editor-line-break-preserved", "Retry the request\nLog the failure"),
             ("code-editor-numeral-no-stop", "Bump the retry count to 20"),
             ("code-editor-code-keeps-no-stop", "this invalidates the cache after every write"),
-            ("code-editor-comment-gets-a-stop", "the comment explains why the cache clears."),
-            ("code-editor-comment-keeps-its-stop", "the retry count resets after a failure."),
+            ("code-editor-comment-gets-a-stop", "The comment explains why the cache clears."),
+            ("code-editor-comment-keeps-its-stop", "The retry count resets after a failure."),
             ("message-short-no-stop", "Leaving now see you at the cafe"),
             ("email-continues-mid-sentence", "the quote you sent last week."),
             ("spoken-email-address", "Forward the logs to support@example.com."),

@@ -120,6 +120,8 @@ public struct LayoutPolicy: OptionSet, Sendable, Equatable {
     public static let preserveNewlines = LayoutPolicy(rawValue: 1 << 2)
     /// Every line break becomes a space, as a spreadsheet cell wants.
     public static let singleLine = LayoutPolicy(rawValue: 1 << 3)
+    /// With `singleLine`, a spoken break is a space rather than a list separator, as a shell prompt wants.
+    public static let breaksAreSpaces = LayoutPolicy(rawValue: 1 << 4)
 }
 
 /// What one kind of place wants done to the words: decisions, never code. See `Docs/cleanup-design.md`.
@@ -174,7 +176,7 @@ public struct DestinationFormatter: Sendable, Equatable {
             promptBlock: "codeEditor"),
         .terminal: DestinationFormatter(
             destination: .terminal, firstWord: .asSpoken, terminalStop: .never,
-            layout: .singleLine, grammar: .asSpoken, numbers: .always, digits: .none,
+            layout: [.singleLine, .breaksAreSpaces], grammar: .asSpoken, numbers: .always, digits: .none,
             promptBlock: "terminal", consequence: .executes),
         .messaging: DestinationFormatter(
             destination: .messaging, firstWord: .fromInsertionPoint,

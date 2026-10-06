@@ -57,8 +57,8 @@ public struct FirstWordPass: WholeTextCleaningPass {
         for (order, index) in present.enumerated() {
             let word = draft.words[index]
             guard !word.isLayoutMark else {
-                // Every layout mark starts a new sentence.
-                startOfSentence = true
+                // A layout mark starts a new sentence, except where every word keeps the case it was heard in.
+                startOfSentence = policy != .asSpoken
                 continue
             }
             let letterAdjacent = Self.hasLetterNameBesideI(at: order, in: present, of: draft)

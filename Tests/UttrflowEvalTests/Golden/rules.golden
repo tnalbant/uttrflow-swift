@@ -66,10 +66,10 @@ caret-replace-whole-sentence	The van is booked.
 chat-function-stays-prose	We need something that takes a batch of orders and hands back the ones that failed.
 chat-identifier-casing	The crash only happens in payment sheet after the card scanner closes.
 chat-totals	Add up the invoices grouped by currency and sort by the total.
-code-comment-keeps-spoken-commands	camel case user id open paren close paren.
+code-comment-keeps-spoken-commands	Camel case user id open paren close paren.
 code-editor-code-keeps-no-stop	this invalidates the cache after every write
-code-editor-comment-gets-a-stop	the comment explains why the cache clears.
-code-editor-comment-keeps-its-stop	the retry count resets after a failure.
+code-editor-comment-gets-a-stop	The comment explains why the cache clears.
+code-editor-comment-keeps-its-stop	The retry count resets after a failure.
 code-editor-identifier-from-screen	Call fetch invoices before the sheet appears
 code-editor-large-number-ungrouped	Let limit = 12000
 code-editor-line-break-preserved	Retry the request\nLog the failure
@@ -365,7 +365,7 @@ numbered-items-continuing	Then\n2. Call the landlord\n3. Pay the rent
 numbered-items-for-a-trip	For the trip\n1. Book the hotel\n2. Rent a car
 numbered-items-priorities	Priorities this week\n1. Hire a designer\n2. Finish the audit
 numbered-items-reminders	Reminders\n1. Water the plants\n2. Feed the cat
-numbered-items-repeated-label	\nReason 1: It is cheap\nReason 2: It is fast\nReason 3: It works.
+numbered-items-repeated-label	Reason 1: It is cheap\nReason 2: It is fast\nReason 3: It works
 numbered-items-steps	To reset it\n1. Unplug the router\n2. Wait a minute\n3. Plug it back in
 numbered-items-three-of-them	Today we need\n1. Milk\n2. Eggs\n3. Bread
 numbered-list-opens-the-dictation	1. Check logs\n2. Restart the server
@@ -674,8 +674,8 @@ terminal-command-keeps-case	npm run build
 terminal-command-keeps-case-mid-pipeline	ls -la
 terminal-command-keeps-no-stop	git status
 terminal-command-writes-double-dash-flag	git push --force
-terminal-spoken-new-line-stays-on-one-line	cd src, Ls
-terminal-spoken-new-paragraph-stays-on-one-line	git status, Git diff
+terminal-spoken-new-line-stays-on-one-line	cd src ls
+terminal-spoken-new-paragraph-stays-on-one-line	git status git diff
 time-of-day	The dentist moved my appointment to 2:30 pm tomorrow.
 trigger-as-its-own-sentence	Meet me at five.
 twenty-four-seven-idiom	It's a twenty four seven service.

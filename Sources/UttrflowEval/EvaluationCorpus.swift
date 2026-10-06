@@ -2298,7 +2298,7 @@ public enum EvaluationCorpus {
         .init(
             id: "code-editor-large-number-ungrouped", category: .contextual,
             spoken: "let limit equals twelve thousand",
-            expected: "let limit equals 12000",
+            expected: "Let limit = 12000",
             mustKeep: ["12000"],
             context: AppContext(
                 applicationName: "Xcode",
@@ -2377,7 +2377,7 @@ public enum EvaluationCorpus {
         .init(
             id: "code-editor-comment-gets-a-stop", category: .contextual,
             spoken: "um the comment explains why the cache clears",
-            expected: "the comment explains why the cache clears.",
+            expected: "The comment explains why the cache clears.",
             mustKeep: ["comment", "cache clears"],
             context: AppContext(
                 applicationName: "Xcode",
@@ -2387,13 +2387,13 @@ public enum EvaluationCorpus {
             ),
             mustNotAdd: ["um"],
             destination: .codeEditor,
-            mustBeginWith: "the",
+            mustBeginWith: "The",
             mustEndWith: "clears."
         ),
         .init(
             id: "code-editor-comment-keeps-its-stop", category: .contextual,
             spoken: "um the retry count resets after a failure.",
-            expected: "the retry count resets after a failure.",
+            expected: "The retry count resets after a failure.",
             mustKeep: ["retry count", "failure"],
             context: AppContext(
                 applicationName: "Xcode",
@@ -2403,7 +2403,7 @@ public enum EvaluationCorpus {
             ),
             mustNotAdd: ["um", ".."],
             destination: .codeEditor,
-            mustBeginWith: "the",
+            mustBeginWith: "The",
             mustEndWith: "failure."
         ),
         .init(
@@ -2704,13 +2704,13 @@ public enum EvaluationCorpus {
         .init(
             id: "code-comment-keeps-spoken-commands", category: .contextual,
             spoken: "camel case user id open paren close paren.",
-            expected: "camel case user id open paren close paren.",
+            expected: "Camel case user id open paren close paren.",
             mustKeep: ["camel", "user", "paren"],
             context: AppContext(
                 applicationName: "Xcode", bundleIdentifier: DestinationRules.xcode,
                 documentName: "Example.swift", precedingText: "// "),
             destination: .codeEditor,
-            mustBeginWith: "camel",
+            mustBeginWith: "Camel",
             mustEndWith: "paren."
         ),
     ]

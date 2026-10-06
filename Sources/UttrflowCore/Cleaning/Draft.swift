@@ -85,10 +85,18 @@ public struct Draft: Sendable, Equatable {
         /// Whether the word is a line break, a paragraph break, a bullet or an item number rather than something said.
         public var isLayoutMark: Bool { text.hasPrefix("\n") || text == Draft.bullet || isListMark }
 
+        /// Whether the word opens a labelled item, a word and its number before a colon: "Reason 2: ".
+        public var isLabelMark: Bool {
+            let mark = text.drop(while: \.isNewline)
+            guard mark.hasSuffix(": ") else { return false }
+            let parts = mark.dropLast(2).split(separator: " ")
+            return parts.count == 2 && parts[1].allSatisfy(\.isNumber) && parts[0].allSatisfy(\.isLetter)
+        }
+
         /// Whether the word opens a list item, with a bullet or with a number; neither takes a full stop.
         public var isListMark: Bool {
             let mark = text.drop(while: \.isNewline)
-            if mark.hasSuffix(Draft.bullet) { return true }
+            if mark.hasSuffix(Draft.bullet) || isLabelMark { return true }
             guard mark.hasSuffix(Draft.numberStop) else { return false }
             let digits = mark.dropLast(Draft.numberStop.count)
             return !digits.isEmpty && digits.allSatisfy(\.isNumber)

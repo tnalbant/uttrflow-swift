@@ -45,7 +45,9 @@ public struct LayoutWordsPass: PieceCleaningPass {
                 let item = itemNumber(at: position + 1, in: live, of: draft)
             {
                 let labelText = WordShape.capitalised(draft.shape(at: label).core)
-                draft.replace(at: label, with: "\n\(labelText) \(item.value): ", by: Self.id)
+                // An item that opens the text takes no break before it.
+                let breakBefore = draft.presentIndices.first == label ? "" : "\n"
+                draft.replace(at: label, with: "\(breakBefore)\(labelText) \(item.value): ", by: Self.id)
                 for index in live[position..<position + found.length] { draft.remove(at: index, by: Self.id) }
                 live.removeSubrange(position..<position + found.length)
                 continue
@@ -57,12 +59,14 @@ public struct LayoutWordsPass: PieceCleaningPass {
             live.removeSubrange(position + 1..<position + found.length)
             position += 1
         }
-        if layout.contains(.singleLine) { Self.joinOnOneLine(&draft, by: Self.id) }
+        if layout.contains(.singleLine) {
+            Self.joinOnOneLine(&draft, by: Self.id, breaksAreSpaces: layout.contains(.breaksAreSpaces))
+        }
         return draft
     }
 
     /// Lays every break and item mark on one line, writing the list separator at each boundary between items.
-    static func joinOnOneLine(_ draft: inout Draft, by pass: PassID) {
+    static func joinOnOneLine(_ draft: inout Draft, by pass: PassID, breaksAreSpaces: Bool = false) {
         var items: [[Int]] = [[]]
         for index in draft.presentIndices {
             let word = draft.words[index]
@@ -70,8 +74,11 @@ public struct LayoutWordsPass: PieceCleaningPass {
                 items[items.count - 1].append(index)
                 continue
             }
-            let label = word.isListMark ? "" : word.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !items[items.count - 1].isEmpty { items.append([]) }
+            let label =
+                word.isListMark && !word.isLabelMark
+                ? "" : word.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            // Where a break is a keystroke, as at a shell prompt, only a list marker opens a new item.
+            if word.isListMark || !breaksAreSpaces, !items[items.count - 1].isEmpty { items.append([]) }
             if label.isEmpty {
                 draft.remove(at: index, by: pass)
             } else {
