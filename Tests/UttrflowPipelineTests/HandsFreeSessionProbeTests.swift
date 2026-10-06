@@ -67,6 +67,16 @@ private actor HandsFreeProbe {
         await Task.yield()
     }
 
+    /// The menu bar's Talk button or the Start Dictation intent, which Voice Control and Siri reach.
+    func startFromControl() async {
+        _ = await controller.command(.start)
+    }
+
+    /// The same control again (Stop), the gesture a control-started recording shows.
+    func stopFromControl() async {
+        _ = await controller.command(.stop)
+    }
+
     /// One press and release of a key, short enough to count as a tap.
     private func tap(_ route: UtteranceRoute) async {
         presses += 1
@@ -118,6 +128,40 @@ struct HandsFreeSessionProbeTests {
         await probe.listen()
         var steps: [ProbeStep] = []
 
+        await probe.startFromControl()
+        steps.append(await probe.step("start"))
+
+        steps.append(await probe.step("dictate"))
+
+        await probe.stopFromControl()
+        try await probe.waitForIdle()
+        steps.append(await probe.step("stop"))
+
+        await probe.holdCommandKey()
+        try await probe.waitForIdle()
+        steps.append(await probe.step("correct"))
+
+        for step in steps {
+            print("hands-free probe: \(step.name) keyPresses=\(step.keyPresses) said=\(step.announcements)")
+        }
+        #expect(steps.map(\.keyPresses) == [0, 0, 0, 1])
+        #expect(steps.map(\.keyPresses).reduce(0, +) == 1)
+        #expect(steps[0].announcements == ["Listening."], "a control opens the microphone once")
+        #expect(steps[2].announcements.contains { $0.hasPrefix("Inserted:") })
+        #expect(
+            steps[3].announcements.last
+                == "That isn't an edit command Uttrflow knows, so nothing was changed.",
+            "no edit command is registered, so a spoken correction changes nothing")
+        #expect(await probe.inserted.count == 1, "the correction typed nothing, and changed nothing")
+    }
+
+    /// The keyboard route remains measured alongside the zero-key control route.
+    @Test("double tap, dictate, correct and double tap: key presses and announcements")
+    func keyboardSession() async throws {
+        let probe = HandsFreeProbe(heard: Self.heard)
+        await probe.listen()
+        var steps: [ProbeStep] = []
+
         await probe.doubleTap()
         steps.append(await probe.step("start"))
 
@@ -132,7 +176,7 @@ struct HandsFreeSessionProbeTests {
         steps.append(await probe.step("correct"))
 
         for step in steps {
-            print("hands-free probe: \(step.name) keyPresses=\(step.keyPresses) said=\(step.announcements)")
+            print("hands-free keyboard probe: \(step.name) keyPresses=\(step.keyPresses) said=\(step.announcements)")
         }
         #expect(steps.map(\.keyPresses) == [2, 0, 2, 1])
         #expect(steps.map(\.keyPresses).reduce(0, +) == 5)

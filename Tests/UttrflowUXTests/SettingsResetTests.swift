@@ -72,6 +72,7 @@ struct SettingsResetLevelTests {
     /// Every level, listed rather than enumerated because one of them names an application.
     static let everyLevel: [SettingsReset] = [
         .learnedWords, .everything, .suggestions(inApplication: "com.example.editor"),
+        .persona, .personaFact(.noticedWords),
     ]
 
     /// The switch is exhaustive, so a sixth level cannot be added without this failing to build.
@@ -79,7 +80,7 @@ struct SettingsResetLevelTests {
     func everyLevelIsSwept() {
         for level in Self.everyLevel {
             switch level {
-            case .learnedWords, .everything, .suggestions: continue
+            case .learnedWords, .everything, .suggestions, .persona, .personaFact: continue
             }
         }
         #expect(Set(Self.everyLevel).count == Self.everyLevel.count)
@@ -731,6 +732,43 @@ struct SettingsResetLeftoverTests {
             try await evidence.append([row], keeping: always)
             try await store.carryOut(.everything)
             #expect(!FileManager.default.fileExists(atPath: file.path()))
+        }
+    }
+
+    @Test("the persona lists only ledger rows, removes one fact alone, and resets to nothing")
+    func personaFollowsTheLedger() async throws {
+        try await inATemporaryDirectory { directory in
+            let evidence = EvidenceLedgerStore(
+                file: directory.appending(path: "evidence.json"),
+                encryptedStore: EncryptedStore(keys: FixedKeys()))
+            let now = Date(timeIntervalSince1970: 20_001 * 86_400)
+            let always = RetentionWindow(days: RetentionWindow.keepAlwaysDays, now: now)
+            let dictionary = PersonalDictionaryStore(file: directory.appending(path: "dictionary.json"))
+            let entry = DictionaryEntry(word: "Kubernetes", origin: .added, firstSeen: now)
+            _ = try await dictionary.add(entry)
+            let store = FilePersonalisationStore(
+                dictionary: dictionary,
+                history: DictationHistoryStore(file: directory.appending(path: "history.json")),
+                clipboard: ClipboardStore(file: directory.appending(path: "clipboard.json")),
+                ledger: NetworkActivityLedger(file: nil), evidence: evidence)
+            let retention = Retention(days: RetentionWindow.keepAlwaysDays, now: now)
+            #expect(await store.personalisation(keeping: retention).persona.isEmpty)
+
+            try await evidence.append(
+                [EvidenceRow(kind: .use, subject: entry.id.uuidString, day: 20_000, provenance: .dictation)]
+                    + StyleSignals.rows(for: "On my way.", into: .messaging, day: 20_000),
+                keeping: always)
+            let facts = await store.personalisation(keeping: retention).persona.map(\.fact)
+            #expect(facts == [.word(entry.id), .style(.messaging)])
+
+            try await store.carryOut(.personaFact(.word(entry.id)))
+            #expect(
+                await store.personalisation(keeping: retention).persona.map(\.fact) == [.style(.messaging)])
+            #expect(await dictionary.allEntries().map(\.id) == [entry.id])
+
+            try await store.carryOut(.persona)
+            #expect(await store.personalisation(keeping: retention).persona.isEmpty)
+            #expect(await evidence.rows(keeping: always).isEmpty)
         }
     }
 

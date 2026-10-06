@@ -139,3 +139,27 @@ thread, synthetic rows of 20 features:
 | Bigram-shaped count table | 5,000,000 increments | 1.3 s |
 
 The largest fit is under one minute, against a ten-minute limit on a 16 GB Mac.
+
+## Fit tables
+
+The recordings are personal data and are not committed, so a fit is reproduced from a
+text-free table instead (`Sources/UttrflowEval/FitTable.swift`). A row holds a salted ordinal,
+the split, the language, a closed label class and the feature vector; the table names the
+feature spec version. `FitTable.read` refuses any field outside that schema, any string outside
+its closed set, rows of different widths, and any table over 5 MB. Only development rows are
+fitted.
+
+```bash
+uttrflow-eval fit --from-table <table.json> --expect <digest>   # exits 1 when the digest differs
+```
+
+`Tests/UttrflowEvalTests/FitTables/invented-linear.json` is an invented 240-row table
+(25,269 bytes) whose fit `FitTableTests` pins to a weights digest.
+
+Before committing a table, the reviewer checks:
+
+1. It reads with `FitTable.read` and its fit matches the digest committed beside the artifact.
+2. Rows per split, language and label group are stated in the pull request; 0 groups have
+   fewer than 5 rows, so no rare combination singles out a speaker.
+3. Ordinals were salted at reduction time and map to no recording or passage identifier.
+4. `make pii-audit` and `make disclosure-audit` pass with the table staged.

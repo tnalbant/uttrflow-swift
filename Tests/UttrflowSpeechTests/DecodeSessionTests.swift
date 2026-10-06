@@ -28,7 +28,8 @@ struct DecodeSessionTests {
         let inputs = try decoder.prepareDecoderInputs(withPrompt: prompt)
         let session = try DecodeSession(
             decoder: decoder,
-            window: .init(encoderOutput: try ScriptedDecoder.array([1, 3, 1, 1]), inputs: inputs, options: options))
+            window: .init(
+                encoderOutput: try ScriptedDecoder.array([1, 3, 1, 1]), inputs: inputs, options: options))
         return try await session.decode(
             sampler: GreedyTokenSampler(temperature: 0, eotToken: special.endToken, decodingOptions: options),
             callback: callback)
@@ -131,7 +132,9 @@ struct DecodeSessionTests {
         let decoder = ScriptedDecoder(script: [:])
         let inputs = try decoder.prepareDecoderInputs(withPrompt: Self.opening)
         let windows: [DecodeSession.Window] = [
-            .init(encoderOutput: encoder, inputs: try decoder.prepareDecoderInputs(withPrompt: []), options: options),
+            .init(
+                encoderOutput: encoder, inputs: try decoder.prepareDecoderInputs(withPrompt: []),
+                options: options),
             .init(encoderOutput: NotAnArray(), inputs: inputs, options: options),
         ]
         for window in windows {
@@ -139,11 +142,14 @@ struct DecodeSessionTests {
         }
         decoder.tokenizer = nil
         #expect(throws: (any Error).self) {
-            try DecodeSession(decoder: decoder, window: .init(encoderOutput: encoder, inputs: inputs, options: options))
+            try DecodeSession(
+                decoder: decoder, window: .init(encoderOutput: encoder, inputs: inputs, options: options))
         }
     }
 
-    @Test("throws when the model returns no output, no logits or no cache", arguments: ScriptedDecoder.Fault.allCases)
+    @Test(
+        "throws when the model returns no output, no logits or no cache",
+        arguments: ScriptedDecoder.Fault.allCases)
     func faults(_ fault: ScriptedDecoder.Fault) async throws {
         await #expect(throws: (any Error).self) {
             _ = try await Self.decode(ScriptedDecoder(script: [:], fault: fault))
@@ -154,7 +160,8 @@ struct DecodeSessionTests {
     func temperatureOfOtherSamplers() {
         let options = Self.options { $0.temperature = 0.6 }
 
-        #expect(DecodeSession.temperature(of: AllowedLanguageSampler(allowedTokens: []), options: options) == 0.6)
+        #expect(
+            DecodeSession.temperature(of: AllowedLanguageSampler(allowedTokens: []), options: options) == 0.6)
     }
 }
 

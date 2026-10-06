@@ -88,7 +88,8 @@ struct DecodeSession {
         }
         progress.timings.decodingFiltering += Date().timeIntervalSince(nonInferenceStart)
         let samplingStart = Date()
-        let sampled = await sampler.update(tokens: progress.tokens, logits: logits, logProbs: progress.logProbs)
+        let sampled = await sampler.update(
+            tokens: progress.tokens, logits: logits, logProbs: progress.logProbs)
         progress.timings.decodingSampling += Date().timeIntervalSince(samplingStart)
         guard let next = sampled.tokens.last, let nextLogProb = sampled.logProbs.last else {
             throw WhisperError.decodingLogitsFailed("Sampler returned no token")
@@ -102,7 +103,8 @@ struct DecodeSession {
             (sampled.completed && !isPrefill) || progress.tokens.count >= Constants.maxTokenContext - 1
             || progress.isFirstTokenLogProbTooLow
         if !completed {
-            try advance(index, output: output, isPrefill: isPrefill, logProb: nextLogProb, progress: &progress)
+            try advance(
+                index, output: output, isPrefill: isPrefill, logProb: nextLogProb, progress: &progress)
             earlyStop?.report(transcriptionProgress(of: progress), isPrefill: isPrefill)
         }
         progress.timings.decodingNonPrediction += Date().timeIntervalSince(nonInferenceStart)

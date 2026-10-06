@@ -1,3 +1,4 @@
+import NaturalLanguage
 public import UttrflowCore
 
 /// Turns a punctuation mark said by name into the mark, and a spoken email address into the address, when used rather than mentioned.
@@ -365,7 +366,35 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
         if position > 0 && draft.shape(at: live[position - 1]).endsClause { return true }
         return next == live.count
             || next < live.count
-                && isFunctionWordEvidence(draft.shape(at: live[next]).key)
+                && (isFunctionWordEvidence(draft.shape(at: live[next]).key)
+                    || closesAPhrase(words, at: position, in: live, of: draft))
+    }
+
+    /// Names that stand between two phrases, where the noun "comma" or "colon" would instead be the object or modifier of the word before.
+    static let seamNames: Set<[String]> = [["comma"], ["colon"]]
+
+    /// Word classes after which the noun reading takes the name as an object or modifier: "has colon trouble", "from colon cancer".
+    private static let nounTakers: Set<NLTag> = [.verb, .preposition, .adjective, .determiner]
+
+    /// Whether a spoken comma or colon follows a word that closes a phrase, so it is not the object or modifier of that word and does not join the word after it into a compound.
+    private func closesAPhrase(_ words: [String], at position: Int, in live: [Int], of draft: Draft) -> Bool {
+        guard Self.seamNames.contains(words), position > 0 else { return false }
+        var start = position
+        while start > 0, !draft.shape(at: live[start - 1]).endsSentence { start -= 1 }
+        let end = draft.sentenceEnd(from: position, in: live)
+        let keys = live[start..<end].map { draft.shape(at: $0).key }
+        let tags = LexicalClass.tags(ofWords: keys)
+        let before = position - 1 - start
+        let after = position + 1 - start
+        // A participle after the name joins it into a compound modifier, as in comma-separated.
+        if after < keys.count, tags[after] == .verb,
+            LexicalClass.lemma(ofWordAt: after, in: keys).map({ $0 != keys[after] }) ?? false
+        {
+            return false
+        }
+        // The first word of a sentence is an imperative or a heading, never the verb the name is the object of.
+        guard let tag = tags[before], before > 0 || tag != .verb else { return true }
+        return !Self.nounTakers.contains(tag)
     }
 
     private func isFunctionWordEvidence(_ word: String) -> Bool {

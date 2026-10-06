@@ -119,7 +119,7 @@ public struct MeaningPreservationGuard: Sendable {
             .filter { $0.isPresent && !$0.isLayoutMark && !$0.heard.isEmpty }
             .flatMap { word in grammarTokens(word.text).map { (token: $0, confidence: word.confidence) } }
         for change in aligned.changes {
-            // A word written as a reading offered for it was the speaker's doubt, not the recogniser's certainty.
+            // A word written as a reading offered for it is the speaker's doubt, not the recogniser's certainty.
             for index in change.kept where index < heard.count && !excused.contains(index) {
                 let token = aligned.kept[index]
                 guard heard[index].confidence >= WordCorrectionEngine.certaintyThreshold else { continue }
