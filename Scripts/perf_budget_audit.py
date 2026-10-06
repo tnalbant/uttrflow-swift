@@ -59,6 +59,9 @@ WAKEUPS_ALLOWED = {
     ("Sources/UttrflowCore/Support/SingleInstanceLock.swift", "seconds(interval)"): (
         "waits for a quitting copy's lock at launch, bounded by the caller's timeout"
     ),
+    ("Sources/UttrflowCore/Support/LocklessPeer.swift", "pause"): (
+        "waits for a racing copy to exit at launch, bounded by LocklessPeer.exitWindow"
+    ),
     ("Sources/UttrflowAudio/InputDeviceSession.swift", "delay"): (
         "retries a microphone that went away mid-recording, a fixed schedule of a few delays"
     ),
@@ -89,7 +92,9 @@ WAKEUPS_BOUND_BY = {
 }
 
 # Known breaches of the budget, each open under the issue that fixes it; a listed breach that is gone fails as stale.
-BREACHES_OPEN = {}
+BREACHES_OPEN = {
+    ("Sources/Uttrflow/UttrflowApp.swift", "model", "local)"): "#5711: dictation tidy uses the scorer unwrapped",
+}
 
 # ---------------------------------------------------------------------------------------------------------------
 # Reading Swift
@@ -299,6 +304,10 @@ class Findings:
         self.failures.append(f"{check}: {path}:{line} {message}")
 
 
+# A sleep is any `sleep(`, or a free `pause(`; a member `.pause(` such as `draft.pause(before:)` reads a value.
+SLEEP_CALL = re.compile(r"\bsleep\s*\(|(?<!\.)\bpause\s*\(")
+
+
 def repeating_sites(text):
     """Yields (offset, kind, interval expression) for every repeating timer, display link and sleeping loop."""
     for match in re.finditer(r"\bTimer\s*(?:\.\s*scheduledTimer\s*)?\(", text):
@@ -329,7 +338,7 @@ def repeating_sites(text):
         if match.group(1) == "for" and (re.match(r"\s*\w+\s*:", header) or not re.search(r"\bin\b", header)):
             continue
         loops.append((opening, matching(text, opening)))
-    sleep = re.compile(r"\b(?:sleep|pause)\s*\(")
+    sleep = SLEEP_CALL
     for match in sleep.finditer(text):
         if not any(start < match.start() < end for start, end in loops):
             continue
@@ -352,7 +361,7 @@ def calls_itself(text, name, start, end):
 
 def rescheduling_sites(text, loops):
     """Yields (offset, interval) for every delay in a function that is followed by a call back into that function."""
-    delays = re.compile(r"\basyncAfter\s*\(|\bperform\s*\(|\b(?:sleep|pause)\s*\(|\bTimer\s*(?:\.\s*scheduledTimer\s*)?\(")
+    delays = re.compile(r"\basyncAfter\s*\(|\bperform\s*\(|" + SLEEP_CALL.pattern + r"|\bTimer\s*(?:\.\s*scheduledTimer\s*)?\(")
     for name, _, opening, end, _ in functions(text):
         for match in delays.finditer(text, opening, end):
             if any(start < match.start() < stop for start, stop in loops):
@@ -448,6 +457,9 @@ def check_priority(tree, findings, report):
                 name = binding.group(1)
                 wrapped = []
                 for call in UTILITY_WRAPPER.finditer(text):
+                    wrapped.append((call.end() - 1, matching(text, call.end() - 1)))
+                # Handed to another suggestion model's constructor, whose own binding this check follows to a wrapper.
+                for call in re.finditer(r"\b(?:" + "|".join(SUGGESTION_MODELS) + r")\s*\(", text):
                     wrapped.append((call.end() - 1, matching(text, call.end() - 1)))
                 constructor = matching(text, binding.end() - 1)
                 for use in re.finditer(r"(?<![\w.])" + re.escape(name) + r"\b(?!\s*:(?!:))", text[constructor:]):
