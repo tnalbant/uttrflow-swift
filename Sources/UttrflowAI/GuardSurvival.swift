@@ -89,6 +89,11 @@ extension MeaningPreservationGuard {
             }
             // The earliest place still open is taken, which is the most room the words after it can be left.
             guard let place = matchingPlaces.first(where: { $0 >= reached }) else {
+                // A word said more often than the rewrite writes it was lost, not moved: a truncated answer.
+                let said = kept[...index].filter { $0.matching == token.matching }.count
+                if said > matchingPlaces.count {
+                    return .rejected(reason: "the rewrite lost or replaced '\(token.text)'", kind: .lostWord)
+                }
                 return .rejected(reason: "the rewrite moved '\(token.text)'", kind: .movedWord)
             }
             reached = place

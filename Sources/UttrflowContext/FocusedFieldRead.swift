@@ -9,22 +9,32 @@ enum FocusedFieldRead {
 
     /// The field's names, asked in one message where the tree batches them.
     static func names<Tree: ElementTree>(of field: Tree.Element, in tree: Tree) -> FieldNames {
-        let named = tree.attributes(nameAttributes, of: field).map(\.string)
-        guard named.count == nameAttributes.count else {
-            return FieldNames(role: nil, subrole: nil, identifier: nil, placeholder: nil, description: nil)
+        let answers = tree.attributes(nameAttributes, of: field)
+        guard answers.count == nameAttributes.count else {
+            return FieldNames(
+                role: nil, subrole: nil, identifier: nil, placeholder: nil, description: nil,
+                readStatus: .refused)
+        }
+        let named = answers.map(\.string)
+        let refused = answers.contains { answer in
+            switch answer {
+            case .cannotComplete, .timedOut: true
+            case .value, .noValue, .unsupported: false
+            }
         }
         return FieldNames(
             role: named[0], subrole: named[1], identifier: named[2], placeholder: named[3],
-            description: named[4], title: named[5])
+            description: named[4], title: named[5],
+            readStatus: refused || named[0] == nil ? .refused : .complete)
     }
 
-    /// The field's text around the caret with the selection moved into it, never read from a declared secure field.
+    /// The field's text around the caret with the selection moved into it, after the names clear the secure check.
     static func text<Tree: ElementTree>(
         of field: Tree.Element, in tree: Tree, names: FieldNames, at selection: NSRange?,
         need: ContextNeed = .turn,
         count: (() -> Int?)? = nil
     ) -> FieldText {
-        guard !names.isDeclaredSecure else {
+        guard !names.isSecureOrUnknown else {
             return FieldText(value: nil, selection: nil, isSecure: true)
         }
         // A caller that already holds the length from a batched read passes it, so it is not asked twice.

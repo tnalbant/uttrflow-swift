@@ -53,6 +53,17 @@ public actor DiagnosticsRecorder: MetricsRecording, CleaningRecording {
         if decoding.count > capacity { decoding.removeFirst(decoding.count - capacity) }
     }
 
+    /// What each recording sounded like, newest last and bounded like the measurements.
+    public private(set) var captureQualities: [CaptureQuality] = []
+
+    public func recordCaptureQuality(_ quality: CaptureQuality) async {
+        guard capacity > 0 else { return }
+        captureQualities.append(quality)
+        if captureQualities.count > capacity {
+            captureQualities.removeFirst(captureQualities.count - capacity)
+        }
+    }
+
     /// Oldest first, which is the order they were measured in.
     public var recorded: [StageMeasurement] {
         measurements

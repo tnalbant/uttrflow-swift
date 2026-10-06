@@ -89,6 +89,86 @@ struct EncryptedStoreTests {
         #expect(store.read([String].self, from: file).value == ["private"])
     }
 
+    @Test("recovers a truncated write from the previous sealed generation")
+    func recoversTruncatedWrite() throws {
+        let directory = try folder()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appending(path: "history.v1.json")
+        let key = SymmetricKey(size: .bits256)
+        let store = EncryptedStore(keys: Keys(value: key))
+        try store.write(["previous"], to: file)
+        let previous = try Data(contentsOf: file)
+        let faultingWriter = EncryptedStore(keys: Keys(value: key)) { data, url in
+            try PrivateFile.write(Data(data.prefix(10)), to: url)
+        }
+
+        try faultingWriter.write(["replacement"], to: file, preservingPreviousGeneration: true)
+        let recovered = store.read(
+            [String].self, from: file, recoveringPreviousGeneration: true)
+
+        #expect(recovered.value == ["previous"])
+        #expect(try Data(contentsOf: file) == previous)
+        #expect(try Data(contentsOf: PrivateFile.backupURL(for: file)) == previous)
+        #expect(LocalStore.hasSetAside(file))
+
+        try store.remove(file)
+        #expect(!FileManager.default.fileExists(atPath: file.path))
+        #expect(!FileManager.default.fileExists(atPath: PrivateFile.backupURL(for: file).path))
+
+        let ordinaryFile = directory.appending(path: "ordinary.v1.json")
+        try store.write(["previous"], to: ordinaryFile)
+        let ordinaryPrevious = try Data(contentsOf: ordinaryFile)
+        try PrivateFile.preserveSealedGeneration(ordinaryPrevious, from: ordinaryFile)
+        try Data(ordinaryPrevious.prefix(10)).write(to: ordinaryFile)
+        let ordinaryRead = store.read([String].self, from: ordinaryFile)
+        #expect(ordinaryRead.value == nil)
+
+        let missingFile = directory.appending(path: "missing.v1.json")
+        try store.write(["restore missing index"], to: missingFile)
+        let missingGeneration = try Data(contentsOf: missingFile)
+        try PrivateFile.preserveSealedGeneration(missingGeneration, from: missingFile)
+        try FileManager.default.removeItem(at: missingFile)
+        let missingRead = store.read(
+            [String].self, from: missingFile, recoveringPreviousGeneration: true)
+        #expect(missingRead.value == nil)
+        #expect(!missingRead.isUnreadable)
+        #expect(!FileManager.default.fileExists(atPath: missingFile.path))
+        #expect(FileManager.default.fileExists(atPath: PrivateFile.backupURL(for: missingFile).path))
+        try store.write(["new generation"], to: missingFile, preservingPreviousGeneration: true)
+        #expect(!FileManager.default.fileExists(atPath: PrivateFile.backupURL(for: missingFile).path))
+        let newGeneration = try Data(contentsOf: missingFile)
+        try store.write(["newer generation"], to: missingFile, preservingPreviousGeneration: true)
+        try Data(try Data(contentsOf: missingFile).prefix(10)).write(to: missingFile)
+        let afterNewWrite = store.read(
+            [String].self, from: missingFile, recoveringPreviousGeneration: true)
+        #expect(afterNewWrite.value == ["new generation"])
+        #expect(try Data(contentsOf: PrivateFile.backupURL(for: missingFile)) == newGeneration)
+    }
+
+    @Test("reset removes the backup before the primary so interruption cannot revive it")
+    func resetRemovesBackupBeforePrimary() throws {
+        let directory = try folder()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appending(path: "clipboard.v1.json")
+        let key = SymmetricKey(size: .bits256)
+        let store = EncryptedStore(keys: Keys(value: key))
+        try store.write(["previous"], to: file)
+        try store.write(["current"], to: file, preservingPreviousGeneration: true)
+        let interruptedReset = EncryptedStore(
+            keys: Keys(value: key),
+            writeFile: { data, url in try PrivateFile.write(data, to: url) },
+            removeFile: { target in
+                guard target != file else { throw CocoaError(.fileWriteUnknown) }
+                try FileManager.default.removeItem(at: target)
+            })
+
+        #expect(throws: (any Error).self) { try interruptedReset.remove(file) }
+        #expect(FileManager.default.fileExists(atPath: file.path))
+        #expect(!FileManager.default.fileExists(atPath: PrivateFile.backupURL(for: file).path))
+        #expect(
+            store.read([String].self, from: file, recoveringPreviousGeneration: true).value == ["current"])
+    }
+
     @Test("file fallback keeps one key across provider instances and removes it on reset")
     func fileKeyFallbackPersistsAndRevokes() throws {
         let directory = try folder()
@@ -164,10 +244,55 @@ struct EncryptedStoreTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let file = directory.appending(path: "history.v1.json")
         try Data("[\"private\"]".utf8).write(to: file)
-        let store = EncryptedStore(keys: Keys(value: SymmetricKey(size: .bits256)))
+        let store = EncryptedStore(keys: RevocableKeys())
 
         #expect(store.read([String].self, from: file).value == ["private"])
         #expect(try Data(contentsOf: file).starts(with: Data("UTTFLOWE".utf8)))
+    }
+
+    @Test("keeps migrating every legacy file in the launch whose first seal created the key")
+    func migrationLaunchStaysOpen() throws {
+        let directory = try folder()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let first = directory.appending(path: "history.v1.json")
+        let second = directory.appending(path: "snippets.v1.json")
+        try Data("[\"one\"]".utf8).write(to: first)
+        try Data("[\"two\"]".utf8).write(to: second)
+        let store = EncryptedStore(keys: RevocableKeys())
+
+        try store.write(["new"], to: directory.appending(path: "settings.v1.json"))
+
+        #expect(store.read([String].self, from: first).value == ["one"])
+        #expect(store.read([String].self, from: second).value == ["two"])
+    }
+
+    @Test("refuses and sets aside a plaintext file written once the installation key exists")
+    func plaintextAfterKeyIsRefused() throws {
+        let directory = try folder()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appending(path: "clipboard.v1.json")
+        let keys = RevocableKeys()
+        try EncryptedStore(keys: keys).write(["mine"], to: file)
+        let planted = Data("[\"planted\"]".utf8)
+        try planted.write(to: file)
+
+        let stored = EncryptedStore(keys: keys).read([String].self, from: file)
+
+        #expect(stored.isUnreadable)
+        #expect(!FileManager.default.fileExists(atPath: file.path))
+        guard case .unreadable(let moved) = stored else { return }
+        #expect(try Data(contentsOf: try #require(moved)) == planted)
+    }
+
+    @Test("leaves a plaintext file in place while the key cannot be looked up")
+    func plaintextWithLockedKeyStays() throws {
+        let directory = try folder()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appending(path: "clipboard.v1.json")
+        try Data("[\"x\"]".utf8).write(to: file)
+
+        #expect(EncryptedStore(keys: LockedKey()).read([String].self, from: file).isLeftInPlace)
+        #expect(FileManager.default.fileExists(atPath: file.path))
     }
 
     @Test("sets malformed legacy JSON aside without asking for a key")
@@ -186,6 +311,27 @@ struct EncryptedStoreTests {
         guard case .unreadable(let moved) = stored else { return }
         let setAside = try #require(moved)
         #expect(try Data(contentsOf: setAside) == source)
+    }
+
+    @Test("seals a plaintext file it sets aside, so the copy is not readable beside the encrypted store")
+    func plaintextSetAsideIsSealed() throws {
+        let directory = try folder()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appending(path: "history.v1.json")
+        let source = Data("[\"private\", ".utf8)
+        try source.write(to: file)
+        let store = EncryptedStore(keys: Keys(value: SymmetricKey(size: .bits256)))
+
+        let stored = store.read([String].self, from: file)
+
+        guard case .unreadable(let moved) = stored else {
+            Issue.record("expected the file to be set aside")
+            return
+        }
+        let copy = try #require(moved)
+        let sealed = try Data(contentsOf: copy)
+        #expect(EncryptedStore.isSealed(sealed))
+        #expect(try store.open(sealed, for: copy.lastPathComponent) == source)
     }
 
     @Test("rejects a renamed store because the logical filename is authenticated")

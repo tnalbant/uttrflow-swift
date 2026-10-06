@@ -54,14 +54,13 @@ clip somebody named, and one file cannot give two answers.
 The saved file's path is derived from the history's rather than injected, so the pair travels
 together: move or copy the folder and the clipboard arrives whole.
 
-An unreadable file is renamed aside before anything else happens, so the next write starts a
-fresh file instead of replacing the only copy. When a clipboard index is set aside, the app tells
-the user once where its preserved copy is. A file that cannot be moved aside is left where it is,
-and every write to it is refused. `LocalStore.read(_:from:)` does this for every JSON store in the
-app, and tells a missing file apart from one that is there and cannot be read: permission denied,
-truncated, empty, or a shape from a newer build. Salvaging clip by clip is not attempted: the
-store's own writes are atomic, so the realistic corruption is a whole file somebody mangled, and
-half a clipboard restored is harder to explain than none.
+If a clipboard index cannot be read, the store first tries its previous sealed generation. A
+valid backup is restored durably and the app tells the user once; otherwise the unreadable file
+is renamed aside before a new empty file can be written. The app tells the user once where that
+preserved copy is. A file that cannot be moved aside is left where it is, and every write to it
+is refused. `LocalStore.read(_:from:)` distinguishes a missing file from one that is present but
+cannot be read: permission denied, truncated, empty, or a shape from a newer build. Salvaging
+clip by clip is not attempted: a half clipboard restored is harder to explain than none.
 
 ### Moving a clip between the files
 
@@ -256,6 +255,9 @@ same reason: refusing to open the panel over a disk that would not accept a tidy
 the user for something they cannot fix, and nothing they were told is gone comes back on screen
 either way.
 
-Writes are atomic, so a crash or a full disk cannot leave behind a truncated file that the next
-read would have to throw away. An empty list removes the file rather than writing `[]`, so an
-emptied clipboard leaves nothing of the user's on disk at all.
+Index writes flush the temporary file and containing folder around their atomic replacement.
+Each successful encrypted write also keeps the previous sealed generation as `.bak`; an empty
+list removes both files rather than writing `[]`, so an emptied clipboard leaves no recoverable
+index behind. If the live index is missing, an orphan backup is ignored and removed before the
+first new generation is written. Reset removes and flushes the backup before removing the live
+index, so an interrupted reset cannot restore an older generation over the current one.

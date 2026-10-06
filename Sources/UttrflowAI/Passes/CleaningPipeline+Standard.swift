@@ -56,7 +56,9 @@ extension CleaningPipeline {
             destination == .codeEditor
             && CaretStructure.region(precedingText: precedingText, documentName: documentName).isCode
         if let layoutPosition = cleanings.firstIndex(where: { $0.id == .layoutWords }) {
-            if inCode { cleanings.insert(CodeEditorCommandsPass(), at: layoutPosition) }
+            if inCode || destination == .terminal {
+                cleanings.insert(CodeEditorCommandsPass(destination: destination), at: layoutPosition)
+            }
             // A code editor's comments take no casing: its rows are identifiers, which a comment is not.
             if destination != .codeEditor || inCode {
                 cleanings.insert(SpokenCasingPass(destination: destination), at: layoutPosition)
@@ -100,9 +102,12 @@ extension CleaningPipeline {
     ) -> CleaningPipeline {
         let casing = AcronymCasingPass(
             destination: formatter.destination, vocabulary: vocabulary, onScreen: situation.app.textOnScreen)
+        // Only a chat takes "at Sam" as a mention; everywhere else it is a word.
+        let mentions: [any WholeTextCleaningPass] =
+            formatter.destination == .messaging
+            ? [AtMentionPass(precedingText: situation.insertion.precedingText)] : []
         return CleaningPipeline(
-            wholeText: initialisms(steps: steps) + [
-                casing,
+            wholeText: initialisms(steps: steps) + [casing] + mentions + [
                 SentenceBoundaryPass(),
                 FirstWordPass(
                     policy: formatter.firstWord, state: situation.insertion.sentenceState,

@@ -435,6 +435,19 @@ struct PersonalDictionaryStoreTests {
         #expect(try await store.restore(entry.id)?.timesUsed == 4)
     }
 
+    @Test("restores several retired words at once and skips identifiers that are not there")
+    func restoringSeveral() async throws {
+        let sandbox = Sandbox()
+        let store = PersonalDictionaryStore(file: sandbox.file)
+        let first = word("Wrongly", from: .learned, used: 4, reverted: 3)
+        let second = word("Askew", from: .learned, used: 6, reverted: 4)
+        try await store.add(first)
+        try await store.add(second)
+        let restored = try await store.restore([first.id, second.id, UUID()])
+        #expect(Set(restored.map(\.id)) == [first.id, second.id])
+        #expect(await store.allEntries().allSatisfy { $0.timesReverted == 0 && $0.isTrustworthy })
+    }
+
     @Test("says nothing was restored when the word is not there")
     func restoringAnUnknownWord() async throws {
         let sandbox = Sandbox()

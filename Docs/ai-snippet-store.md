@@ -72,6 +72,12 @@ span exactly as an edit of it does (`Sources/UttrflowInput/EditTarget.swift`) an
 field that will not report ranges, so the caret stays at the end of the expansion there. A
 body that is only a marker is empty and is refused like one.
 
+After a dictation is written, the pipeline asks `ExpandedTranscript.caretBack(inWritten:)` how far
+back the caret goes in the text as written, matching the words after the marker through padding
+and first-word casing, and passes that to `TextInserting.placeCaret(back:)`. The dictation
+inserter keeps an `InsertionLedger`, so only a confirmed Accessibility write into the field still
+in front can have its caret moved; every other route leaves the caret at the end.
+
 ## When a snippet does not fire
 
 A snippet does not fire when the transcript also contains its expansion's words anywhere:

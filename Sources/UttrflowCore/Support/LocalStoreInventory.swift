@@ -48,6 +48,7 @@ public enum LocalStoreEntry: String, CaseIterable, Sendable {
     public var claimedNames: [String] {
         switch self {
         case .predict: return [name, name + "-wal", name + "-shm", name + "-journal"]
+        case .clipboard, .savedClips: return [name, name + ".bak"]
         case .personalDictionary:
             let stem = (name as NSString).deletingPathExtension
             return [name, stem + ".seeded.json", stem + ".refused.json"]
