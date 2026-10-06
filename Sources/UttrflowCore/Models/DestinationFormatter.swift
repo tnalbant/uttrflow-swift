@@ -121,7 +121,7 @@ public struct LayoutPolicy: OptionSet, Sendable, Equatable {
     /// Every line break becomes a space, as a spreadsheet cell wants.
     public static let singleLine = LayoutPolicy(rawValue: 1 << 3)
     /// With `singleLine`, a spoken break is a space rather than a list separator, as a shell prompt wants.
-    public static let breaksAreSpaces = LayoutPolicy(rawValue: 1 << 4)
+    package static let breaksAreSpaces = LayoutPolicy(rawValue: 1 << 4)
 }
 
 /// What one kind of place wants done to the words: decisions, never code. See `Docs/cleanup-design.md`.

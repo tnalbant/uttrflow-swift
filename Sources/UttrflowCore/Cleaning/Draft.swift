@@ -86,7 +86,7 @@ public struct Draft: Sendable, Equatable {
         public var isLayoutMark: Bool { text.hasPrefix("\n") || text == Draft.bullet || isListMark }
 
         /// Whether the word opens a labelled item, a word and its number before a colon: "Reason 2: ".
-        public var isLabelMark: Bool {
+        package var isLabelMark: Bool {
             let mark = text.drop(while: \.isNewline)
             guard mark.hasSuffix(": ") else { return false }
             let parts = mark.dropLast(2).split(separator: " ")

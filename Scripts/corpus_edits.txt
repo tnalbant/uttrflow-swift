@@ -1,1 +1,9 @@
 # One line per changed or removed evaluation case: <case id> <reason>.
+code-comment-keeps-spoken-commands comment prose after its marker takes a capital
+code-editor-comment-gets-a-stop comment prose after its marker takes a capital
+code-editor-comment-keeps-its-stop comment prose after its marker takes a capital
+code-editor-identifier-from-screen a code line keeps its first word as spoken
+code-editor-large-number-ungrouped a code line keeps its first word as spoken, and spoken equals is written =
+code-editor-line-break-preserved a code line keeps its first word as spoken
+code-editor-numeral-no-stop a code line keeps its first word as spoken
+doubtful-word-from-window a code line keeps its first word as spoken
