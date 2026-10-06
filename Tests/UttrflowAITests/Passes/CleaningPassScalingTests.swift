@@ -33,6 +33,7 @@ private enum LongDictation {
 /// Reads to the end of the sentence from every word, as the passes once did, so its cost grows with the square.
 private struct QuadraticPass: PieceCleaningPass {
     static let id = PassID.spacing
+    static let laws: Set<PassLaw> = []
 
     func apply(_ draft: Draft) -> Draft {
         let live = draft.presentIndices
