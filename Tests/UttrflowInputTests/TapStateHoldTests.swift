@@ -119,8 +119,8 @@ struct TapStateHoldTests {
         #expect(posted.isEmpty)
     }
 
-    @Test("a different key or modifier set is held and replayed instead of swallowed as an accept repeat")
-    func differentStrokeIsNotSwallowedAsARepeat() throws {
+    @Test("a changed modifier does not release an accept repeat, while a different key is replayed")
+    func modifierChangeKeepsAcceptRepeatSwallowed() throws {
         let state = Self.makeState()
         #expect(state.arm(.tab))
         #expect(state.takes(try Self.key(48)))
@@ -133,12 +133,51 @@ struct TapStateHoldTests {
             !state.releaseHeldKeys {
                 posted.append(($0.getIntegerValueField(.keyboardEventKeycode), $0.flags.rawValue))
             })
-        #expect(posted.map(\.0) == [48, 49])
+        #expect(posted.map(\.0) == [49])
+        #expect(posted.map(\.1) == [CGEventFlags.maskAlternate.rawValue])
+    }
+
+    @Test("Option-Tab repeats remain swallowed after Option is released")
+    func optionTabRepeatAfterOptionRelease() throws {
+        let state = Self.makeState()
+        #expect(state.arm(.optionTab))
+        #expect(state.takes(try Self.key(48, flags: .maskAlternate)))
+        #expect(state.arm([]))
+        #expect(state.takes(try Self.repeatKey(48, flags: .maskAlternate)))
+        #expect(state.takes(try Self.repeatKey(48)))
+
+        var posted: [Int64] = []
+        #expect(!state.releaseHeldKeys { posted.append($0.getIntegerValueField(.keyboardEventKeycode)) })
+        #expect(posted.isEmpty)
+    }
+
+    @Test("hold expiry replays queued keys in order before a later key passes through")
+    func expiryReplaysQueuedKeys() throws {
+        let clock = ManualClock()
+        let state = Self.makeState(clock: clock)
+        #expect(state.arm(.tab))
+        #expect(state.takes(try Self.key(48)))
+        #expect(state.arm([]))
+        #expect(state.takes(try Self.key(48)))
+        #expect(state.takes(try Self.key(0)))
+        #expect(state.takes(try Self.key(1)))
+
+        clock.advance(by: .nanoseconds(Int64(KeyHold.limitNanoseconds)))
+
+        var posted: [Int64] = []
         #expect(
-            posted.map(\.1) == [
-                CGEventFlags.maskAlternate.rawValue,
-                CGEventFlags.maskAlternate.rawValue,
-            ])
+            !state.takes(
+                try Self.key(36),
+                postExpired: {
+                    posted.append($0.getIntegerValueField(.keyboardEventKeycode))
+                }))
+        #expect(posted == [0, 1])
+        #expect(!state.isListening)
+
+        var replayedAgain: [Int64] = []
+        #expect(
+            !state.releaseHeldKeys { replayedAgain.append($0.getIntegerValueField(.keyboardEventKeycode)) })
+        #expect(replayedAgain.isEmpty)
     }
 
     @Test("stopping clears the repeat key so a later hold reaches the application")

@@ -215,6 +215,8 @@ struct NamedSecretScan {
             + joined("client", "secret")
             + joined("encryption", "key") + joined("signing", "key")
             + joined("master", "key") + joined("app", "key") + joined("jwt", "key")
+            + joined("account", "key") + joined("storage", "key") + joined("subscription", "key")
+            + joined("auth", "key") + ["sharedaccesssignature"]
         let fileFields = ["secret_key_base", "client-key-data", "client_key_data"]
         return (plurals + singulars + fileFields).map { Array($0.utf8) }
     }()

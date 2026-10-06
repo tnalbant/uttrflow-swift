@@ -273,8 +273,14 @@ public struct Draft: Sendable, Equatable {
 
     /// Positions in `words` of the words still in the text, in order.
     public var presentIndices: [Int] {
-        presence.indices { words.indices.filter { words[$0].isPresent } }
+        presence.indices {
+            Self.wordsRead?.record(words.count)
+            return words.indices.filter { words[$0].isPresent }
+        }
     }
+
+    /// Counts the words the draft's helpers read, so a scaling test bounds a pass by work rather than time.
+    @TaskLocal package static var wordsRead: WorkTally?
 
     public static func == (lhs: Draft, rhs: Draft) -> Bool {
         lhs.words == rhs.words && lhs.confidencesAreReal == rhs.confidencesAreReal

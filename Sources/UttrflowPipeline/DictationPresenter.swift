@@ -140,6 +140,16 @@ public enum DictationPresenter {
                 showsWaveform: false, showsProgress: false, isRecording: false, action: nil,
                 accessibilityLabel: "Inserted: \(said(outcome))")
 
+        case .discarded(let discard):
+            DockPresentation(
+                symbolName: "trash", primaryLine: "Discarded",
+                secondaryLine: discard.keptRecording == nil ? "Nothing was typed" : "Restore within a minute",
+                showsWaveform: false, showsProgress: false, isRecording: false,
+                action: discard.keptRecording == nil ? nil : .restoreRecording,
+                accessibilityLabel: discard.keptRecording == nil
+                    ? "Discarded. Nothing was typed."
+                    : "Discarded. Nothing was typed. Restore within a minute.")
+
         // Drawn wide with its words, not as the quiet disc the other informational notice gets.
         case .failed(let failure) where failure == .stillLoading:
             DockPresentation(
@@ -196,7 +206,7 @@ public enum DictationPresenter {
                 isRecording: false, action: drawn.action,
                 accessibilityLabel: failure == .stillLoading
                     ? load.accessibilityLabel : "\(drawn.accessibilityLabel) \(load.accessibilityLabel)")
-        case .recording, .transcribing, .tidying, .inserting, .inserted, .failed:
+        case .recording, .transcribing, .tidying, .inserting, .inserted, .failed, .discarded:
             return drawn
         }
     }

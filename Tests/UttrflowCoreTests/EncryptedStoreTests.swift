@@ -244,10 +244,55 @@ struct EncryptedStoreTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let file = directory.appending(path: "history.v1.json")
         try Data("[\"private\"]".utf8).write(to: file)
-        let store = EncryptedStore(keys: Keys(value: SymmetricKey(size: .bits256)))
+        let store = EncryptedStore(keys: RevocableKeys())
 
         #expect(store.read([String].self, from: file).value == ["private"])
         #expect(try Data(contentsOf: file).starts(with: Data("UTTFLOWE".utf8)))
+    }
+
+    @Test("keeps migrating every legacy file in the launch whose first seal created the key")
+    func migrationLaunchStaysOpen() throws {
+        let directory = try folder()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let first = directory.appending(path: "history.v1.json")
+        let second = directory.appending(path: "snippets.v1.json")
+        try Data("[\"one\"]".utf8).write(to: first)
+        try Data("[\"two\"]".utf8).write(to: second)
+        let store = EncryptedStore(keys: RevocableKeys())
+
+        try store.write(["new"], to: directory.appending(path: "settings.v1.json"))
+
+        #expect(store.read([String].self, from: first).value == ["one"])
+        #expect(store.read([String].self, from: second).value == ["two"])
+    }
+
+    @Test("refuses and sets aside a plaintext file written once the installation key exists")
+    func plaintextAfterKeyIsRefused() throws {
+        let directory = try folder()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appending(path: "clipboard.v1.json")
+        let keys = RevocableKeys()
+        try EncryptedStore(keys: keys).write(["mine"], to: file)
+        let planted = Data("[\"planted\"]".utf8)
+        try planted.write(to: file)
+
+        let stored = EncryptedStore(keys: keys).read([String].self, from: file)
+
+        #expect(stored.isUnreadable)
+        #expect(!FileManager.default.fileExists(atPath: file.path))
+        guard case .unreadable(let moved) = stored else { return }
+        #expect(try Data(contentsOf: try #require(moved)) == planted)
+    }
+
+    @Test("leaves a plaintext file in place while the key cannot be looked up")
+    func plaintextWithLockedKeyStays() throws {
+        let directory = try folder()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appending(path: "clipboard.v1.json")
+        try Data("[\"x\"]".utf8).write(to: file)
+
+        #expect(EncryptedStore(keys: LockedKey()).read([String].self, from: file).isLeftInPlace)
+        #expect(FileManager.default.fileExists(atPath: file.path))
     }
 
     @Test("sets malformed legacy JSON aside without asking for a key")
@@ -266,6 +311,27 @@ struct EncryptedStoreTests {
         guard case .unreadable(let moved) = stored else { return }
         let setAside = try #require(moved)
         #expect(try Data(contentsOf: setAside) == source)
+    }
+
+    @Test("seals a plaintext file it sets aside, so the copy is not readable beside the encrypted store")
+    func plaintextSetAsideIsSealed() throws {
+        let directory = try folder()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appending(path: "history.v1.json")
+        let source = Data("[\"private\", ".utf8)
+        try source.write(to: file)
+        let store = EncryptedStore(keys: Keys(value: SymmetricKey(size: .bits256)))
+
+        let stored = store.read([String].self, from: file)
+
+        guard case .unreadable(let moved) = stored else {
+            Issue.record("expected the file to be set aside")
+            return
+        }
+        let copy = try #require(moved)
+        let sealed = try Data(contentsOf: copy)
+        #expect(EncryptedStore.isSealed(sealed))
+        #expect(try store.open(sealed, for: copy.lastPathComponent) == source)
     }
 
     @Test("rejects a renamed store because the logical filename is authenticated")

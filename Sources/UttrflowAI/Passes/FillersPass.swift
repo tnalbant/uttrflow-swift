@@ -3,6 +3,7 @@ public import UttrflowCore
 /// Removes hesitation sounds while keeping standalone replies and fixed interjections.
 public struct FillersPass: PieceCleaningPass {
     public static let id: PassID = .fillers
+    public static let laws: Set<PassLaw> = Set(PassLaw.allCases)
     public static let removes: RemovalGrant = .sound
 
     /// Whole words that carry no meaning; "like", "well", "so", "basically" and "mm" (millimetres) are out.

@@ -24,6 +24,8 @@ refusal. The page on screen may quote words; the copy never does.
 | `speechModel`, `speechReadiness`, `suggestionModel` | model card status lines |
 | `permissions` | one granted or not-granted line per permission |
 | `dictationShortcutArmed`, `hasDefaultInputDevice` | availability lines |
+| `arrivals` | a count of kept dictations per arrival kind |
+| `qualityLayers` | nothing: shown on the page only |
 | `vocabularyPrompt` | nothing: dictionary words are absent |
 
 `cleaning` holds the dictated words a step removed or rewrote and the free-text reason a model
@@ -39,5 +41,14 @@ field with invented words and fails if any of them appears in the report:
 swift test --filter DiagnosticsReportRedactionTests
 ```
 
-A new field added to `DiagnosticsSnapshot` that can hold text must be added to that test's
-snapshot and to the table above.
+`Tests/UttrflowUXTests/DiagnosticsExportContractTests.swift` holds the rest of the contract. It
+fails when a `DiagnosticsSnapshot` field is missing from the table above, and when a filled
+snapshot holds text at a path it has not classified as a version string, an engine or step name or words
+that are never printed:
+
+```bash
+swift test --filter DiagnosticsExportContractTests
+```
+
+A new field that can hold text is added to both tests' snapshots, to that classification and to
+the table above.

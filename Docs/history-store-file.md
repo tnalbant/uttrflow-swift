@@ -119,10 +119,14 @@ cannot be opened, the app must still open. The store never treats such a file as
 | An encrypted file that fails authentication, or whose key is definitely missing | Renamed aside the same way | As above. |
 | A legacy plaintext file that does not decode, a key that is temporarily unavailable, or a file that could not be renamed | Left in place | Reads as empty and refuses every write (`HistoryStoreError.couldNotWrite`), so the original bytes cannot be replaced. |
 
-Records are not salvaged one by one from an unreadable file: the store's own writes are durable
-and atomic, so the realistic corruption is a whole file somebody changed, and half a history
-restored is harder to explain than none. Inside a readable file, an individual change that
-cannot be decoded costs only that change ([core-history-decoding.md](core-history-decoding.md)).
+Encrypted clipboard-index writes use a durable temporary file and atomic replacement, retaining
+the prior authenticated generation so opted-in clipboard reads can recover after an interrupted
+or corrupt whole-file replacement. Other stored lists are decoded entry by entry
+(`LocalStore.decodeKeepingReadable`): an entry this build cannot decode, such as one carrying a
+case a newer build added, costs only itself. Readable entries load, and the original bytes are
+copied aside under the same timestamped name. A file that is not a list at all is still set aside
+whole. Inside a readable record, an individual change that cannot be decoded costs only that
+change ([core-history-decoding.md](core-history-decoding.md)).
 
 A set-aside copy holds transcripts, so it lives no longer than they would have. Every
 `records(keeping:)` deletes copies whose stamp the retention window has passed

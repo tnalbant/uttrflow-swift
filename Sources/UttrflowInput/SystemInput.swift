@@ -367,7 +367,7 @@ public struct CGEventTypist: KeystrokeTyping {
 }
 
 /// The focused text field, found through the Accessibility API; its methods block, so async code calls them via `AccessibilityThread`.
-public struct AXAccessibilityFocus: AccessibilityFocus {
+public struct AXAccessibilityFocus: AcceptanceFieldReader {
     public init() {}
 
     /// How long one Accessibility message may take, generous because it is the dictation itself.
@@ -430,6 +430,13 @@ public struct AXAccessibilityFocus: AccessibilityFocus {
         focusedElement().flatMap(Self.identity(of:))
     }
 
+    /// Asks the window server for that one window, which answers nothing once it has closed.
+    public func windowIsOpen(_ windowNumber: UInt32) -> Bool? {
+        let info = CGWindowListCopyWindowInfo(.optionIncludingWindow, CGWindowID(windowNumber))
+        guard let windows = info as? [Any] else { return nil }
+        return !windows.isEmpty
+    }
+
     /// The element's owner, window and hash, the same three the context read records.
     private static func identity(of element: AXUIElement) -> FieldIdentity? {
         var owner: pid_t = 0
@@ -489,8 +496,12 @@ public struct AXAccessibilityFocus: AccessibilityFocus {
     }
 
     /// Reads a bounded window where possible, refusing an ambiguous multi-range selection.
-    private func textBeforeCaret(_ count: Int, of element: AXUIElement) -> (String, Int)? {
-        guard count > 0, !isSecureField(element), let range = selectionRange(of: element) else { return nil }
+    private func textBeforeCaret(
+        _ count: Int, of element: AXUIElement, checkSecure: Bool = true
+    ) -> (String, Int)? {
+        guard count > 0, (!checkSecure || !isSecureField(element)),
+            let range = selectionRange(of: element)
+        else { return nil }
         var rangeUnavailable = false
         if let window = CaretWindow.before(
             range.location, characters: count,
@@ -529,6 +540,21 @@ public struct AXAccessibilityFocus: AccessibilityFocus {
             let tail = BackwardSelection.tail(in: value, endingAt: caret, upTo: count)
         else { return (number, .unreadable) }
         return (number, .text(tail))
+    }
+
+    /// Checks and reads one captured focused element, so a single accept cannot spend two secure checks.
+    func readAcceptanceField(upTo count: Int) -> AcceptanceFieldRead {
+        guard count > 0,
+            let element = focusedElement(timeout: Self.acceptanceMessagingTimeout)
+        else { return .unreadable(windowNumber: nil) }
+        let number = Self.windowNumber(of: element)
+        return .guarded(
+            windowNumber: number, isSecure: { isSecureField(element) },
+            tail: {
+                guard let (value, caret) = textBeforeCaret(count, of: element, checkSecure: false)
+                else { return nil }
+                return BackwardSelection.tail(in: value, endingAt: caret, upTo: count)
+            })
     }
 
     /// Rechecks the destination window with the short accept-path timeout.
