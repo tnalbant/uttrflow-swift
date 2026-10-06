@@ -9,7 +9,8 @@ struct StandardPipelineTests {
     func order() {
         #expect(
             CleaningPipeline.standard.ids == [
-                "fillers", "repeatedPhrase", "stammers", "selfCorrection", "spokenPunctuation", "spokenCasing",
+                "fillers", "repeatedPhrase", "stammers", "selfCorrection", "spokenPunctuation",
+                "spokenCasing",
                 "layoutWords", "numberForms", "contractions", "spacing", "pauseStop", "spelledInitialism",
                 "acronymCasing", "sentenceBoundary", "firstWord", "commentMarker", "terminalStop",
             ])
