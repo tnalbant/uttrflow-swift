@@ -123,6 +123,14 @@ public struct EncryptedStore: Sendable {
         return code.map { String(format: "%02x", $0) }.joined()
     }
 
+    /// A keyed digest of `payload` under a key derived from the installation key for `purpose`, so equal inputs match without either being readable.
+    public func keyedDigest(of payload: Data, purpose: String) throws -> Data {
+        let key = try keys.key(createIfMissing: true)
+        let derived = HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: key, info: Data(purpose.utf8), outputByteCount: 32)
+        return Data(HMAC<SHA256>.authenticationCode(for: payload, using: derived))
+    }
+
     /// Revokes the shared key after all reset targets have been deleted successfully.
     public func revokeKey() throws {
         try keys.revokeKey()
