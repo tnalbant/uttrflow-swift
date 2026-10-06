@@ -1,6 +1,5 @@
 import Foundation
 public import UttrflowCore
-import UttrflowDictionary
 
 /// Capitalises each sentence and the pronoun "I", then cases the first word the way the formatter and the caret say.
 public struct FirstWordPass: WholeTextCleaningPass {
@@ -18,6 +17,8 @@ public struct FirstWordPass: WholeTextCleaningPass {
     public let ownWords: Set<String>
     /// Known spellings that start with a lower-case letter, keyed in lower case; a sentence start keeps that spelling.
     public let pinnedSpellings: [String: String]
+    /// Every term the lexicon, the screen or the user's dictionary writes its own way, keyed in lower case.
+    let namedForms: [String: String]
 
     public init(
         policy: FirstWordPolicy = .fromInsertionPoint, state: InsertionPoint.SentenceState = .unknown,
@@ -33,7 +34,9 @@ public struct FirstWordPass: WholeTextCleaningPass {
             vocabulary.flatMap { $0.split(whereSeparator: \.isWhitespace) }.map {
                 WordShape(String($0)).core.lowercased()
             })
-        self.pinnedSpellings = (casing ?? AcronymCasingPass(vocabulary: vocabulary)).lowerCaseForms
+        let casing = casing ?? AcronymCasingPass(vocabulary: vocabulary)
+        self.pinnedSpellings = casing.lowerCaseForms
+        self.namedForms = casing.forms
     }
 
     /// The word in the user's own spelling when that spelling starts lower case; otherwise unchanged.
@@ -274,7 +277,8 @@ public struct FirstWordPass: WholeTextCleaningPass {
     func strayCapitalLowered(_ word: String, in text: String) -> String {
         let core = WordShape(word).core
         guard policy == .fromInsertionPoint, core.first?.isUppercase == true, !Self.keepsCapital(word),
-            GeneralVocabulary.isOrdinary(core), !ownWords.contains(core.lowercased()),
+            LexicalClass.isKnownEnglishWord(core.lowercased()), !ownWords.contains(core.lowercased()),
+            namedForms[core.lowercased()] == nil, !LexicalClass.isNamed(core, in: text),
             !Self.isCalendarWord(word), !Self.isProperName(word, in: text),
             !Self.looksLikeName(word, in: onScreen)
         else { return word }
