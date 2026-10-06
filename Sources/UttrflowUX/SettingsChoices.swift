@@ -136,12 +136,12 @@ extension AcceptKey {
     func explanation(for kind: AppKind?) -> String? {
         switch self {
         case .tab:
-            Self.tabCollisionExplanation(for: kind)
+            return Self.tabCollisionExplanation(for: kind)
         case .rightArrow:
             guard let consequence = explanation else { return nil }
             return "\(Self.nativeTabExplanation(for: kind)) \(consequence)"
         case .optionTab:
-            Self.nativeTabExplanation(for: kind)
+            return Self.nativeTabExplanation(for: kind)
         }
     }
 

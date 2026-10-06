@@ -171,9 +171,10 @@ struct SettingsAcceptKeyGuidanceTests {
 
         let pane = SettingsPresenter.pane(for: .suggestions, settings: settings)
         func explanation(_ bundleIdentifier: String) throws -> String? {
-            try #require(
+            let identifier = bundleIdentifier.lowercased()
+            return try #require(
                 pane.groups.flatMap(\.rows).first {
-                    $0.id == "suggestionAcceptKey.\(bundleIdentifier)"
+                    $0.id == "suggestionAcceptKey.\(identifier)"
                 }
             ).explanation
         }
