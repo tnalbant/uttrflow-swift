@@ -1,3 +1,4 @@
+import NaturalLanguage
 public import UttrflowCore
 
 /// Turns a punctuation mark said by name into the mark, and a spoken email address into the address, when used rather than mentioned.
@@ -12,6 +13,9 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
 
     /// Names that are everyday nouns too, so a mid-sentence one is a mark only on positive evidence. See `Docs/cleanup.md`.
     static let ordinaryNames: Set<[String]> = [["comma"], ["colon"], ["dash"]]
+
+    /// Quotation names that are everyday words too: an opening is a mark only with its closing later in the sentence, a closing only inside an open quotation.
+    static let partneredNames: Set<[String]> = [["quote"], ["unquote"]]
 
     /// Romanised Hindi function words that can follow an explicitly spoken mark.
     private static let romanisedHindiEvidence: Set<String> = [
@@ -69,7 +73,9 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
                     at: position, spanning: found.words.count, in: live, of: draft,
                     reach: MentionGuard.phraseReach, kind: found.placement),
                 !isVerb(found.words, at: position, in: live, of: draft),
-                isPaired(found, at: position, in: live, of: draft, open: openBrackets),
+                isPaired(
+                    found, at: position, in: live, of: draft, open: openBrackets,
+                    quoting: !openQuotes.isEmpty),
                 isEvidenced(found.words, at: position, in: live, of: draft, repeated: repeated),
                 isPlaced(
                     found.text, before: position + found.words.count, spanning: found.words.count,
@@ -122,17 +128,21 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
         }
     }
 
-    /// A spoken bracket is a mark only as half of a pair around words: an opening needs its closing later in the sentence, a closing needs its opening.
+    /// A spoken bracket, or a partnered name, is a mark only as half of a pair around words: an opening needs its closing later in the sentence, a bracket closing needs its opening.
     private func isPaired(
-        _ command: SpokenCommand, at position: Int, in live: [Int], of draft: Draft, open: [Character]
+        _ command: SpokenCommand, at position: Int, in live: [Int], of draft: Draft, open: [Character],
+        quoting: Bool
     ) -> Bool {
-        guard SpokenCommands.isBracket(command.text), let bracket = command.text.first else { return true }
+        let partnered = Self.partneredNames.contains(command.words)
+        if partnered, command.placement == .closing { return quoting }
+        guard SpokenCommands.isBracket(command.text) || partnered, let bracket = command.text.first
+        else { return true }
         if let opener = WordShape.bracketOpeners[bracket] { return open.last == opener }
         // The closing must leave at least one word between it and the opening.
         var next = position + command.words.count + 1
         while next < live.count, !draft.shape(at: live[next - 2]).endsSentence {
             if SpokenCommands.closings.contains(where: {
-                WordShape.bracketOpeners[$0.text.first ?? " "] == bracket
+                (partnered ? $0.text.first : WordShape.bracketOpeners[$0.text.first ?? " "]) == bracket
                     && draft.spells($0.words, at: next, in: live)
             }) {
                 return true
@@ -167,7 +177,9 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
             term.applies(in: destination)
                 && (term.id.lowercased() == key
                     || term.spoken.contains {
-                        draft.spells($0.split(separator: " ").map(String.init), at: position, in: live)
+                        // Only a phrase opening on this word can match, so the rest are not read word by word.
+                        $0.split(separator: " ").first.map(String.init) == key
+                            && draft.spells($0.split(separator: " ").map(String.init), at: position, in: live)
                     })
         }
     }
@@ -235,16 +247,39 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
         else { return false }
         let length = row.words.count
         let value = live[position + length]
-        let option = draft.words[value].text
+        var (option, end) = optionSegments(from: position + length, literal: literal, in: live, of: draft)
         let joinsDevelopmentSuffix =
-            option == "save" && position + length + 1 < live.count
-            && draft.shape(at: live[position + length + 1]).key == "dev"
-        draft.replace(
-            at: value, with: row.text + option + (joinsDevelopmentSuffix ? "-dev" : ""), by: Self.id)
-        if joinsDevelopmentSuffix { draft.remove(at: live[position + length + 1], by: Self.id) }
-        for index in live[position..<(position + length)] { draft.remove(at: index, by: Self.id) }
-        live.removeSubrange(position..<(position + length + (joinsDevelopmentSuffix ? 2 : 0)))
+            option == "save" && end + 1 < live.count && draft.shape(at: live[end + 1]).key == "dev"
+        if joinsDevelopmentSuffix {
+            option += "-dev"
+            end += 1
+        }
+        draft.replace(at: value, with: row.text + option, by: Self.id)
+        for index in live[position..<(position + length)] + live[(position + length + 1)..<(end + 1)] {
+            draft.remove(at: index, by: Self.id)
+        }
+        live.removeSubrange((position + length + 1)..<(end + 1))
+        live.removeSubrange(position..<(position + length))
         return true
+    }
+
+    /// The option's name, one word or several joined by spoken literal dashes, and the position of its last word.
+    private func optionSegments(
+        from start: Int, literal: Set<Int>, in live: [Int], of draft: Draft
+    ) -> (String, Int) {
+        var option = draft.words[live[start]].text
+        var end = start
+        while end + 2 < live.count, !draft.shape(at: live[end]).endsClause,
+            literal.contains(live[end + 1]),
+            draft.shape(at: live[end + 2]).key != "dash",
+            // A dash before spelled letters or a number opens the next short option: `--rm -p 80`.
+            letterCluster(after: end + 1, in: live, of: draft) == nil,
+            numericOption(after: end + 1, in: live, of: draft) == nil
+        {
+            option += "-" + draft.words[live[end + 2]].text
+            end += 2
+        }
+        return (option, end)
     }
 
     /// The most letters one spoken short-option cluster joins: `tar -xzvf` and a little more.
@@ -331,7 +366,35 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
         if position > 0 && draft.shape(at: live[position - 1]).endsClause { return true }
         return next == live.count
             || next < live.count
-                && isFunctionWordEvidence(draft.shape(at: live[next]).key)
+                && (isFunctionWordEvidence(draft.shape(at: live[next]).key)
+                    || closesAPhrase(words, at: position, in: live, of: draft))
+    }
+
+    /// Names that stand between two phrases, where the noun "comma" or "colon" would instead be the object or modifier of the word before.
+    static let seamNames: Set<[String]> = [["comma"], ["colon"]]
+
+    /// Word classes after which the noun reading takes the name as an object or modifier: "has colon trouble", "from colon cancer".
+    private static let nounTakers: Set<NLTag> = [.verb, .preposition, .adjective, .determiner]
+
+    /// Whether a spoken comma or colon follows a word that closes a phrase, so it is not the object or modifier of that word and does not join the word after it into a compound.
+    private func closesAPhrase(_ words: [String], at position: Int, in live: [Int], of draft: Draft) -> Bool {
+        guard Self.seamNames.contains(words), position > 0 else { return false }
+        var start = position
+        while start > 0, !draft.shape(at: live[start - 1]).endsSentence { start -= 1 }
+        let end = draft.sentenceEnd(from: position, in: live)
+        let keys = live[start..<end].map { draft.shape(at: $0).key }
+        let tags = LexicalClass.tags(ofWords: keys)
+        let before = position - 1 - start
+        let after = position + 1 - start
+        // A participle after the name joins it into a compound modifier, as in comma-separated.
+        if after < keys.count, tags[after] == .verb,
+            LexicalClass.lemma(ofWordAt: after, in: keys).map({ $0 != keys[after] }) ?? false
+        {
+            return false
+        }
+        // The first word of a sentence is an imperative or a heading, never the verb the name is the object of.
+        guard let tag = tags[before], before > 0 || tag != .verb else { return true }
+        return !Self.nounTakers.contains(tag)
     }
 
     private func isFunctionWordEvidence(_ word: String) -> Bool {

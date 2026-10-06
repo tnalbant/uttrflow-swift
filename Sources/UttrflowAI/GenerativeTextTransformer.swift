@@ -60,20 +60,24 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
     ) async throws(TransformationError) -> TransformationResult {
         let formatter = DestinationFormatter.standard(for: request.situation)
         let pipeline = CleaningPipeline.beforeModel(
-            for: formatter, situation: request.situation, steps: steps)
+            for: formatter, situation: request.situation, steps: steps,
+            pauses: request.profile.pauses)
         // The passes go first, so fillers and self-corrections are gone before the model can rewrite them.
         let draft = pipeline.run(Draft(transcription: request.transcription))
         let spoken = draft.text
-        if let floor = try await Self.floorSettles(request, draft: draft, formatter: formatter, steps: steps) {
-            return floor
-        }
         // The sources answer in milliseconds and run beside each other, so the readings cost the call nothing.
         let readings = await doubtful.spans(in: draft, for: request.situation)
+        // A run the recogniser scored low with a reading offered is the model's to choose, which the rules cannot do.
+        if !readings.contains(where: { $0.reason == .lowScore }),
+            let floor = try await Self.floorSettles(request, draft: draft, formatter: formatter, steps: steps)
+        {
+            return floor
+        }
         let rewritten = try await model.rewrite(
             prompts.userPrompt(
                 for: request, spoken: spoken, doubtful: readings,
                 preserving: steps.switchedOff),
-            instructions: prompts.instructions(for: request.situation.destination), kind: kind
+            prompt: prompts.conversation(for: request.situation.destination), kind: kind
         )
 
         // Models echo the shape of the worked examples, so the answer is unwrapped before it is judged.
@@ -109,9 +113,12 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
 
         // Only a taught reading has an entry to count; the screen's and the vocabulary's have none.
         let taken = meaningGuard.readingsTaken(draft: draft, rewritten: finished, offering: readings)
+        // The guard judges words, so a mark added where the clause runs on is taken out here, alone.
+        let marked = AddedMarkCheck.checked(finished, against: spoken).text
         return TransformationResult(
-            text: finished, producedBy: kind,
-            cleaning: CleaningRecord(draft: draft, ran: pipeline.ids),
+            text: marked, producedBy: kind,
+            cleaning: Self.record(
+                before: draft, after: polished, ran: pipeline.ids + finishing.ids, modelAnswer: rewritten),
             entriesTaken: taken.compactMap(\.entryID))
     }
 
@@ -130,8 +137,19 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
             !QuestionShape.opensQuestionLater(draft.presentIndices.map(draft.shape(at:)))
         else { return nil }
         let floor = try await RuleBasedTransformer(steps: steps).transform(request)
-        let unchanged = MeaningPreservationGuard.grammarTokens(floor.text).map(\.matching) == tokens.map(\.matching)
+        let unchanged =
+            MeaningPreservationGuard.grammarTokens(floor.text).map(\.matching) == tokens.map(\.matching)
         return unchanged ? floor : nil
+    }
+
+    /// One account of the passes on both sides of the model, a step that ran on both sides counted once.
+    private static func record(
+        before: Draft, after: Draft, ran: [PassID], modelAnswer: String
+    ) -> CleaningRecord {
+        CleaningRecord.merging([
+            CleaningRecord(draft: before, ran: ran),
+            CleaningRecord(draft: after, ran: ran, modelAnswers: [modelAnswer]),
+        ])
     }
 
     /// The caret's echo the finishing pipeline took back, which the model did answer with and the guard must see.

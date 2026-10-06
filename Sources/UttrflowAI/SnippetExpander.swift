@@ -23,10 +23,10 @@ public struct SnippetExpander: Sendable {
         guard !candidates.isEmpty else { return .unchanged(transcript) }
 
         // Normalised once, so the quoting check does not re-tidy the transcript per snippet.
-        let spoken = transcript.snippetWordRuns().map { $0.text.lowercased() }
+        let spoken = WordTokens.words(transcript, .comparison).map { $0.lowercased() }
         let eligible = candidates.filter { !Self.contains($0.quoted, in: spoken) }
 
-        let runs = transcript.snippetWordRuns()
+        let runs = WordTokens.tokens(transcript, .comparison)
         var applied: [AppliedSnippet] = []
         var text = ""
         var caret: Int?
@@ -47,24 +47,29 @@ public struct SnippetExpander: Sendable {
                     ".!?\n\r".contains($0)
                 } ?? true
             let body = hit.body
-            let written = Self.expansion(body.text, sentenceStart: sentenceStart)
+            var written = Self.expansion(body.text, sentenceStart: sentenceStart)
             if caret == nil, let marked = body.caret {
                 // Capitalising can change the first letter's length, which shifts a caret that sits after it.
                 let shift = marked == 0 ? 0 : written.utf16.count - body.text.utf16.count
                 caret = text.utf16.count + marked + shift
+            }
+            var after = span.upperBound
+            if let next = transcript[after...].first,
+                let terminal = Self.terminalMark(in: body.text),
+                Self.sameTerminalClass(next, terminal)
+            {
+                // A full stop after the trigger is the tidier's; any other mark is the speaker's and replaces the expansion's.
+                if next != ".", let index = written.lastIndex(where: { !$0.isWhitespace }) {
+                    written.remove(at: index)
+                } else {
+                    after = transcript.index(after: after)
+                }
             }
             text += written
             applied.append(
                 AppliedSnippet(
                     snippetID: hit.snippet.id, matched: String(transcript[span]),
                     expansion: body.text))
-            var after = span.upperBound
-            if let next = transcript[after...].first,
-                let terminal = Self.terminalMark(in: body.text),
-                Self.sameTerminalClass(next, terminal)
-            {
-                after = transcript.index(after: after)
-            }
             copiedUpTo = after
             position += hit.words.count
         }
@@ -106,7 +111,7 @@ public struct SnippetExpander: Sendable {
 
     /// Whether the trigger's words sit at `position` as one phrase, with neither end glued to a neighbour.
     private func fits(
-        _ candidate: Candidate, at position: Int, of runs: [SnippetWordRun], in transcript: String
+        _ candidate: Candidate, at position: Int, of runs: [WordToken], in transcript: String
     ) -> Bool {
         let length = candidate.words.count
         guard position + length <= runs.count else { return false }
@@ -136,7 +141,7 @@ public struct SnippetExpander: Sendable {
 
     /// The text between two word runs; never empty, because runs are maximal.
     private static func gap(
-        _ first: SnippetWordRun, _ second: SnippetWordRun, _ transcript: String
+        _ first: WordToken, _ second: WordToken, _ transcript: String
     ) -> Substring {
         transcript[first.range.upperBound..<second.range.lowerBound]
     }
@@ -189,7 +194,7 @@ extension SnippetExpander {
             self.snippet = snippet
             self.words = words
             body = snippet.body
-            let runs = snippet.trigger.snippetWordRuns()
+            let runs = WordTokens.tokens(snippet.trigger, .comparison)
             joiners = zip(runs, runs.dropFirst()).map { first, second in
                 let gap = snippet.trigger[first.range.upperBound..<second.range.lowerBound]
                 guard gap.count == 1, let character = gap.first,
@@ -198,7 +203,7 @@ extension SnippetExpander {
                 else { return nil }
                 return character
             }
-            quoted = body.text.snippetWordRuns().map { $0.text.lowercased() }
+            quoted = WordTokens.words(body.text, .comparison).map { $0.lowercased() }
             key = words.joined(separator: " ")
         }
 

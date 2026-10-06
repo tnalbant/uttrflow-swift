@@ -174,7 +174,7 @@ public struct DestinationFormatter: Sendable, Equatable {
             promptBlock: "codeEditor"),
         .terminal: DestinationFormatter(
             destination: .terminal, firstWord: .asSpoken, terminalStop: .never,
-            layout: .preserveNewlines, grammar: .asSpoken, numbers: .always, digits: .none,
+            layout: .singleLine, grammar: .asSpoken, numbers: .always, digits: .none,
             promptBlock: "terminal", consequence: .executes),
         .messaging: DestinationFormatter(
             destination: .messaging, firstWord: .fromInsertionPoint,
@@ -193,8 +193,20 @@ public struct DestinationFormatter: Sendable, Equatable {
     public func owesFormatting(_ text: String) -> Bool {
         let first = text.first.map(String.init) ?? ""
         let owesCapital = firstWord != .asSpoken && first != first.uppercased()
-        let owesStop = terminalStop != .never && !text.contains(where: { ".!?;,".contains($0) })
+        let owesStop = terminalStop != .never && !Self.hasClauseMark(text)
         return owesCapital && owesStop
+    }
+
+    /// Whether `text` holds a clause mark; one between two digits, as in "2.4.1" or "9,000", belongs to the number.
+    private static func hasClauseMark(_ text: String) -> Bool {
+        let characters = Array(text)
+        return characters.indices.contains { index in
+            guard ".!?;,".contains(characters[index]) else { return false }
+            let inNumber =
+                index > 0 && index + 1 < characters.count
+                && characters[index - 1].isNumber && characters[index + 1].isNumber
+            return !inNumber
+        }
     }
 
     /// The formatter for a destination, falling back to plain text's for one the registry lacks.
@@ -210,11 +222,12 @@ public struct DestinationFormatter: Sendable, Equatable {
     public static func standard(for situation: Situation) -> DestinationFormatter {
         let base = standard(for: situation.destination)
         let preceding = situation.insertion.precedingText
-        if situation.destination == .codeEditor,
-            CaretStructure.region(precedingText: preceding, documentName: situation.app.documentName)
-                == .prose
-        {
-            return proseInCodeEditor(base)
+        if situation.destination == .codeEditor {
+            let region = CaretStructure.region(
+                precedingText: preceding, documentName: situation.app.documentName)
+            if region == .prose { return proseInCodeEditor(base) }
+            // A statement opens no sentence, so source takes its first word as spoken, as a terminal does.
+            if region.isCode, preceding != nil { return withFirstWord(.asSpoken, base) }
         }
         let rule = DestinationClassifier.rule(for: situation.app)
             .flatMap { $0.destination == situation.destination ? $0 : nil }
@@ -232,6 +245,18 @@ public struct DestinationFormatter: Sendable, Equatable {
             layout: isSingleLine ? .singleLine : base.layout,
             grammar: base.grammar, numbers: base.numbers, digits: base.digits,
             promptBlock: base.promptBlock, consequence: isSearch ? .navigates : base.consequence)
+    }
+
+    /// The same formatter with another first-word policy.
+    private static func withFirstWord(
+        _ firstWord: FirstWordPolicy, _ base: DestinationFormatter
+    )
+        -> DestinationFormatter
+    {
+        DestinationFormatter(
+            destination: base.destination, firstWord: firstWord, terminalStop: base.terminalStop,
+            layout: base.layout, grammar: base.grammar, numbers: base.numbers, digits: base.digits,
+            promptBlock: base.promptBlock, consequence: base.consequence)
     }
 
     /// A code editor's formatter with a document's stops and lists, for prose in a Markdown or text file.

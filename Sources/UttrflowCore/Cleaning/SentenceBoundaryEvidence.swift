@@ -2,14 +2,14 @@
 public enum SentenceBoundaryEvidence {
     /// Whether the words on both sides show that the sentence carried on.
     public static func sentenceRunsOn(_ text: String, into next: String) -> Bool {
-        let previous = text.split(whereSeparator: \.isWhitespace).map { WordShape(String($0)) }
-        let following = next.split(whereSeparator: \.isWhitespace).map { WordShape(String($0)) }
+        let previous = WordTokens.words(text, .display).map(WordShape.init)
+        let following = WordTokens.words(next, .display).map(WordShape.init)
         guard let last = previous.last, let first = following.first else { return false }
         let previousKeys = previous.map(\.key)
         let followingKeys = following.map(\.key)
         if text.last == ".", subordinators.contains(previous[0].key) { return true }
         if neverLast.contains(last.key) || opensWithAPhrase(following)
-            || completesFinalPhrase(previous, following)
+            || completesFinalPhrase(previous, following) || completesSeamPreposition(previous, following)
         {
             return true
         }
@@ -29,6 +29,22 @@ public enum SentenceBoundaryEvidence {
             neverFronted.contains(following[0].key) || seamPrepositions.contains(following[0].key)
         else { return false }
         return determiners.contains(following[1].key) || following[1].core.first?.isUppercase == true
+    }
+
+    /// "on. A4 paper": a verbless fragment is the object of a preposition not closing a phrasal verb. See `Docs/cleanup.md`.
+    private static func completesSeamPreposition(_ previous: [WordShape], _ following: [WordShape]) -> Bool {
+        guard let last = previous.last, seamPrepositions.contains(last.key), following.count > 1 else {
+            return false
+        }
+        if previous.count > 1, objectPronouns.contains(previous[previous.count - 2].key) { return false }
+        let clauseEnd = following.firstIndex(where: \.endsSentence).map { $0 + 1 } ?? following.count
+        let fragment = following.prefix(clauseEnd)
+        let tags = LexicalClass.tags(ofWords: (previous + fragment).map(\.core)).dropFirst(previous.count)
+        guard !tags.contains(.verb), !tags.contains(.otherWord), let opening = tags.first else {
+            return false
+        }
+        if fragment[fragment.startIndex].core.contains(where: \.isNumber) { return true }
+        return opening != .pronoun && opening != .interjection
     }
 
     private static func completesFinalPhrase(_ previous: [WordShape], _ following: [WordShape]) -> Bool {
@@ -60,6 +76,9 @@ public enum SentenceBoundaryEvidence {
     private static let seamPrepositions: Set<String> = ["on", "in", "up", "around"]
     private static let seamObjectEndings: [[String]] = [
         ["could", "finish"], ["pick", "up"], ["look"], ["covers"],
+    ]
+    private static let objectPronouns: Set<String> = [
+        "it", "them", "him", "her", "me", "us", "you", "this", "that",
     ]
     private static let subordinators: Set<String> = ["although", "because", "if", "when"]
 }
