@@ -442,7 +442,7 @@ public struct NumberFormsPass: PieceCleaningPass {
             && NumberWords.isNumber(keys[after + 1])
     }
 
-    /// A cued time whose minutes open with a spoken zero, read before the same words can join as a digit string.
+    /// A cued time whose minutes open with a spoken zero; a sentence end alone is no cue, so "extension three zero two" stays digits.
     private static func cuedClock(at position: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
         guard let hour = NumberWords.cardinal(keys[position...position])?.value,
             position + 1 < keys.count, clockZeros.contains(keys[position + 1]),
@@ -451,7 +451,8 @@ public struct NumberFormsPass: PieceCleaningPass {
         let end = position + 1 + time.count
         guard !(joined(end, shapes) && singleDigit(keys[end]) != nil),
             timeAcceptable(
-                position: position, minuteStart: position + 1, minuteEnd: end, keys: keys, shapes: shapes)
+                position: position, minuteStart: position + 1, minuteEnd: end, keys: keys, shapes: shapes,
+                sentenceEndIsCue: false)
         else { return nil }
         return Phrase(text: time.text, count: end - position)
     }
@@ -554,13 +555,14 @@ public struct NumberFormsPass: PieceCleaningPass {
         return NumberWords.digits(keys[major]) != nil || NumberWords.cardinal(keys[major..<currency]) != nil
     }
 
-    /// Requires a time cue, or a sentence end after the minute, when the hour and minute form one phrase.
+    /// Requires a time cue, or a sentence end after the minute unless the caller needs a cue, when the hour and minute form one phrase.
     private static func timeAcceptable(
         position: Int, minuteStart: Int, minuteEnd: Int,
-        keys: [String], shapes: [WordShape]
+        keys: [String], shapes: [WordShape], sentenceEndIsCue: Bool = true
     ) -> Bool {
         let hasBeforeCue = hasTimeCue(before: position, keys: keys, shapes: shapes)
-        let endsTheSentence = minuteEnd >= shapes.count || shapes[minuteEnd - 1].endsSentence
+        let endsTheSentence =
+            sentenceEndIsCue && (minuteEnd >= shapes.count || shapes[minuteEnd - 1].endsSentence)
         let hasAfterCue =
             minuteEnd < shapes.count && joined(minuteEnd, shapes)
             && (meridiems.contains(keys[minuteEnd]) || keys[minuteEnd] == "o'clock")
