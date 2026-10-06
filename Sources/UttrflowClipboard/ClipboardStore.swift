@@ -123,7 +123,7 @@ public actor ClipboardStore {
         return retained(stored, keeping: retention)
     }
 
-    /// Returns each damaged index copy once, so the app can tell the user where it was preserved.
+    /// Returns each damaged index copy once, so the app can tell the user where it is kept.
     public func takeUnreadableIndexSetAsides() -> [URL] {
         defer { unreadableIndexSetAsides = [] }
         return unreadableIndexSetAsides
@@ -161,7 +161,7 @@ public actor ClipboardStore {
         return try settled(updated, keeping: retention)
     }
 
-    /// Restores a deleted clip as it was, unless a newer copy already exists.
+    /// Restores a deleted clip unchanged, unless a newer copy already exists.
     @discardableResult
     public func restore(
         _ clip: Clip, keeping retention: ClipRetention

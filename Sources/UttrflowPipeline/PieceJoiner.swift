@@ -31,7 +31,7 @@ enum PieceJoiner {
                 removableStops.append(original.count - 1)
             }
         }
-        // The message's finishing cases the openings and adds a closing stop, which leaves every seam stop where it was.
+        // The message's finishing cases the openings and adds a closing stop, which leaves every seam stop in place.
         let head = String(text.prefix(original.count))
         let exact =
             head.lowercased() == original.lowercased() && head.count == original.count

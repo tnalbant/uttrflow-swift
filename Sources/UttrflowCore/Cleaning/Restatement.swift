@@ -224,8 +224,7 @@ public enum Restatement {
         return draft.shape(at: live[candidate + 1]).key == draft.shape(at: live[restart + 1]).key
     }
 
-    /// A camel-case dictionary word can retain the first heard word as a component, such as `payment` in `PaymentSheet`.
-    /// Reads `written` as spoken, before lower-casing, since the components are found at its capitals.
+    /// Whether `heard` anchors on `written` or one of its camel-case components, such as `payment` in `PaymentSheet`.
     private static func anchors(_ heard: String, the written: String) -> Bool {
         guard heard != written.lowercased(), heard.count >= 3 else { return heard == written.lowercased() }
         let characters = Array(written)
