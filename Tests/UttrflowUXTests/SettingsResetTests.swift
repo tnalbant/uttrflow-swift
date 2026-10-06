@@ -750,7 +750,7 @@ struct SettingsResetLeftoverTests {
                 dictionary: dictionary,
                 history: DictationHistoryStore(file: directory.appending(path: "history.json")),
                 clipboard: ClipboardStore(file: directory.appending(path: "clipboard.json")),
-                evidence: evidence)
+                ledger: NetworkActivityLedger(file: nil), evidence: evidence)
             let retention = Retention(days: RetentionWindow.keepAlwaysDays, now: now)
             #expect(await store.personalisation(keeping: retention).persona.isEmpty)
 
