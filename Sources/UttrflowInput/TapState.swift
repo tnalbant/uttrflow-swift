@@ -4,7 +4,7 @@ internal import Synchronization
 internal import UttrflowPredict
 
 /// Everything the C callback may touch, held where a raw pointer can reach it.
-final class TapState: @unchecked Sendable {
+final class TapState: TapPayload, @unchecked Sendable {
     /// How many taken keystrokes may wait for the drain; while it is that far behind, newer ones are dropped.
     static let capacity = 64
 
@@ -25,52 +25,29 @@ final class TapState: @unchecked Sendable {
     private let written = Atomic<UInt64>(0)
     /// How many the drain has ever taken out of it.
     private let read = Atomic<UInt64>(0)
-    /// How many disables have counted against the tap inside the current window.
-    private let disables = Atomic<Int>(0)
-    /// When the last disable arrived, in nanoseconds on `clock`.
-    private let lastDisable = Atomic<UInt64>(0)
-    /// The tap port, retained here so the callback can re-enable it without a lock.
-    private let tapPointer = Atomic<UnsafeMutableRawPointer?>(nil)
+    /// The port the callback re-enables and the disables counted against it.
+    let tapPort: TapPort
     /// Woken on every write, so the drain runs off the tap's own thread.
     private let signal: any DispatchSourceUserDataAdd
-    /// The time disables and holds are measured on, injected so a test can move it by hand.
-    private let clock: ElapsedClock
 
     init(signal: any DispatchSourceUserDataAdd, clock: some Clock<Duration> = ContinuousClock()) {
         self.signal = signal
-        self.clock = ElapsedClock(clock)
+        tapPort = TapPort(clock: clock)
         hold = KeyHold(clock: clock)
         ring = .allocate(capacity: Self.capacity)
         ring.initialize(repeating: 0, count: Self.capacity)
     }
 
     deinit {
-        if let held = tapPointer.load(ordering: .relaxed) { Unmanaged<CFMachPort>.fromOpaque(held).release() }
         ring.deinitialize(count: Self.capacity)
         ring.deallocate()
     }
 
     /// Keeps a new tap's port for the callback and forgets older disables, so each tap is judged alone.
-    func adopt(_ port: CFMachPort) {
-        lastDisable.store(0, ordering: .relaxed)  // The new tap starts with no disables.
-        if let previous = tapPointer.exchange(Unmanaged.passRetained(port).toOpaque(), ordering: .releasing) {
-            Unmanaged<CFMachPort>.fromOpaque(previous).release()
-        }
-    }
-
-    /// Lets go of the port if it is still the one held, which its tap keeps alive for any callback still reading it.
-    func relinquish(_ port: CFMachPort) {
-        let expected = Unmanaged.passUnretained(port).toOpaque()
-        if tapPointer.compareExchange(expected: expected, desired: nil, ordering: .releasing).exchanged {
-            Unmanaged<CFMachPort>.fromOpaque(expected).release()
-        }
-    }
+    func adopt(_ port: CFMachPort) { tapPort.adopt(port) }
 
     /// The port to re-enable, read only on the path where the tap has already been disabled.
-    func port() -> CFMachPort? {
-        guard let held = tapPointer.load(ordering: .acquiring) else { return nil }
-        return Unmanaged<CFMachPort>.fromOpaque(held).takeUnretainedValue()
-    }
+    func port() -> CFMachPort? { tapPort.port() }
 
     /// Records one taken keystroke, or drops it and returns false when the drain is a whole ring behind.
     @discardableResult
@@ -86,11 +63,7 @@ final class TapState: @unchecked Sendable {
 
     /// Whether the tap should be turned back on, which it is unless it keeps being disabled within a short window.
     func shouldReEnable() -> Bool {
-        let now = clock.nanoseconds
-        let last = lastDisable.exchange(now, ordering: .relaxed)
-        let (count, reEnable) = TapDisableWindow.decide(
-            last: last, now: now, count: disables.load(ordering: .relaxed))
-        disables.store(count, ordering: .relaxed)
+        let reEnable = tapPort.shouldReEnable()
         if !reEnable {
             gaveUp.store(true, ordering: .releasing)
             signal.add(data: 1)
