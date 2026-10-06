@@ -722,12 +722,15 @@ enum PieceJoiner {
             }
     }
 
-    /// Whether a bare ordinal opens a piece and a clause after it: "first we fix the build", where "first place" names a rank.
+    /// Whether a bare ordinal opens a piece and a clause after it, "first we fix it" or "first check the logs", where "first place" names a rank.
     private static func opensClauseAfterPause(
         at position: Int, in draft: Draft, _ live: [Int], starts: [Int]
     ) -> Bool {
         guard starts.contains(live[position]), position + 1 < live.count else { return false }
-        return QuestionShape.newSubjects.contains(draft.shape(at: live[position + 1]).key)
+        let pieceEnd = starts.first { $0 > live[position] } ?? draft.words.count
+        let words = live[position...].prefix { $0 < pieceEnd }.map { draft.shape(at: $0).core }
+        guard words.count > 1, let next = LexicalClass.tags(ofWords: words)[1] else { return false }
+        return next == .pronoun || next == .verb
     }
 
     /// Whether earlier sentence openings establish the ordinal sequence before this word.
