@@ -330,7 +330,7 @@ struct SettingsSuggestionEditorTests {
         settings = try SettingsEditor.apply(
             .suggestionAcceptKey(application: xcode, key: .tab), to: settings)
         #expect(settings.suggestions.acceptKeys.key(forBundleIdentifier: xcode) == .tab)
-        #expect(settings.suggestions.acceptKeys.key(forBundleIdentifier: notes) == .tab)
+        #expect(settings.suggestions.acceptKeys.key(forBundleIdentifier: notes) == .optionTab)
         #expect(
             settings.suggestions.acceptKeys.key(forBundleIdentifier: "com.apple.Terminal")
                 == .rightArrow)
