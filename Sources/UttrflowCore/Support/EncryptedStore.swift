@@ -67,12 +67,9 @@ public struct EncryptedStore: Sendable {
             } else {
                 payload = data
             }
-            let value: Value
-            do {
-                value = try JSONDecoder().decode(type, from: payload)
-            } catch {
-                if !isEnvelope { return .unreadable(setAside: LocalStore.setAside(url, now: now)) }
-                throw error
+            guard let value = LocalStore.decodeKeepingReadable(type, from: payload, readFrom: url, now: now)
+            else {
+                return .unreadable(setAside: LocalStore.setAside(url, now: now))
             }
             if !isEnvelope {
                 do {

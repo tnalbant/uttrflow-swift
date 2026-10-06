@@ -37,6 +37,29 @@ public enum StoredList<Value: Decodable & Sendable>: Sendable {
     }
 }
 
+/// A stored list that can be decoded one element at a time, so an entry written by a newer build costs only itself.
+protocol ElementwiseDecodable {
+    /// The elements this build can decode, and how many it could not.
+    static func decodeEachElement(from data: Data) throws -> (value: Any, dropped: Int)
+}
+
+extension Array: ElementwiseDecodable where Element: Decodable {
+    static func decodeEachElement(from data: Data) throws -> (value: Any, dropped: Int) {
+        let attempts = try JSONDecoder().decode([Attempt].self, from: data)
+        let kept = attempts.compactMap(\.element)
+        return (kept, attempts.count - kept.count)
+    }
+
+    /// One element, or `nil` when this build cannot decode it.
+    private struct Attempt: Decodable {
+        let element: Element?
+
+        init(from decoder: any Decoder) throws {
+            element = try? Element(from: decoder)
+        }
+    }
+}
+
 extension LocalStore {
     private static let log = Logger(subsystem: productionIdentifier, category: "store")
 
@@ -62,10 +85,28 @@ extension LocalStore {
         } catch {
             return .unreadable(setAside: setAside(url, now: now))
         }
-        guard let value = try? JSONDecoder().decode(type, from: data) else {
+        guard let value = decodeKeepingReadable(type, from: data, readFrom: url, now: now) else {
             return .unreadable(setAside: setAside(url, now: now))
         }
         return .read(value)
+    }
+
+    /// Decodes a stored value; a list keeps every element this build can read, copying the file's original bytes aside when one is dropped.
+    static func decodeKeepingReadable<Value: Decodable>(
+        _ type: Value.Type, from data: Data, readFrom url: URL, now: Date
+    ) -> Value? {
+        guard let list = type as? any ElementwiseDecodable.Type else {
+            return try? JSONDecoder().decode(type, from: data)
+        }
+        guard let (decoded, dropped) = try? list.decodeEachElement(from: data), let value = decoded as? Value
+        else { return nil }
+        if dropped > 0 {
+            log.error(
+                "Kept the readable entries of \(url.lastPathComponent, privacy: .public), dropping \(dropped)"
+            )
+            _ = putAside(url, now: now, keepingOriginal: true)
+        }
+        return value
     }
 
     /// Whether a file read under this name has been set aside and is still waiting beside it.
@@ -112,6 +153,11 @@ extension LocalStore {
 
     /// Renames an unreadable file to a timestamped name beside it, answering `nil` when it cannot be moved.
     public static func setAside(_ url: URL, now: Date) -> URL? {
+        putAside(url, now: now, keepingOriginal: false)
+    }
+
+    /// Moves a file, or copies it when the original stays in use, to a timestamped name beside it.
+    private static func putAside(_ url: URL, now: Date, keepingOriginal: Bool) -> URL? {
         let name = url.lastPathComponent
         let stamp = "\(name)\(setAsideMarker)\(Int(now.timeIntervalSince1970))"
         let folder = url.deletingLastPathComponent()
@@ -121,7 +167,11 @@ extension LocalStore {
             guard !FileManager.default.fileExists(atPath: destination.path(percentEncoded: false))
             else { continue }
             do {
-                try FileManager.default.moveItem(at: url, to: destination)
+                if keepingOriginal {
+                    try FileManager.default.copyItem(at: url, to: destination)
+                } else {
+                    try FileManager.default.moveItem(at: url, to: destination)
+                }
                 try? PrivateFile.excludeFromBackup(at: destination)
                 log.error("Set aside an unreadable \(name, privacy: .public) instead of replacing it")
                 return destination

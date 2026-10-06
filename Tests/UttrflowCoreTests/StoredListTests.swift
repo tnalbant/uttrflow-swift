@@ -1,5 +1,6 @@
 // Tests for reading a stored file: missing, readable, and unreadable ones set aside.
 
+import CryptoKit
 import Foundation
 import Testing
 
@@ -188,5 +189,60 @@ struct StoredListTests {
         try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: root.path)
         defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: root.path) }
         #expect(throws: (any Error).self) { try LocalStore.removeSetAside(root.appending(path: "list.json")) }
+    }
+
+    private enum Origin: String, Codable, Equatable { case typed, learned }
+
+    private struct Entry: Codable, Equatable {
+        let word: String
+        let origin: Origin
+    }
+
+    private let mixedList = Data(
+        """
+        [{"word":"Ardent","origin":"typed"},{"word":"Velmor","origin":"someFutureOrigin"},\
+        {"word":"Quist","origin":"learned"}]
+        """.utf8)
+
+    @Test("One entry a newer build wrote costs only itself, and the file's bytes are copied aside.")
+    func keepsReadableEntries() throws {
+        let file = try folder().appending(path: "list.json")
+        try mixedList.write(to: file)
+        let stored = LocalStore.read([Entry].self, from: file, now: now)
+        #expect(
+            stored.value == [Entry(word: "Ardent", origin: .typed), Entry(word: "Quist", origin: .learned)])
+        #expect(try Data(contentsOf: file) == mixedList)
+        let aside = file.deletingLastPathComponent().appending(path: "list.json.unreadable-1800000000")
+        #expect(try Data(contentsOf: aside) == mixedList)
+    }
+
+    @Test("A list whose every entry decodes leaves nothing aside.")
+    func readableListLeavesNothingAside() throws {
+        let file = try folder().appending(path: "list.json")
+        try Data(#"[{"word":"Ardent","origin":"typed"}]"#.utf8).write(to: file)
+        #expect(LocalStore.read([Entry].self, from: file, now: now).value?.count == 1)
+        #expect(!LocalStore.hasSetAside(file))
+    }
+
+    @Test("An encrypted list keeps the entries this build can read.")
+    func encryptedKeepsReadableEntries() throws {
+        let file = try folder().appending(path: "list.json")
+        let store = EncryptedStore(keys: FixedKey())
+        try store.write([MixedEntry.known, MixedEntry.future], to: file)
+        let stored = store.read([Entry].self, from: file, now: now)
+        #expect(stored.value == [Entry(word: "Ardent", origin: .typed)])
+        #expect(LocalStore.hasSetAside(file))
+    }
+
+    private struct FixedKey: StoreKeyProviding {
+        private static let value = SymmetricKey(size: .bits256)
+        func key(createIfMissing: Bool) throws -> SymmetricKey { Self.value }
+    }
+
+    private struct MixedEntry: Codable {
+        static let known = MixedEntry(word: "Ardent", origin: "typed")
+        static let future = MixedEntry(word: "Velmor", origin: "someFutureOrigin")
+        let word: String
+        let origin: String
     }
 }
