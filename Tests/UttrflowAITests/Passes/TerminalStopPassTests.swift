@@ -13,10 +13,20 @@ struct TerminalStopPassTests {
     @Test(
         "finishes a sentence that has no ending",
         arguments: [
-            ("hello there", "hello there."), ("42", "42."), ("ship it", "ship it."),
+            ("hello there", "hello there."), ("42 apples", "42 apples."), ("ship it", "ship it."),
             ("मेरी उड़ान 15 अगस्त को सुबह 9 बजे है", "मेरी उड़ान 15 अगस्त को सुबह 9 बजे है."),
         ])
     func addsStop(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
+        "adds no stop to a dictation made only of digits",
+        arguments: [
+            ("42", "42"), ("415 555 0100", "415 555 0100"), ("4,096", "4,096"),
+            ("4th", "4th."), ("10%", "10%."),
+        ])
+    func leavesDigitsOpen(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
     }
 

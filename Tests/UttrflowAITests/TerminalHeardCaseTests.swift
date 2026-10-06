@@ -84,3 +84,40 @@ struct TerminalHeardCaseTests {
         #expect(cleaned == "the build failed")
     }
 }
+
+/// A spoken flag letter is an option, not the pronoun, so later casing leaves it alone.
+@Suite("A spoken flag letter keeps the case it was given", .bug(id: 4442))
+struct SpokenFlagCaseTests {
+    private static let terminal = AppContext(
+        applicationName: "Terminal", bundleIdentifier: "com.apple.Terminal")
+    private static let codeEditor = AppContext(
+        applicationName: "Xcode", bundleIdentifier: "com.apple.dt.Xcode",
+        documentName: "AppDelegate.swift")
+    private static let notes = AppContext(applicationName: "Notes", bundleIdentifier: "com.apple.Notes")
+
+    private static func cleaned(_ spoken: String, into app: AppContext) -> String {
+        let situation = SituationResolver.resolve(from: app)
+        let formatter = DestinationFormatter.standard(for: situation.destination)
+        return CleaningPipeline.standard(for: formatter, situation: situation)
+            .run(Draft(text: spoken)).text
+    }
+
+    @Test(
+        "dash i stays -i, dash capital i is -I, and dash v stays -v",
+        arguments: [
+            ("ssh dash i key", "ssh -i key"),
+            ("grep dash i error", "grep -i error"),
+            ("grep dash capital i error", "grep -I error"),
+            ("curl dash v example.com", "curl -v example.com"),
+        ])
+    func flagLetterKeepsItsCase(_ spoken: String, _ expected: String) {
+        #expect(Self.cleaned(spoken, into: Self.terminal) == expected)
+        let option = expected.split(separator: " ")[1]
+        #expect(Self.cleaned(spoken, into: Self.codeEditor).split(separator: " ")[1] == option)
+    }
+
+    @Test("the pronoun in prose is still capitalised")
+    func pronounInProseUnchanged() {
+        #expect(Self.cleaned("then i left", into: Self.notes) == "Then I left.")
+    }
+}

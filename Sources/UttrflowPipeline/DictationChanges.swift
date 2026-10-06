@@ -227,6 +227,20 @@ public struct ExpandedTranscript: Sendable, Equatable {
     /// How far the caret moves back from the end of the inserted text, in UTF-16 units; 0 leaves it there.
     public var caretBackFromEnd: Int { caret.map { text.utf16.count - $0 } ?? 0 }
 
+    /// How far back from the end of `written` a snippet's caret goes, matching the words after it up to case and padding.
+    public func caretBack(inWritten written: String) -> Int? {
+        guard let caret, let tailText = String(text.utf16.dropFirst(caret)) else { return nil }
+        let tail = Array(tailText)
+        let core = tail[..<(tail.lastIndex { !$0.isWhitespace }.map { $0 + 1 } ?? 0)]
+        let chars = Array(written)
+        let writtenEnd = chars.lastIndex { !$0.isWhitespace }.map { $0 + 1 } ?? 0
+        guard writtenEnd >= core.count else { return nil }
+        let start = writtenEnd - core.count
+        guard chars[start..<writtenEnd].elementsEqual(core, by: { $0.lowercased() == $1.lowercased() })
+        else { return nil }
+        return String(chars[start...]).utf16.count
+    }
+
     /// The same transcript with every line break a space, as a single-line field wants, firings included.
     public var onOneLine: Self {
         Self(

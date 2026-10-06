@@ -4,6 +4,7 @@ public import UttrflowCore
 /// Capitalises each sentence and the pronoun "I", then cases the first word the way the formatter and the caret say.
 public struct FirstWordPass: WholeTextCleaningPass {
     public static let id: PassID = .firstWord
+    public static let laws: Set<PassLaw> = [.addsNoWords, .keepsDigits, .latinOnly]
 
     public let policy: FirstWordPolicy
     public let state: InsertionPoint.SentenceState
@@ -62,6 +63,13 @@ public struct FirstWordPass: WholeTextCleaningPass {
             guard !word.isLayoutMark else {
                 // Every layout mark starts a new sentence.
                 startOfSentence = true
+                continue
+            }
+            if WordShape(word.text).isOption {
+                // An option's letters are what the shell reads, so no casing rule touches them.
+                startOfSentence = false
+                afterPause = false
+                isFirst = false
                 continue
             }
             let letterAdjacent = Self.hasLetterNameBesideI(at: order, in: present, of: draft)
@@ -306,7 +314,8 @@ public struct FirstWordPass: WholeTextCleaningPass {
     func strayCapitalLowered(_ word: String, in text: String) -> String {
         let core = WordShape(word).core
         guard policy == .fromInsertionPoint, core.first?.isUppercase == true, !Self.keepsCapital(word),
-            LexicalClass.isKnownEnglishWord(core.lowercased()), !ownWords.contains(core.lowercased()),
+            LexicalClass.isKnownEnglishWord(core.lowercased()), !LexicalClass.isNameInDictionary(core.lowercased()),
+            !ownWords.contains(core.lowercased()),
             namedForms[core.lowercased()] == nil, !LexicalClass.isNamed(core, in: text),
             !Self.isCalendarWord(word), !Self.isProperName(word, in: text),
             !Self.looksLikeName(word, in: onScreen)

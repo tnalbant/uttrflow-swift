@@ -266,7 +266,7 @@ open a connection even with every file present.
 `CachedSnapshot.complete` accepts `snapshots/<LocalModel.revision>/` only when:
 
 - the revision is a full 40-character commit hash;
-- `config.json`, `tokenizer.json` and `tokenizer_config.json` are present and non-empty;
+- `config.json`, `tokenizer.json` and `tokenizer_config.json` are bounded, nonempty JSON objects;
 - every `*.safetensors` file is exactly as long as its own header says, and every numbered
   shard its name implies is present (the shard index is not trusted as a list of files: one
   candidate's index names two shards while its repository holds one);

@@ -37,13 +37,20 @@ The rest of the screen (`SettingsPresenter.suggestions`):
 |---|---|
 | **Only suggest when it is sure** | Draws a single completion and never a list (`SuggestionPreferences.isQuiet`) |
 | **Pause for a while** → **Pause 30 min** | Stops suggestions everywhere for `SuggestionPreferences.pause`, 30 minutes, then lifts itself |
-| **Not used in these apps** | Every application suggestions are off in, each with **Remove**; **Add an app to leave alone** adds one |
+| **Not used in these apps** | Every application suggestions are off in; user-added opt-outs have **Remove**, and shipped opt-outs have **Turn on**; **Add an app to leave alone** adds one |
 | **Used in these apps** | Every application suggestions run in that has a choice or a corpus to show, with **Leave Alone** and **Accept with** |
 | **Forget what it learned here** | Beside an application that has taught at least one line; deletes that application's lines |
 
 Two editors ship switched off because they have suggestions of their own
 (`SuggestionApplications.offByDefault`: Cursor and Visual Studio Code). They are always listed, so
-a switch that ships off can be found and turned on.
+a switch that ships off can be found and turned on. The accept-key explanation follows the app's
+destination kind, including the native action Tab keeps or replaces and, for Right arrow, that
+Escape no longer dismisses suggestions.
+
+Password managers, remote-desktop clients and virtual machines also ship switched off, because
+their ordinary fields hold private information (`SuggestionApplications.privateByDefault`:
+1Password, Bitwarden, KeePassXC, Keychain Access, Passwords, Screen Sharing, Windows App,
+Parallels Desktop, VMware Fusion and UTM). They are listed the same way and turned on the same way.
 
 ## The pieces
 
@@ -180,8 +187,9 @@ its own ([development-build.md](development-build.md)).
 
 - anything from a secure field;
 - anything from an application not yet allowed, or declined;
-- a value shaped like a credential, by the rules the clipboard uses; lines learned before a rule
-  widened are swept once per `CaptureGate.secretRulesVersion`;
+- a value shaped like a credential, by the rules the clipboard uses, applied to the whole value
+  and to each of its lines, so a continued command is judged as its one-line form; lines learned
+  before a rule widened are swept once per `CaptureGate.secretRulesVersion`;
 - a short value of 2 to 8 digits, grouped only by whitespace, hyphens or periods, outside a
   terminal, since a one-time code, PIN, CVV or compact date has no safe context once stored;
 - a destructive command (`DestructiveCommand`);
@@ -289,6 +297,10 @@ application switch that arrives during a turn is kept and run afterwards.
   panel, disarms the keys and calls `SuggestionSession.invalidate`, so `resolve`,
   `resolveGenerated` and `expandGenerated` return nothing for a turn whose read began before it,
   and the coordinator draws only while `SuggestionSession.isCurrent`.
+- **Accessibility may report the previous caret briefly after a ghost-typed character.** The guard
+  accepts only that immediately previous position for 500 ms, then requires the advanced caret.
+  This covers the reported 300 ms terminal echo plus one 200 ms selection-poll interval; any other
+  caret position still withdraws the ghost.
 - **A timed-out selection read keeps the offer armed** for its next poll. A completed read that
   cannot identify a focused selection still withdraws it.
 - **A model line keeps the typed case**, so the ghost only adds to the line and Tab never re-cases
@@ -462,6 +474,10 @@ inside the 7,000 ms budget.
 **Whether to speak of one candidate or several** is `Ranking.separation`, the leader's share of
 the total score minus the runner-up's, against `PredictionEngine.separationThreshold` (0.20). Below
 it the answer is a `.choice` of at most `PredictionEngine.maximumChoices` (4).
+
+Case-only spellings of a line are grouped before support and shares are calculated. Their scores
+are added, and the spelling with the strongest individual score represents the group; ties use
+text order.
 
 **Whether a candidate may be offered at all.** An irreversible leader is never offered and never
 stepped past to promote a rival it outranked; irreversible rivals never appear in a `.choice`
