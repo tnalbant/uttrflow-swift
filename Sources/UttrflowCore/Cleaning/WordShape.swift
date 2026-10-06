@@ -119,7 +119,7 @@ public struct WordShape: Equatable, Sendable {
 
     /// Whether the quotation the last word closes is speech: it opens its sentence, follows a verb of saying, or opens on a subject.
     private static func quotationIsSpeech(_ preceding: String) -> Bool {
-        let line = preceding.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).last ?? ""
+        let line = CaretStructure.caretLine(of: preceding)
         let words = WordTokens.words(line, .display).map(WordShape.init)
         guard let start = words.lastIndex(where: { $0.prefix.contains(where: openingQuotes.contains) }) else {
             return true
