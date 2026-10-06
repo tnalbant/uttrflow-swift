@@ -12,7 +12,7 @@ rule, and the measure shown is what the reviewer counts.
 |---|---|---|---|
 | Comments | lines in a new `//` or `///` block; multi-line blocks per file | 1; never above `Scripts/comment_baseline.json` | `make comment-audit` |
 | Line coverage per module | percent | at least 95 | `make coverage` |
-| User-facing claims | privacy, accuracy or speed sentences in `Sources/UttrflowUX`, `Sources/Uttrflow` and `README.md` not in `Docs/claims.json` with live, unexpired evidence | 0 | `make claims-audit` |
+| User-facing claims | privacy, accuracy, speed or rewriting ("rewrite", "word choice", "polish", "rephrase") sentences in `Sources/UttrflowUX`, `Sources/Uttrflow` and `README.md` not in `Docs/claims.json` with live, unexpired evidence | 0 | `make claims-audit` |
 | Coverage exclusion size | lines per excluded file | at most 400, unless listed in `OVERSIZED_EXCLUSIONS`; a listed file never above `Scripts/exclusion_baseline.json` | `make exclusion-audit` |
 | Spelling matches decided by shape, per file | count | never above `Scripts/loose_match_baseline.json` | `make match-audit` |
 | Closed word lists: literal collections of 4 or more words, per file | count | never above `Scripts/closed_list_baseline.json` | `make closed-list-audit` |
