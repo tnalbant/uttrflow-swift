@@ -49,7 +49,11 @@ the captured destination or, without one, the application in front at the first 
 or typist failure after the first chunk throws `insertionInterrupted(typed:total:)`, since the
 posted characters cannot be taken back.
 
-A strategy that throws `insertionUnconfirmed`, `insertionTargetChanged`, `insertionInterrupted` or
+Before every write the target check also asks the window server whether the window the field was
+read in still exists; a closed window refuses with `insertionFieldClosed`, which keeps the words in
+History and posts nothing.
+
+A strategy that throws `insertionUnconfirmed`, `insertionTargetChanged`, `insertionFieldClosed`, `insertionInterrupted` or
 `clipboardChanged` stops the route (`TextInsertionError.stopsFallback`): the words may already be in the field, or the
 clipboard now belongs to somebody else, and another strategy could duplicate or overwrite them.
 
