@@ -328,6 +328,25 @@ struct DictationPipelineDictionaryRestatementTests {
             ]))
     }
 
+    @Test(
+        "rules remove every spoken component of a corrected dictionary term",
+        arguments: [
+            ("push to git hub no wait GitHub", "Push to GitHub"),
+            ("open payment sheet scratch that PaymentSheet", "Open PaymentSheet"),
+            ("open user profile cache no wait UserProfileCache", "Open UserProfileCache"),
+        ]
+    )
+    func rulesRemoveEverySpokenComponent(spoken: String, expected: String) async {
+        let pipeline = makePipeline(
+            spoken: spoken,
+            cleaner: TransformerRouter(engines: [RuleBasedTransformer()], preference: [.rules]))
+
+        await dictate(with: pipeline)
+
+        let actual = await pipeline.outcome?.text
+        #expect(actual == expected, "Actual output: \(actual ?? "<nil>")")
+    }
+
     @Test("removes the old phrase after sorry and keeps the corrected word index")
     func sorryBeforeDictionaryTerm() async {
         let pipeline = correctedPipeline(for: "open the payment form sorry payment sheet")

@@ -121,14 +121,20 @@ public enum Restatement {
         let replacesOneWord = replacesSingleWord(
             before: trigger, after: restart, evidence: evidence, in: live, of: draft)
         for candidate in stride(from: trigger - 1, through: earliestPhraseAnchor, by: -1) {
-            if anchors(draft.shape(at: live[candidate]).key, the: draft.shape(at: live[restart]).core),
-                candidate >= earliest
+            let spanStart = camelCaseAnchorStart(
+                draft.shape(at: live[candidate]).key,
+                the: draft.shape(at: live[restart]).core,
+                endingAt: candidate,
+                in: live,
+                of: draft)
+            if let spanStart,
+                spanStart >= earliest
                     || repeatsPhrase(from: candidate, before: trigger, after: restart, in: live, of: draft)
             {
-                guard holdsContent(candidate..<trigger, in: live, of: draft),
-                    !coordinates(candidate, before: trigger, in: live, of: draft)
+                guard holdsContent(spanStart..<trigger, in: live, of: draft),
+                    !coordinates(spanStart, before: trigger, in: live, of: draft)
                 else { return nil }
-                return candidate
+                return spanStart
             }
             if endsSentence(candidate, in: live, of: draft), !(through && candidate == trigger - 1) {
                 return replacesOneWord ? trigger - 1 : nil
@@ -226,15 +232,36 @@ public enum Restatement {
 
     /// A camel-case dictionary word can retain the first heard word as a component, such as `payment` in `PaymentSheet`.
     /// Reads `written` as spoken, before lower-casing, since the components are found at its capitals.
-    private static func anchors(_ heard: String, the written: String) -> Bool {
-        guard heard != written.lowercased(), heard.count >= 3 else { return heard == written.lowercased() }
+    private static func camelCaseAnchorStart(
+        _ heard: String, the written: String, endingAt candidate: Int, in live: [Int], of draft: Draft
+    ) -> Int? {
+        if heard == written.lowercased() { return candidate }
+        guard heard.count >= 3 else { return nil }
+        let components = camelCaseComponents(in: written)
+        guard let component = components.firstIndex(where: { $0.lowercased() == heard }) else { return nil }
+        let start = candidate - component
+        guard start >= 0 else { return nil }
+        let spoken = live[start...candidate].map { draft.shape(at: $0).key }
+        guard spoken == components.prefix(component + 1).map({ $0.lowercased() }) else { return nil }
+        return start
+    }
+
+    private static func camelCaseComponents(in written: String) -> [String] {
         let characters = Array(written)
-        var start = characters.startIndex
-        for index in characters.indices where index > start && characters[index].isUppercase {
-            if String(characters[start..<index]).lowercased() == heard { return true }
-            start = index
+        guard !characters.isEmpty else { return [] }
+        var boundaries = [characters.startIndex]
+        for index in characters.indices.dropFirst() {
+            let previous = characters[characters.index(before: index)]
+            let current = characters[index]
+            let next = characters.index(after: index)
+            let startsWord = previous.isLowercase && current.isUppercase
+            let endsAcronym =
+                previous.isUppercase && current.isUppercase
+                && next < characters.endIndex && characters[next].isLowercase
+            if startsWord || endsAcronym { boundaries.append(index) }
         }
-        return String(characters[start...]).lowercased() == heard
+        boundaries.append(characters.endIndex)
+        return zip(boundaries, boundaries.dropFirst()).map { String(characters[$0..<$1]) }
     }
 
     /// Whether the trigger is a sentence of its own after a full stop ("Tuesday. Scratch that. Wednesday"), which is a pause rather than two sentences.
