@@ -125,3 +125,10 @@ No row carries a word of the text, and nothing leaves this Mac.
 
 The downgrade rule for the ledger's own file belongs to the store compatibility contract. The
 decay curve and compaction horizon need measurement on real use before a number is written here.
+
+## What the user sees
+
+Settings, Privacy, "What Uttrflow noticed about you" lists `PersonaProfile.items`: each dictionary
+word with its recorded uses and undos, each kind of place with its style counts, and a count of
+words still being watched. Each item's Remove deletes only that fact's rows
+(`EvidenceLedgerStore.forget`); Reset deletes the ledger and leaves declarations alone.
