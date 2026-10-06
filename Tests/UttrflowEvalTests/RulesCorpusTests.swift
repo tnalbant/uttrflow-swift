@@ -195,7 +195,7 @@ struct RulesCorpusTests {
     @Test(
         "writes the exact reference for the cases that have one right answer",
         arguments: [
-            ("self-correction", "Let's meet at five on tuesday."),
+            ("self-correction", "Let's meet at five on Tuesday."),
             ("ellipsis-glued-fillers", "The...the invoice is...overdue."),
             ("version-number", "We're on postgres 16.2 right now."),
             ("spoken-decade", "The 1990s were fun."),
@@ -248,8 +248,8 @@ struct RulesCorpusTests {
             ("code-editor-line-break-preserved", "Retry the request\nLog the failure"),
             ("code-editor-numeral-no-stop", "Bump the retry count to 20"),
             ("code-editor-code-keeps-no-stop", "this invalidates the cache after every write"),
-            ("code-editor-comment-gets-a-stop", "the comment explains why the cache clears."),
-            ("code-editor-comment-keeps-its-stop", "the retry count resets after a failure."),
+            ("code-editor-comment-gets-a-stop", "The comment explains why the cache clears."),
+            ("code-editor-comment-keeps-its-stop", "The retry count resets after a failure."),
             ("message-short-no-stop", "Leaving now see you at the cafe"),
             ("email-continues-mid-sentence", "the quote you sent last week."),
             ("spoken-email-address", "Forward the logs to support@example.com."),
