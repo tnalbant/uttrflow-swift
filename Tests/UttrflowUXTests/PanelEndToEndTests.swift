@@ -216,6 +216,30 @@ struct PanelEndToEndTests {
         #expect(clips[0].isPinned)
     }
 
+    @Test("undo reports when another clip kept the deleted clip's name", .bug(id: 3750))
+    func deleteRenameThenUndoReportsNameConflict() async throws {
+        let harness = try Harness()
+        defer { harness.cleanUp() }
+        try await harness.seed(["first", "second"])
+        var deleted = try #require(await harness.clip("first"))
+        try await harness.store.setAlias("x", of: deleted.id, keeping: harness.retention)
+        deleted = try #require(await harness.clip("first"))
+
+        try await harness.carryOut(.delete(deleted.id))
+        let newer = try #require(await harness.clip("second"))
+        try await harness.store.setAlias("x", of: newer.id, keeping: harness.retention)
+        let result = try await harness.store.restoreReportingAliasConflict(
+            deleted, keeping: harness.retention)
+
+        #expect(result.aliasWasAlreadyInUse)
+        #expect(result.clips.first { $0.id == newer.id }?.alias == "x")
+        #expect(result.clips.first { $0.id == deleted.id }?.alias == nil)
+        let notice = PanelNotice.restoreNotice(for: result)
+        let repeatedNotice = PanelNotice.restoreNotice(for: result)
+        #expect(notice?.message == PanelNotice.restoreWithoutAlias.message)
+        #expect(notice?.announcementID != repeatedNotice?.announcementID)
+    }
+
     /// G6 — the clips are moved out, not orphaned and not destroyed.
     @Test("deleting a collection keeps its clips when asked to")
     func deleteCollectionKeepingClips() async throws {
@@ -293,6 +317,35 @@ struct PanelEndToEndTests {
             "and it was only the indentation")
         #expect(after.alias == "snippet")
         #expect(clips.count == 1, "one clip, not a second copy of it")
+    }
+
+    @Test("re-indenting a formatted clip clears its stale formatted paste")
+    func reindentClearsOldRichText() async throws {
+        let harness = try Harness()
+        defer { harness.cleanUp() }
+        let messy = "func a() {\n\tlet x = 1\n        let y = 2\n}"
+        try await harness.seed([messy])
+        let subject = try #require(await harness.clip(messy))
+        _ = try await harness.store.setRichText(
+            "<pre>old indentation</pre>", of: subject.id, keeping: harness.retention)
+
+        let outcome = try await harness.perform([.reindent(subject.id), .return])
+        guard case .change(.rewriteText(let rewrittenID, let confirmedText)) = outcome else {
+            Issue.record("the confirmed re-indent did not rewrite the clip")
+            return
+        }
+
+        let after = try #require(
+            await harness.store.clips(keeping: harness.retention).first { $0.id == rewrittenID })
+        let pastePayload = (text: after.text, richText: after.richText)
+        #expect(pastePayload.text == confirmedText)
+        #expect(pastePayload.richText == nil)
+
+        let note = "<p>My own note</p>"
+        try await harness.carryOut(.setRichText(rewrittenID, note))
+        let edited = try #require(
+            await harness.store.clips(keeping: harness.retention).first { $0.id == rewrittenID })
+        #expect(edited.richText == note)
     }
 
     /// Every write goes through the store, so a sequence has to leave one coherent file.

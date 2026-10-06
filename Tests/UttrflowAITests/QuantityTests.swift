@@ -18,6 +18,11 @@ struct QuantityTests {
             ("the refund is -$12.50", [Quantity(digits: "12.50", sign: "-", symbol: "$")]),
             ("the credit is $+500", [Quantity(digits: "500", sign: "+", symbol: "$")]),
             ("i need 20 chairs", [Quantity(digits: "20", symbol: "")]),
+            ("the budget is 50K", [Quantity(digits: "50000", symbol: "")]),
+            ("we raised $2.5M", [Quantity(digits: "2500000", symbol: "$")]),
+            ("we sold 5 million units", [Quantity(digits: "5000000", symbol: "")]),
+            ("it costs 3 lakh", [Quantity(digits: "300000", symbol: "")]),
+            ("we ran 5m", [Quantity(digits: "5", symbol: "")]),
             // One space is tolerated, since a model writing "5 %" means the percentage.
             ("revenue grew 5 %", [Quantity(digits: "5", symbol: "%")]),
         ]
@@ -120,5 +125,34 @@ struct QuantityGuardTests {
     )
     func acceptsAnAmountKept(kept: String, rewritten: String) {
         #expect(MeaningPreservationGuard.changedQuantity(original: kept, rewritten: rewritten) == nil)
+    }
+
+    @Test(
+        "reads a comma as a separator only where it groups the digits",
+        arguments: [
+            ("12,345", ["12345"]),
+            ("1,234,567", ["1234567"]),
+            ("999,999", ["999999"]),
+            ("1,50,000", ["150000"]),
+            ("12,00,00,000", ["120000000"]),
+            ("1,234.50", ["1234.50"]),
+            ("1,00,000.75", ["100000.75"]),
+            ("10,20,30", ["10", "20", "30"]),
+            ("3,4,5", ["3", "4", "5"]),
+            ("1,23", ["1", "23"]),
+            ("12,34", ["12", "34"]),
+            ("1,2345", ["1", "2345"]),
+            ("1234,567", ["1234", "567"]),
+            ("100,200,30", ["100", "200", "30"]),
+            ("40.7128,74.0060", ["40.7128", "74.0060"]),
+            ("40.7128,-74.0060", ["40.7128", "74.0060"]),
+            ("1.5,200", ["1.5", "200"]),
+            ("10,20,2.5", ["10", "20", "2.5"]),
+            ("7,8 and 12,000", ["7", "8", "12000"]),
+            ("12,000, 13,000", ["12000", "13000"]),
+        ]
+    )
+    func readsGroupingCommas(text: String, expected: [String]) {
+        #expect(Quantities.read(in: text).map(\.digits) == expected)
     }
 }

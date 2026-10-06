@@ -30,6 +30,7 @@ would lose precisely the words worth having.
 | Constant | Value | Meaning |
 |---|---|---|
 | `VocabularyPrompt.maximumTokens` | 111 | the prompt budget |
+| `VocabularyPrompt.maximumLeadTokens` | 48 | the most of it the text before the caret may take |
 | `WorkingSet.defaultLimit` | 28 words | how many dictionary words usually fit beside the rest |
 | `WorkingSet.newAdditionPriorityDays` | 7 days | a word added by hand ranks ahead of older entries for this long |
 | `WorkingSet.recencyHalfLifeInDays` | 30 days | the age at which a word's value halves |
@@ -50,6 +51,15 @@ between words, because dropping a word that will not fit must not leave its sepa
 
 Special tokens are filtered out of every piece. WhisperKit discards them itself, so filtering
 here as well is what keeps the count being budgeted equal to the count that survives.
+
+## The text before the caret comes last
+
+The sentence or two before the caret (`TranscriptionOptions.precedingText`, read once per
+dictation and `nil` in a secure field; see [`context-budget.md`](context-budget.md)) follows the
+vocabulary sentence, so the decoder continues from the user's own words. It keeps its last whole
+words within `maximumLeadTokens`, and the vocabulary packs into what is left. A decode that comes
+back empty is retried with no prompt at all. The dictation bench's developer-vocabulary
+categories measure what a lead-in sentence is worth to recognition.
 
 ## The sentence around the words is the surprise
 
@@ -150,6 +160,41 @@ overwrites it, so a two-minute dictation is biased just as strongly at the end a
 start. It costs the prefill cache and part of each window's decode budget, which is why the
 111 tokens are a ceiling rather than a target.
 
+## A saved prompt cache belongs to the audio it was computed on
+
+Each decoder block runs self-attention and then cross-attention over the encoder output, so
+from the second block on, the keys and values of the forced prompt already depend on the
+audio. A cache prefilled on one clip is therefore not the cache for another clip, and reuse
+is exact only inside one window (a retry or a fork over the same audio).
+
+`Scripts/prefix_cache_probe.py` measures it on the shipping turbo model (4 decoder layers):
+20 synthetic clips, greedy decoding without timestamps, each clip decoded with its own
+prefill and again with the prefix cache transplanted from the next clip. "Whole prefix" is
+every forced token but the last; "prompt only" is `<|startofprev|>` and the prompt, with the
+start, language and task tokens recomputed on the clip's own audio; "library prefill" is
+WhisperKit's `TextDecoderContextPrefill` model, a lookup table indexed by language and task
+that sees no audio. WhisperKit 1.1.0 ships that model but never loads it.
+
+| Prompt tokens | Cache | Max logit difference | Top-1 same | Transcripts same | Largest key or value difference, layers 0 / 1 / 2 / 3 |
+|---|---|---|---|---|---|
+| 0 | same clip, run twice | 0.00 | 20/20 | 20/20 | |
+| 0 | whole prefix from another clip | 1.77 | 20/20 | 19/20 | 0.00 / 0.32 / 0.74 / 1.43 |
+| 0 | library prefill | 2.14 | 20/20 | 19/20 | 0.04 / 0.86 / 1.01 / 1.23 |
+| 20 | whole prefix from another clip | 3.33 | 20/20 | 20/20 | 0.00 / 0.32 / 2.53 / 2.13 |
+| 20 | prompt only from another clip | 3.22 | 20/20 | 20/20 | |
+| 111 | whole prefix from another clip | 1.98 | 20/20 | 20/20 | 0.00 / 0.37 / 2.53 / 2.13 |
+| 111 | prompt only from another clip | 1.89 | 20/20 | 20/20 | |
+
+Layer 0 is identical across clips and layers 1 to 3 are not. The changed transcript is the
+same in both rows: a final full stop the clip's own prefill does not produce. So a transplanted
+cache is an approximation that changes logits by up to 3.3 and changed 2 of 120 transcripts
+here, not the identical output a cross-audio cache would need. The per-window prefill cost is
+reduced by shortening the prompt instead.
+
+> Apple M5 Pro, 48 GB, decoder and encoder on the Neural Engine, load average 170 to 240
+> during the 182-second run. Clips are `say` voices reading short sentences; real speech and
+> longer windows are not measured.
+
 ## Failing open
 
 An empty vocabulary, an absent tokeniser, or one that nothing survives leaves the decoding
@@ -162,3 +207,25 @@ encode costs them the dictation.
 The arithmetic above is checked against a tokeniser a test writes in three lines rather than
 against a 646 MB download. Its only real implementation adapts WhisperKit's own and lives in
 `WhisperKitBackend.swift`. `firstSpecialToken` is what the special-token filter compares against.
+
+## The prompt is not played back from non-speech
+
+A conditioned decoder given no evidence could continue its prompt, typing the listed words or
+the opening sentence from audio that said neither. `uttrflow-eval nonspeech --vocabulary <words>`
+conditions every clip of the non-speech corpus on those words and counts a clip as an echo when
+the words after the last spoken one are prompt words in prompt order, the opening sentence
+included; `--max-echo-rate` gates it.
+
+Measured on Apple M5 Pro with the shipping turbo model, 66 clips (six non-speech kinds, three
+seeds each, plus eight `say` sentences in one voice followed by each kind), with 20 invented
+names and five words the sentences really say ("bakery", "kettle", "printer", "folder",
+"plants"):
+
+| Prompt | Echoed | Inserted | Spoken dictionary words dropped |
+|---|---|---|---|
+| none | 0 of 66 | 1 of 66 | 0 |
+| 20 words | 0 of 66 | 1 of 66 | 0 |
+
+The one insertion is a breath clip in both runs ("The End" with the prompt), so the prompt adds
+none. With no echo found, no echo check runs at transcript assembly; the empty-result
+retry without the prompt in `CappedDecodeRetry` stays the only prompt-specific recovery.

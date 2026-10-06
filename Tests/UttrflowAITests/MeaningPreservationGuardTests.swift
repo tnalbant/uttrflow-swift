@@ -191,10 +191,13 @@ struct MeaningPreservationGuardTests {
 
     @Test("rejects moved function words while keeping allowed cleanup edits")
     func rejectsMovedFunctionWords() {
-        rejected(
-            "Leeds a city in the north is where I grew up",
-            "Leeds is a city in the north where I grew up.")
-        rejected("we can ship it", "can we ship it.")
+        // Word order is a grammar check, so it is asked of the draft verdict.
+        for (kept, rewritten) in [
+            ("Leeds a city in the north is where I grew up", "Leeds is a city in the north where I grew up."),
+            ("we can ship it", "can we ship it."),
+        ] {
+            #expect(!sut.verdict(draft: Draft(text: kept), rewritten: rewritten).isAccepted, "\(kept)")
+        }
 
         accepted("um, we can go", "We can go.")
         accepted("I I can go", "I can go.")
@@ -295,7 +298,6 @@ struct MeaningPreservationGuardTests {
         arguments: [
             ("marketing spend for march is 12,000", "Marketing spend for March is 12000"),
             ("marketing spend for march is 12000", "Marketing spend for March is 12,000"),
-            ("the budget is 1,50,000 rupees", "The budget is 150000 rupees."),
             ("the budget is 150000 rupees", "The budget is 1,50,000 rupees."),
         ]
     )
@@ -338,6 +340,14 @@ struct MeaningPreservationGuardTests {
         #expect(
             MeaningPreservationGuard.withoutThousandsSeparators("1,50,000, 12,000, 1,2, 1,2345")
                 == "150000, 12000, 1,2, 1,2345")
+    }
+
+    @Test("accepts a space added after a list comma between numbers")
+    func listCommaSpacing() {
+        accepted("scores were 10,20,30", "Scores were 10, 20, 30.")
+        accepted("the pin is at 40.7128,-74.0060", "The pin is at 40.7128, -74.0060.")
+        accepted("sides 3,4,5", "Sides 3, 4, 5.")
+        rejected("scores were 10,20,30", "Scores were 102030.")
     }
 
     @Test(
@@ -472,10 +482,10 @@ struct GrammarGuardTests {
         #expect(verdict(kept, rewritten).isAccepted)
     }
 
-    @Test("rejects an agreement repair that changes a verb's number")
-    func rejectsAgreementRepair() {
+    @Test("accepts an agreement repair that changes only a verb's form, as Docs/cleanup.md allows")
+    func acceptsAgreementRepair() {
         #expect(
-            !verdict("there is three of them waiting outside", "There are three of them waiting outside.")
+            verdict("there is three of them waiting outside", "There are three of them waiting outside.")
                 .isAccepted)
     }
 
@@ -537,13 +547,13 @@ struct GrammarGuardTests {
         }
     }
 
-    @Test("accepts an article corrected, but a plural repaired by its form is rejected as a meaning change")
-    func acceptsOnlyArticleRepair() {
+    @Test("accepts an article corrected and a plural repaired by its form")
+    func acceptsArticleAndAgreementRepair() {
         #expect(
             verdict("can you pass me a apple from the bowl", "Can you pass me an apple from the bowl?")
                 .isAccepted)
         #expect(
-            !verdict("we need two more developer on this team", "We need two more developers on this team.")
+            verdict("we need two more developer on this team", "We need two more developers on this team.")
                 .isAccepted)
     }
 
@@ -846,6 +856,44 @@ struct GrammarGuardTests {
         #expect(verdict("that is amazing!", "That is amazing!").isAccepted)
         #expect(verdict("great! see you then", "Great! See you then.").isAccepted)
         #expect(verdict("great! see you then", "Great. See you then.").isAccepted)
+    }
+
+    @Test("refuses every symbol kind a model adds to a casual message")
+    func rejectsInventedSymbols() {
+        for (kept, rewritten, noun) in [
+            ("see you at lunch", "See you at lunch \u{1F600}", "an emoji"),
+            ("love it", "Love it \u{2764}\u{FE0F}", "an emoji"),
+            ("on my way", "On my way \u{1F697}.", "an emoji"),
+            ("well I tried my best", "Well \u{2014} I tried my best.", "a dash"),
+            ("pages ten to twenty", "Pages ten \u{2013} twenty.", "a dash"),
+            ("so anyway", "So anyway\u{2026}", "an ellipsis character"),
+            ("that was really good", "That was *really* good.", "an asterisk"),
+            ("this is a big win", "This is a big win #winning.", "a hash sign"),
+            ("thanks sam", "Thanks @sam.", "an at sign"),
+            ("eggs and milk", "\u{2022} eggs and milk", "a bullet"),
+        ] {
+            #expect(
+                verdict(kept, rewritten)
+                    == .rejected(reason: "the rewrite added \(noun)", kind: .inventedSymbol),
+                "\(kept) -> \(rewritten)")
+        }
+    }
+
+    @Test("keeps a symbol kind the draft already holds")
+    func keepsEvidencedSymbols() {
+        accepted("see you at lunch \u{1F600}", "See you at lunch \u{1F600}.")
+        accepted("well \u{2014} I tried my best", "Well \u{2014} I tried my best.")
+        accepted("email me at sam@example.com", "Email me at sam@example.com.")
+        accepted("open example.com/docs please", "Open example.com/docs, please.")
+        accepted("ticket #12 is done", "Ticket #12 is done.")
+        accepted("so anyway\u{2026}", "So anyway\u{2026}")
+        accepted("my handle is at sam", "My handle is @sam.")
+    }
+
+    @Test("the symbol table names each row once")
+    func symbolRowsAreUnique() {
+        let names = MeaningPreservationGuard.symbolChecks.map(\.name)
+        #expect(Set(names).count == names.count)
     }
 
     @Test("keeps quotation pairs the speaker said")
@@ -1527,6 +1575,26 @@ struct GuardMatchStrengthTests {
             ])
     }
 
+    @Test("rejects a rewrite of a long text that ends no sentence, and accepts one that does")
+    func rejectsUnpunctuatedLongRewrite() {
+        let spoken = Array(repeating: "we need the final numbers from the vendor before friday", count: 5)
+        let flat = spoken.joined(separator: " ")
+        #expect(
+            verdict(flat, flat.capitalizedFirst)
+                == .rejected(reason: "the rewrite of a long text ends no sentence", kind: .unpunctuated))
+        let stopped = spoken.map { $0.capitalizedFirst + "." }.joined(separator: " ")
+        #expect(verdict(flat, stopped).isAccepted)
+    }
+
+    @Test("scales the churn allowance to the length of what was said")
+    func churnAllowanceScalesWithInput() {
+        let clause = "the cat and the dog and the fish went home"
+        let spoken = Array(repeating: clause, count: 5).joined(separator: " ")
+        let rest = spoken.split(separator: " ").dropFirst(10).joined(separator: " ")
+        let rewritten = "A cat and a dog and the fish went home " + rest + "."
+        #expect(verdict(spoken, rewritten).isAccepted)
+    }
+
     // MARK: - How many sentences the allowance is for
 
     /// The allowance is three function-word edits a sentence, so a miscount is a licence.
@@ -1644,7 +1712,7 @@ struct AccentedDraftGuardTests {
 
 extension MeaningPreservationGuardTests {
     @Test(
-        "rejects a rewrite that changes the inflection of a kept content word",
+        "repairs the inflection of a kept word where the destination repairs, and refuses it where it is as spoken",
         arguments: [
             (
                 "yesterday i walk to the store", "Yesterday I walked to the store.",
@@ -1669,13 +1737,12 @@ extension MeaningPreservationGuardTests {
             ),
         ]
     )
-    func rejectsInflectionChange(
+    func judgesInflectionChangeByPolicy(
         original: String, rewritten: String, hint: Comment
     ) {
         let draft = Draft(text: original)
-        #expect(
-            !sut.verdict(draft: draft, rewritten: rewritten).isAccepted,
-            hint)
+        #expect(sut.verdict(draft: draft, rewritten: rewritten, grammar: .repair).isAccepted, hint)
+        #expect(!sut.verdict(draft: draft, rewritten: rewritten, grammar: .asSpoken).isAccepted, hint)
     }
 }
 
@@ -1797,4 +1864,9 @@ extension MeaningPreservationGuard {
     func verdict(original: String, rewritten: String) -> GuardVerdict {
         Self.textVerdict(original: original, rewritten: rewritten, excusingPreamble: false)
     }
+}
+
+extension String {
+    /// The text with its first letter upper-cased.
+    fileprivate var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
 }

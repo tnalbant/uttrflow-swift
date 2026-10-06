@@ -15,6 +15,21 @@ struct EncryptedStoreTests {
         func key(createIfMissing: Bool) throws -> SymmetricKey { value }
     }
 
+    @Test("a keyed digest matches equal input, differs by key and purpose, and is never the input")
+    func keyedDigestIsKeyed() throws {
+        let store = EncryptedStore(keys: Keys(value: SymmetricKey(size: .bits256)))
+        let other = EncryptedStore(keys: Keys(value: SymmetricKey(size: .bits256)))
+        let line = Data("git commit -m example".utf8)
+
+        let digest = try store.keyedDigest(of: line, purpose: "one")
+
+        #expect(digest.count == 32)
+        #expect(try store.keyedDigest(of: line, purpose: "one") == digest)
+        #expect(try store.keyedDigest(of: line, purpose: "two") != digest)
+        #expect(try other.keyedDigest(of: line, purpose: "one") != digest)
+        #expect(Data(SHA256.hash(data: line)) != digest)
+    }
+
     private struct MissingKey: StoreKeyProviding {
         func key(createIfMissing: Bool) throws -> SymmetricKey {
             throw StoreKeyError.unavailable(Int32(errSecItemNotFound))
@@ -24,6 +39,17 @@ struct EncryptedStoreTests {
     private struct LockedKey: StoreKeyProviding {
         func key(createIfMissing: Bool) throws -> SymmetricKey {
             throw StoreKeyError.unavailable(Int32(errSecInteractionNotAllowed))
+        }
+    }
+
+    private final class UnlockingKeys: StoreKeyProviding, Sendable {
+        let value = SymmetricKey(size: .bits256)
+        let locked = Mutex(true)
+        let lookups = Mutex(0)
+        func key(createIfMissing: Bool) throws -> SymmetricKey {
+            lookups.withLock { $0 += 1 }
+            if locked.withLock({ $0 }) { throw StoreKeyError.unavailable(Int32(errSecInteractionNotAllowed)) }
+            return value
         }
     }
 
@@ -144,8 +170,8 @@ struct EncryptedStoreTests {
         #expect(try Data(contentsOf: file).starts(with: Data("UTTFLOWE".utf8)))
     }
 
-    @Test("leaves malformed legacy JSON in place without asking for a key")
-    func malformedLegacyStaysInPlace() throws {
+    @Test("sets malformed legacy JSON aside without asking for a key")
+    func malformedLegacyIsSetAside() throws {
         let directory = try folder()
         defer { try? FileManager.default.removeItem(at: directory) }
         let file = directory.appending(path: "history.v1.json")
@@ -155,9 +181,11 @@ struct EncryptedStoreTests {
         let stored = EncryptedStore(keys: MissingKey()).read([String].self, from: file)
 
         #expect(stored.isUnreadable)
-        #expect(FileManager.default.fileExists(atPath: file.path))
-        #expect(try Data(contentsOf: file) == source)
-        #expect(!LocalStore.hasSetAside(file))
+        #expect(!FileManager.default.fileExists(atPath: file.path))
+        #expect(LocalStore.hasSetAside(file))
+        guard case .unreadable(let moved) = stored else { return }
+        let setAside = try #require(moved)
+        #expect(try Data(contentsOf: setAside) == source)
     }
 
     @Test("rejects a renamed store because the logical filename is authenticated")
@@ -241,6 +269,18 @@ struct EncryptedStoreTests {
         let unreadable = store.read([String].self, from: retainedCopy)
         #expect(unreadable.value == nil)
         #expect(LocalStore.hasSetAside(retainedCopy))
+    }
+
+    @Test("a locked key is read again after unlock and then reused")
+    func lockedKeyIsRetriedThenCached() throws {
+        let keys = UnlockingKeys()
+        let store = EncryptedStore(keys: keys)
+        #expect(throws: StoreKeyError.self) { try store.seal(Data([1]), for: "chunk") }
+        keys.locked.withLock { $0 = false }
+        let sealed = try store.seal(Data([1]), for: "chunk")
+        _ = try store.seal(Data([2]), for: "chunk")
+        #expect(try store.open(sealed, for: "chunk") == Data([1]))
+        #expect(keys.lookups.withLock { $0 } == 2)
     }
 
     @Test("rejects unsupported, truncated and modified envelopes")
