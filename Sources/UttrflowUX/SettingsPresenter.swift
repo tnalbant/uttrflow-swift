@@ -1221,12 +1221,16 @@ public enum SettingsPresenter {
     /// What a reset takes, built only from the parts there are. See `Docs/ux-settings-model.md`.
     private static func resetSentence(_ personalisation: SettingsPersonalisation) -> String {
         let preferences = "puts every preference back to its default. It cannot be undone."
+        // Uncounted, as no count reaches here, but always named: the loss least expected.
+        let uncounted =
+            "your whole clipboard history, pinned clips included, your snippets and learned "
+            + "completions"
         let parts = [wordsPhrase(personalisation), transcriptsPhrase(personalisation)]
             .compactMap(\.self)
         guard !parts.isEmpty else {
-            return "There is nothing of yours saved, so this only \(preferences)"
+            return "This removes \(uncounted), and \(preferences)"
         }
-        return "This removes \(parts.joined(separator: " and ")), and \(preferences)"
+        return "This removes \(parts.joined(separator: ", ")), \(uncounted), and \(preferences)"
     }
 
     /// The dictionary half, split the way the gentler level splits it, or `nil` when it is empty.
