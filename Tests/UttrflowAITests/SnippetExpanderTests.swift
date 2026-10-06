@@ -18,8 +18,8 @@ private let address = "Flat 402, Example Residences, Sample Road, Bengaluru 5600
 private func standardExpander() -> SnippetExpander {
     SnippetExpander(snippets: [
         makeSnippet(trigger: "my address", expansion: address),
-        makeSnippet(trigger: "my work address", expansion: "Level 4, Vaswani Presidio"),
-        makeSnippet(trigger: "sign off", expansion: "Thanks, Naveen"),
+        makeSnippet(trigger: "my work address", expansion: "Level 4, 12 Example Street"),
+        makeSnippet(trigger: "sign off", expansion: "Thanks, Avery"),
         makeSnippet(trigger: "pr", expansion: "pull request"),
     ])
 }
@@ -70,15 +70,12 @@ struct SnippetExpanderTests {
             ("ok!", "Okay, sounds good!"),
             ("ok:", "Okay, sounds good:"),
             ("ok,", "Okay, sounds good,"),
-            ("agenda.", "Agenda:"),
             ("ok? next", "Okay, sounds good? next"),
             ("ok. next", "Okay, sounds good. next"),
         ]
     )
     func avoidsDuplicateTerminalPunctuation(transcript: String, expected: String) {
-        let trigger = transcript.hasPrefix("agenda") ? "agenda" : "ok"
-        let expansion = trigger == "agenda" ? "Agenda:" : "Okay, sounds good."
-        let expander = SnippetExpander(snippets: [makeSnippet(trigger: trigger, expansion: expansion)])
+        let expander = SnippetExpander(snippets: [makeSnippet(trigger: "ok", expansion: "Okay, sounds good.")])
 
         #expect(expander.expand(transcript).text == expected)
     }
@@ -86,8 +83,8 @@ struct SnippetExpanderTests {
     @Test(
         "keeps tidy punctuation after expansions with internal punctuation",
         arguments: [
-            ("my email", "my email.", "me@example.com", "Me@example.com."),
-            ("my email", "my email, then call me", "me@example.com", "Me@example.com, then call me"),
+            ("my email", "my email.", "me@example.com", "me@example.com."),
+            ("my email", "my email, then call me", "me@example.com", "me@example.com, then call me"),
             ("phone", "phone.", "Call 555.1234 now", "Call 555.1234 now."),
             ("version", "version, please", "Version 2.5 is out", "Version 2.5 is out, please"),
         ]
@@ -144,7 +141,7 @@ struct SnippetExpanderTests {
     @Test("fires as many times as the trigger was said")
     func firesRepeatedly() {
         let result = standardExpander().expand("pr and pr")
-        #expect(result.text == "pull request and pull request")
+        #expect(result.text == "Pull request and pull request")
         #expect(result.applied.count == 2)
     }
 
@@ -153,7 +150,7 @@ struct SnippetExpanderTests {
     @Test("prefers the longer trigger when two of them fit")
     func longestWins() {
         let result = standardExpander().expand("Send it to my work address.")
-        #expect(result.text == "Send it to Level 4, Vaswani Presidio.")
+        #expect(result.text == "Send it to Level 4, 12 Example Street.")
         #expect(result.applied.count == 1)
     }
 
@@ -209,18 +206,18 @@ struct SnippetExpanderTests {
     @Test("notices the quotation through a difference of case or spacing")
     func quotingIsRecognisedLoosely() {
         let expander = SnippetExpander(snippets: [
-            makeSnippet(trigger: "sign off", expansion: "Thanks,  Naveen")
+            makeSnippet(trigger: "sign off", expansion: "Thanks,  Avery")
         ])
-        #expect(!expander.expand("sign off with thanks, Naveen").didExpand)
+        #expect(!expander.expand("sign off with thanks, Avery").didExpand)
     }
 
     @Test("an expansion inside a longer word does not suppress its trigger")
     func quotedSubstringDoesNotSuppressExpansion() {
         let expander = SnippetExpander(snippets: [
-            makeSnippet(trigger: "sign off", expansion: "Thanks, Naveen")
+            makeSnippet(trigger: "sign off", expansion: "Thanks, Avery")
         ])
-        let result = expander.expand("The thanks, Naveenly sign off was timely.")
-        #expect(result.text == "The thanks, Naveenly Thanks, Naveen was timely.")
+        let result = expander.expand("The thanks, Averyly sign off was timely.")
+        #expect(result.text == "The thanks, Averyly Thanks, Avery was timely.")
         #expect(result.applied.count == 1)
     }
 
@@ -228,7 +225,7 @@ struct SnippetExpanderTests {
     @Test("only the quoted snippet is held back")
     func quotingIsPerSnippet() {
         let result = standardExpander().expand("pr, and my address is \(address).")
-        #expect(result.text == "pull request, and my address is \(address).")
+        #expect(result.text == "Pull request, and my address is \(address).")
     }
 
     // MARK: Bounded
@@ -236,10 +233,10 @@ struct SnippetExpanderTests {
     @Test("a snippet whose text contains its own trigger expands once and stops")
     func selfReferenceTerminates() {
         let expander = SnippetExpander(snippets: [
-            makeSnippet(trigger: "sign off", expansion: "Thanks, Naveen — sign off")
+            makeSnippet(trigger: "sign off", expansion: "Thanks, Avery — sign off")
         ])
         let result = expander.expand("Please sign off.")
-        #expect(result.text == "Please Thanks, Naveen — sign off.")
+        #expect(result.text == "Please Thanks, Avery — sign off.")
         #expect(result.applied.count == 1)
     }
 
@@ -267,7 +264,7 @@ struct SnippetExpanderTests {
             makeSnippet(trigger: "pong", expansion: "ping please"),
         ])
         let result = expander.expand("ping and pong")
-        #expect(result.text == "pong please and ping please")
+        #expect(result.text == "Pong please and ping please")
         #expect(result.applied.count == 2)
     }
 

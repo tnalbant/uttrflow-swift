@@ -259,4 +259,51 @@ struct InsertionPointTests {
     func commentMarkerStartsText(preceding: String) {
         #expect(InsertionPoint.sentenceState(before: preceding) == .startOfText)
     }
+
+    @Test(
+        "an attachment, zero-width or bidi mark before the caret reads as if absent",
+        arguments: [
+            ("\u{FFFC}", "", InsertionPoint.SentenceState.startOfText),
+            ("Notes\n\u{FFFC}", "Notes\n", .startOfSentence),
+            ("Ship it. \u{FFFC}", "Ship it. ", .startOfSentence),
+            ("Ship it.\u{200B}", "Ship it.", .startOfSentence),
+            ("send the\u{200E}", "send the", .midSentence),
+            ("- \u{2066}", "- ", .startOfText),
+        ])
+    func invisibleCharactersAreAbsent(preceding: String, visible: String, state: InsertionPoint.SentenceState)
+    {
+        #expect(InsertionPoint.visibleText(preceding) == visible)
+        #expect(InsertionPoint.sentenceState(before: preceding) == state)
+        #expect(
+            InsertionPoint(precedingText: preceding).isOnListItemLine
+                == InsertionPoint(precedingText: visible).isOnListItemLine)
+    }
+
+    @Test("a trailing zero-width mark or attachment still gets the space a word would")
+    func invisibleCharactersPad() {
+        #expect(
+            InsertionPoint(precedingText: "word\u{200B}").paddedBoundary(for: "next", in: .document)
+                == " next")
+        #expect(
+            InsertionPoint(precedingText: "a\u{FFFC}").paddedBoundary(for: "next", in: .document) == " next")
+        #expect(
+            InsertionPoint(precedingText: "a", followingText: "\u{FEFF}next").paddedBoundary(
+                for: "b", in: .document) == " b ")
+    }
+
+    @Test("an emoji joined by a zero-width joiner keeps its joiner")
+    func emojiJoinerStays() {
+        let family = "\u{1F469}\u{200D}\u{1F467}"
+        #expect(InsertionPoint.visibleText(family) == family)
+    }
+
+    @Test("the vocabulary view drops a key and keeps every prose word and line")
+    func vocabularyDropsSecrets() {
+        let point = InsertionPoint(
+            precedingText: "Meeting moved to Thursday, see you there.\nkey AKIAIOSFODNN7EXAMPLE here",
+            followingText: "well-known co-op notes")
+        #expect(point.vocabulary.precedingText == "Meeting moved to Thursday, see you there.\nkey  here")
+        #expect(point.vocabulary.followingText == "well-known co-op notes")
+        #expect(InsertionPoint.unknown.vocabulary == .unknown)
+    }
 }

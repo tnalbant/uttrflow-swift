@@ -30,7 +30,9 @@ inside and a one-line summary. `QualityLayers` resolves which are on from those 
 only by the local defaults key `QualityLayer.<name>` (`-QualityLayer.<name> NO` for one launch),
 never from a network source. `QualityLayers.ablation(only:without:)` builds the set a bake-off or
 eval run asks for, and refuses an unknown name. A new layer is added as a case with `defaultOn`
-false, measured, then turned on in a reviewed pull request.
+false, measured, then turned on in a reviewed pull request. `persona-vocabulary` is such a case inside
+recogniser bias: it ranks the prompt's words by the persona projection in
+[learned-state.md](learned-state.md#the-persona-projection).
 
 `DictationPipeline` takes the set as `layers` and a layer that is off leaves its stage's input as it
 came: recogniser bias off sends the recogniser no vocabulary; evidence capture, candidate
@@ -112,6 +114,15 @@ exists for fitting, in Swift or in `Scripts/`.
 | Linear scorer over fewer than 20 features | L2-regularised logistic regression | `LinearScorer.fit` |
 | Monotone calibration map | pool-adjacent-violators | `MonotoneCalibration.fit` |
 | Count table | a dictionary of counts | the layer's own reader format |
+
+A fit is bit-reproducible: the same rows give the same artifact digest in any process, on any
+thread count and on any Apple silicon Mac. Rows are read in the caller's array order, never by
+iterating a `Dictionary` or `Set`; sums run on one thread in that order; ties sort by a stated key
+(`MonotoneCalibration.fit` puts wrong before right at an equal score); a fit draws no randomness,
+and one that must draws from a seed it stores in its record. Stored floats keep 12 significant
+digits (`FitArtifact.stored`) and `digest` hashes that form, so a last-bit difference cannot change
+it. `FittingTests` pins the fixture's digest and refits on eight threads at once; it runs without
+`SWIFT_DETERMINISTIC_HASHING`.
 
 Fitting adds no dependency. A step that cannot be done in Swift (for example a one-off model
 conversion) names itself in its issue, pins every package by hash, and states how dependency

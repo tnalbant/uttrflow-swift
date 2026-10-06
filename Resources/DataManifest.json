@@ -169,8 +169,8 @@
       "licence": "MIT",
       "redistribution": true,
       "note": "read through DataTable; see Docs/data-tables.md",
-      "sha256": "6a188470214354c563841adc39253e75b5e73ff6e94a8c054dcb42f05fac71db",
-      "bytes": 3979
+      "sha256": "62721e2f47e66301a1e21e960c652e713a308238c136e6dea4e933ecc3665a8a",
+      "bytes": 5747
     },
     {
       "path": "Sources/UttrflowCore/Resources/Tables/correction-triggers.json",
@@ -209,6 +209,15 @@
       "bytes": 1062
     },
     {
+      "path": "Sources/UttrflowCore/Resources/Tables/number-cues.json",
+      "origin": "authored",
+      "licence": "MIT",
+      "redistribution": true,
+      "note": "read through DataTable; see Docs/data-tables.md",
+      "sha256": "6e9802b2d8947edb0b9f78c05030590980e5d0d69ea34822cb2d05f2b213ef37",
+      "bytes": 1218
+    },
+    {
       "path": "Sources/UttrflowCore/Resources/Tables/number-words.json",
       "origin": "authored",
       "licence": "MIT",
@@ -223,8 +232,8 @@
       "licence": "MIT",
       "redistribution": true,
       "note": "read through DataTable; see Docs/data-tables.md",
-      "sha256": "7b3be2ba8624e9a7efd5f4233ae8e9022a9b1f487fe4dda49cdc82717da61757",
-      "bytes": 6457
+      "sha256": "4fc7efaee28db020061e5e4b3005e42157fb2584f95a53bf37a0b9468158540a",
+      "bytes": 12450
     },
     {
       "path": "Sources/UttrflowCore/Resources/Tables/technical-lexicon.json",
@@ -232,8 +241,8 @@
       "licence": "MIT",
       "redistribution": true,
       "note": "written for this repository, copied from no list; read through DataTable; see Docs/data-tables.md",
-      "sha256": "058c059bfc42001aae95a255787ec17135a03dff4d59a175b704c5d227cb0946",
-      "bytes": 19212
+      "sha256": "44c883d97377cba8fbb9663617f4c522cb96f646468764af3bacda95f2f7c144",
+      "bytes": 19743
     },
     {
       "path": "Sources/UttrflowUX/Resources/PropertyValueAliases.txt",

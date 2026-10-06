@@ -54,6 +54,11 @@ comment-report: ## List the multi-line comments left, worst file first.
 seam-audit: ## Prove no corpus cut gained a difference between cleaning its pieces and cleaning the whole.
 	$(SWIFT) run uttrflow-dev seams --check Scripts/seam_baseline.json
 
+.PHONY: corpus-edit-audit
+corpus-edit-audit: ## Refuse a changed or removed evaluation case that Scripts/corpus_edits.txt does not name. Needs no build.
+	@python3 Scripts/corpus_edit_audit_test.py
+	@python3 Scripts/corpus_edit_audit.py
+
 .PHONY: match-audit
 match-audit: ## Prove no source file gained a word match decided by shape. Needs no build.
 	@python3 Scripts/loose_match_audit.py
@@ -65,6 +70,14 @@ closed-list-audit: ## Prove no source file gained a literal list of four or more
 .PHONY: closed-list-report
 closed-list-report: ## List the closed word lists still written into code, with the line.
 	@python3 Scripts/closed_list_audit.py --report
+
+.PHONY: duplicate-table-audit
+duplicate-table-audit: ## Prove no file gained a word table that copies one in another file. Needs no build.
+	@python3 Scripts/duplicate_table_audit.py
+
+.PHONY: duplicate-table-report
+duplicate-table-report: ## List every pair of word tables in different files that hold the same members.
+	@python3 Scripts/duplicate_table_audit.py --report
 
 .PHONY: word-split-audit
 word-split-audit: ## Prove no file gained text split into words by a hand-written separator. Needs no build.
@@ -101,10 +114,11 @@ string-audit: ## Prove no file gained a fixed English string handed to a view. N
 	@python3 Scripts/string_audit.py
 
 .PHONY: ratchet-test
-ratchet-test: ## Prove the comment, word-match, closed-list, layering, public API, string and type-name baselines refuse a rise without --after-merge. Needs no build.
+ratchet-test: ## Prove the comment, word-match, closed-list, duplicate-table, layering, public API, string and type-name baselines refuse a rise without --after-merge. Needs no build.
 	@python3 Scripts/audit_ratchet_test.py
 	@python3 Scripts/loose_match_audit_test.py
 	@python3 Scripts/closed_list_audit_test.py
+	@python3 Scripts/duplicate_table_audit_test.py
 	@python3 Scripts/word_split_audit_test.py
 	@python3 Scripts/layering_audit_test.py
 	@python3 Scripts/public_api_audit_test.py
@@ -242,6 +256,8 @@ docs-audit: ## Prove the documentation still describes this tree, including that
 data-manifest: ## Prove every bundled resource file is in Resources/DataManifest.json with its digest. Needs no build.
 	@python3 Scripts/data_manifest_test.py
 	@python3 Scripts/data_manifest.py
+	@cd Scripts && python3 ngram_sources_test.py
+	@python3 Scripts/ngram_sources.py
 
 .PHONY: claims-audit
 claims-audit: ## Refuse a privacy, accuracy or speed claim in user-facing text that Docs/claims.json does not back. Needs no build.
@@ -352,7 +368,7 @@ disclosure-history: ## Scan every commit on every ref. Run before a repo goes pu
 # whose failure cannot be fixed after the fact. A competitor's name in a commit is
 # published the moment the commit is, and no later edit reaches a clone or a cache.
 .PHONY: verify
-verify: pii-audit data-manifest audio-audit root-audit disclosure-audit issue-template-audit test-name-audit docs-audit design-audit comment-audit match-audit closed-list-audit word-split-audit accessibility-controls layering-audit public-api-audit string-audit type-name-audit python-imports-audit ratchet-test mutation-probe-test range-test hits-test hook-test pre-push-test pre-push-lock-test update-feed-test entitlement-gate-test issue-template-test dependabot-labels-test flake-audit uitest-arguments eval-arguments uitest-result-path developer-dir-test log-audit store-permissions pasteboard-audit context-reach-audit bundle-requirement-test bundle-test release-tag-test release-notes-test provider-mark-test release-order-test notarise-dmg-test soak-test e2e-predict-cleanup-test publish-resume-test publish-cleanup-test offline-audit-tokenizer-test offline-test exclusion-audit perf-budget size-budget lint build coverage offline-audit ## The whole gate: audits, package and release checks, soak and notarisation checks, lint, build, tests, coverage, and offline audit.
+verify: pii-audit data-manifest audio-audit root-audit disclosure-audit issue-template-audit test-name-audit docs-audit design-audit comment-audit corpus-edit-audit match-audit closed-list-audit duplicate-table-audit word-split-audit accessibility-controls layering-audit public-api-audit string-audit type-name-audit python-imports-audit ratchet-test mutation-probe-test range-test hits-test hook-test pre-push-test pre-push-lock-test update-feed-test entitlement-gate-test issue-template-test dependabot-labels-test flake-audit uitest-arguments eval-arguments uitest-result-path developer-dir-test log-audit store-permissions pasteboard-audit context-reach-audit bundle-requirement-test bundle-test release-tag-test release-notes-test provider-mark-test release-order-test notarise-dmg-test soak-test e2e-predict-cleanup-test publish-resume-test publish-cleanup-test offline-audit-tokenizer-test offline-test exclusion-audit perf-budget size-budget lint build coverage offline-audit ## The whole gate: audits, package and release checks, soak and notarisation checks, lint, build, tests, coverage, and offline audit.
 
 # Hooks are not cloned — .git/hooks is local to a checkout — so this points git at a
 # directory that is. One command per clone, and the gate cannot be forgotten after that.
