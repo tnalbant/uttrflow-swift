@@ -61,7 +61,7 @@ public enum Scorer {
     }
 
     private static func normalisedWhitespace(_ text: String) -> String {
-        text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        WordTokens.words(text, .display).joined(separator: " ")
     }
 
     /// The beginning, ending and exact form checked literally, each named with its side so a missing anchor never reads as output.
@@ -75,6 +75,12 @@ public enum Scorer {
         }
         if let exact = reference.expectedExact, rewritten != exact {
             broken.append("is exactly \"\(exact)\"")
+        }
+        // Each closing mark ends one sentence, and words left after the last mark are one sentence more.
+        if let fewest = reference.minimumSentences {
+            let marked = tokens(rewritten, keepingSentenceEnds: true)
+            let closed = marked.count(where: { $0 == sentenceEnd }) + (marked.last == sentenceEnd ? 0 : 1)
+            if closed < fewest { broken.append("closes \(fewest) sentences") }
         }
         return broken
     }

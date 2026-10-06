@@ -4,6 +4,7 @@ public import UttrflowCore
 /// Turns "new line", "new paragraph", "bullet point" and "number one" into layout, between words only.
 public struct LayoutWordsPass: PieceCleaningPass {
     public static let id: PassID = .layoutWords
+    public static let laws: Set<PassLaw> = Set(PassLaw.allCases)
 
     private let layout: LayoutPolicy
     private let insertionState: InsertionPoint.SentenceState

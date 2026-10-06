@@ -111,6 +111,29 @@ struct RestatementTests {
     }
 
     @Test(
+        "a camel-case dictionary anchor removes every spoken component",
+        arguments: [
+            ("push to git hub no wait GitHub", 4, 6, 2),
+            ("open payment sheet scratch that PaymentSheet", 3, 5, 1),
+            ("open user profile cache no wait UserProfileCache", 4, 6, 1),
+        ]
+    )
+    func camelCaseDictionaryAnchorRemovesEverySpokenComponent(
+        text: String, trigger: Int, restart: Int, expectedStart: Int
+    ) {
+        let (draft, live) = reading(text)
+        #expect(
+            Restatement.discardedStart(before: trigger, after: restart, in: live, of: draft)
+                == expectedStart)
+    }
+
+    @Test("a short whole-word anchor remains valid")
+    func shortWholeWordAnchor() {
+        let (draft, live) = reading("go no wait go")
+        #expect(Restatement.discardedStart(before: 1, after: 3, in: live, of: draft) == 0)
+    }
+
+    @Test(
         "a lone repeated word does not anchor beyond six words",
         arguments: [
             ("at noon we will send the report to them no sorry at one", 9, 11),

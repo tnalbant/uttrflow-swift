@@ -16,7 +16,7 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
     private let monitor: any HotkeyMonitoring
     /// Watches the held command key, whose utterances run as edit commands. See `Docs/commands.md`.
     private let commandMonitor: (any HotkeyMonitoring)?
-    /// Sounds the start only; the capture engine sounds the stop, once the microphone has closed.
+    /// Sounds the start and a discard; the capture engine sounds the stop, once the microphone has closed.
     private let cue: any RecordingCueing
     private let clock: ClockType
     private let limit: DictationLimit
@@ -378,8 +378,14 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
         setHandsFree(false)
         guard await pipeline.currentState.isBusy else { return }
         stopWatchingTheLimit()
-        await pipeline.cancel()
+        await abandon()
         resetControlStartedRecording()
+    }
+
+    /// Cancels the dictation, sounding the discarded cue when the pipeline says the cancel cost a long take.
+    private func abandon() async {
+        await pipeline.cancel()
+        if case .discarded = await pipeline.currentState { cue.playDiscarded() }
     }
 
     /// Whether an event belongs to the key in use; the other key's press takes over only once nothing is under way.
@@ -510,7 +516,7 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
         pressOpenedTheMicrophone = false
         guard await pipeline.currentState.isListening, !isHandsFree else { return }
         stopWatchingTheLimit()
-        await pipeline.cancel()
+        await abandon()
     }
 
     /// Suspends until a waiting press has settled or been forgotten, which only the clock can decide.
@@ -693,7 +699,7 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
                 return
             }
             stopWatchingTheLimit()
-            await pipeline.cancel()
+            await abandon()
             return
         }
         // A real hold, so any earlier tap is no longer waiting to pair with the next one.
