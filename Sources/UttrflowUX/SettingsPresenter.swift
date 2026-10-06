@@ -746,7 +746,7 @@ public enum SettingsPresenter {
             return SettingsBanner(
                 symbolName: "clock",
                 title: title,
-                message: "The model is being read into memory. This happens once per launch.")
+                message: "The model is being read into memory for AI suggestions.")
         case .releasedForMemory:
             return SettingsBanner(
                 symbolName: "memorychip",
