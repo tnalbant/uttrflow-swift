@@ -192,8 +192,9 @@ struct DictationPipelineStateTests {
         let pipeline = DictationPipeline(
             capture: FakeAudioCaptureEngine(stopOutcome: .success(recording)),
             speech: FakeSpeechEngine(transcribeOutcome: .success(.fixture(text: spoken))),
-            cleaner: FakeCleaner(), context: FakeContextEngine(context: .fixture()),
-            inserter: FakeInserter(), metrics: metrics, clock: ManualClock())
+            cleaner: FakeTranscriptCleaner(answering: tidiedAnswer),
+            context: FakeContextEngine(context: .fixture()),
+            inserter: FakeTextInserter(), metrics: metrics, clock: ManualClock())
 
         await pipeline.startRecording()
         await pipeline.finishRecording()

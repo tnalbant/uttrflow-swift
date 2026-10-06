@@ -56,4 +56,3 @@ public struct CaptureQuality: Sendable, Equatable {
         magnitude > 0 ? 20 * log10(Double(magnitude)) : -.infinity
     }
 }
-
