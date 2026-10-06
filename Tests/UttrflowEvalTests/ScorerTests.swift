@@ -645,15 +645,15 @@ struct CorpusIndependenceTests {
             contract: "",
             contractExamples: [
                 WorkedExample(
-                    spoken: "I'll probably be about twenty minutes late to the meeting",
-                    cleaned: "I'll probably be about twenty minutes late to the meeting.")
+                    spoken: "I'll probably be about 20 minutes late to the meeting",
+                    cleaned: "I'll probably be about 20 minutes late to the meeting.")
             ],
             blocks: [:])
 
         #expect(
             knownContamination(in: prompt).contains {
                 $0.caseID == "late-to-meeting"
-                    && normalise($0.fragment) == "i ll probably be about twenty minutes late to the meeting"
+                    && normalise($0.fragment) == "i ll probably be about 20 minutes late to the meeting"
             })
     }
 
