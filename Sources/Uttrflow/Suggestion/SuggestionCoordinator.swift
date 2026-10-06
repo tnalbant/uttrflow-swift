@@ -1508,8 +1508,7 @@ final class SuggestionCoordinator {
                 // A field that is no longer the drawn line gets its key back, so Tab still does what Tab does there.
                 if let returnedKey { KeyStrokeReturn.post(returnedKey) }
                 noteActivity()
-                // The field is re-read a moment later, since an application applies the insertion after the keys land.
-                wake(.tick, afterMilliseconds: 80)
+            // The field-value observer wakes after the destination exposes its insertion; the activity ticker is the fallback.
             case .redraw(let update):
                 redraw(update)
             case .giveBack(let refused):

@@ -493,15 +493,19 @@ public struct SuggestionSession: Sendable, Equatable {
         }
         let line = TextMatching.caseFoldedKey(typing)
         let whole = TextMatching.caseFoldedKey(taken.line)
-        // The read that shows the taken line in place is still inside the watch.
-        guard line != whole else { return }
-        self.taken = nil
-        // A field emptied after a take was sent by a button or shortcut the tap never sees, which is not an undo.
-        guard !line.isEmpty else { return }
-        // A fuzzy line rewrote what was typed, so its undo lands on the typo rather than inside the line.
-        if whole.hasScalarPrefix(line) || TextMatching.caseFoldedKey(taken.over).hasScalarPrefix(line) {
-            undoneHere.insert(TextMatching.caseFoldedKey(taken.line))
+        // Wait for the target's delayed echo before treating a shorter read as an undo.
+        guard line == whole else {
+            guard taken.echoWasObserved else { return }
+            self.taken = nil
+            // A field emptied after a take was sent by a button or shortcut the tap never sees, which is not an undo.
+            guard !line.isEmpty else { return }
+            // A fuzzy line rewrote what was typed, so its undo lands on the typo rather than inside the line.
+            if whole.hasScalarPrefix(line) || TextMatching.caseFoldedKey(taken.over).hasScalarPrefix(line) {
+                undoneHere.insert(TextMatching.caseFoldedKey(taken.line))
+            }
+            return
         }
+        self.taken?.echoWasObserved = true
     }
 
     /// The moment with the three facts only this session knows filled in.
@@ -566,4 +570,6 @@ private struct TakenLine: Sendable, Equatable {
     let over: String
     /// When the key accepted the line.
     let moment: Date
+    /// Whether the field has ever exposed the text written by the accept key.
+    var echoWasObserved = false
 }
