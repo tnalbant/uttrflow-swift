@@ -52,7 +52,12 @@ public struct LayoutWordsPass: PieceCleaningPass {
                 live.removeSubrange(position..<position + found.length)
                 continue
             }
-            draft.replace(at: live[position], with: found.mark, by: Self.id)
+            // A break with nothing to break from writes no mark, so its words go rather than leave an empty word.
+            if found.mark.isEmpty {
+                draft.remove(at: live[position], by: Self.id)
+            } else {
+                draft.replace(at: live[position], with: found.mark, by: Self.id)
+            }
             for index in live[position + 1..<position + found.length] {
                 draft.remove(at: index, by: Self.id)
             }

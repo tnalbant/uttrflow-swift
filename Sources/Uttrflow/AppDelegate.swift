@@ -305,14 +305,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             file: DictationHistoryStore.defaultFile(in: container), encryptedStore: encryptedStore)
         recordings = RecordingStore(
             directory: RecordingStore.defaultDirectory(in: container), encryptedStore: encryptedStore)
+        let evidence = encryptedStore.map {
+            EvidenceLedgerStore(file: EvidenceLedgerStore.defaultFile(in: container), encryptedStore: $0)
+        }
         dictionary = PersonalDictionaryStore(
-            file: PersonalDictionaryStore.defaultFile(in: container), encryptedStore: encryptedStore)
+            file: PersonalDictionaryStore.defaultFile(in: container), encryptedStore: encryptedStore,
+            sightings: evidence.flatMap { ledger in
+                encryptedStore.map { store in
+                    SightingMemory(ledger: ledger, encryptedStore: store) { [settingsStore] now in
+                        RetentionWindow(days: settingsStore.load().transcriptRetentionDays, now: now)
+                    }
+                }
+            })
         snippets = SnippetStore(file: SnippetStore.defaultFile(in: container), encryptedStore: encryptedStore)
         clipboard = ClipboardStore(
             file: ClipboardStore.defaultFile(in: container), encryptedStore: encryptedStore)
-        evidence = encryptedStore.map {
-            EvidenceLedgerStore(file: EvidenceLedgerStore.defaultFile(in: container), encryptedStore: $0)
-        }
+        self.evidence = evidence
         super.init()
         if clipboardPreferencesUnreadable {
             actionNotice = Self.clipboardPreferencesUnreadableNotice(
@@ -528,11 +536,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             days: settings.clipboardRetentionDays, now: now,
             dictationDays: settings.transcriptRetentionDays)
         let previous = sweeping
-        sweeping = Task(priority: .utility) { [recordings, history, clipboard, evidence] in
+        let overrides = settings.destinations
+        sweeping = Task(priority: .utility) { [recordings, history, clipboard, evidence, dictionary] in
             await previous?.value
             _ = await recordings.waiting(now: now)
-            _ = await history.records(keeping: retention)
-            _ = await evidence?.rows(keeping: RetentionWindow(days: retention.days, now: now))
+            let records = await history.records(keeping: retention)
+            let window = RetentionWindow(days: retention.days, now: now)
+            if let evidence {
+                // History's dictations from before the ledger existed, counted once.
+                let rows = EvidenceSources.backfill(
+                    records, entries: await dictionary.allEntries(),
+                    ledger: await evidence.rows(keeping: window), overrides: overrides)
+                if !rows.isEmpty { try? await evidence.append(rows, keeping: window) }
+            }
             _ = await clipboard.clips(keeping: clipboardRetention)
         }
     }
@@ -575,7 +591,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             suggestions: PredictCorpus(
                 container: container, running: running, encryptedStore: encryptedStore),
             met: { AppDelegate.applicationsTheLoopHasMet(in: container) },
-            elsewhere: elsewhere, evidence: evidence)
+            elsewhere: elsewhere, ledger: .shared, evidence: evidence)
     }
 
     /// Applications the completion loop has met, so the Suggestions list can offer a switch for each.
@@ -1276,8 +1292,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let speech = makeSpeechEngine(settings.engines.speech)
         speechInUse = speech.kind
 
+        // The ledger is read only while the persona layer is on, and only inside History's window.
+        var personaEvidence: (@Sendable () async -> [EvidenceRow])?
+        if qualityLayers.isOn(.personaVocabulary), let ledger = evidence {
+            let days = settings.transcriptRetentionDays
+            personaEvidence = { await ledger.rows(keeping: RetentionWindow(days: days, now: Date())) }
+        }
         // Ranked against the screen the pipeline already read for this dictation, not a second read of its own.
-        let speechWords = DictionaryVocabulary { [dictionary] in
+        let speechWords = DictionaryVocabulary(evidence: personaEvidence) { [dictionary] in
             await (dictionary.allEntries(), dictionary.index(), Date())
         }
 
@@ -1307,7 +1329,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             speechWords: { seeing in await speechWords.vocabulary(favouring: seeing) },
             corrector: DictionaryCorrections { [dictionary] in await dictionary.index() },
             snippets: StoredSnippets(store: snippets),
-            learner: StoreCounters(dictionary: dictionary, snippets: snippets),
+            learner: StoreCounters(dictionary: dictionary, snippets: snippets) { [weak self] used in
+                await MainActor.run {
+                    guard let self, let evidence = self.evidence else { return }
+                    self.noteEvidence(
+                        EvidenceSources.uses(of: used, day: EvidenceRow.day(of: Date())), in: evidence)
+                }
+            },
             vocabulary: LearnedVocabulary(dictionary: dictionary) { [weak self] entries in
                 await MainActor.run { self?.noteLearned(entries) }
             },
@@ -2490,7 +2518,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         menuBar.update(with: MenuBarPresenter.present(menuBarState(for: state)))
         trackWait(for: state)
         dock.update(with: dockPresentation(for: state))
-        announce(DictationPresenter.announcement(for: state))
+        announcer.repeatWindow = .milliseconds(settings.handsFreeDoubleTapMilliseconds)
+        announce(announcer.announcement(for: state, at: ContinuousClock.now))
         // No page shows a dictation under way, so the pages are read and built only once it has ended.
         if !state.isBusy { refreshMainWindow() }
 
@@ -2554,13 +2583,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let destination = DestinationClassifier.classify(app, overrides: settings.destinations)
         let now = Date()
         let rows = StyleSignals.rows(for: outcome.text, into: destination, day: EvidenceRow.day(of: now))
+        noteEvidence(rows, in: evidence, now: now)
+    }
+
+    /// Appends rows to the ledger inside History's window, off the main actor; a refusal is logged, never shown.
+    private func noteEvidence(_ rows: [EvidenceRow], in evidence: EvidenceLedgerStore, now: Date = Date()) {
         guard !rows.isEmpty else { return }
         let window = RetentionWindow(days: settings.transcriptRetentionDays, now: now)
         Task {
             do {
                 try await evidence.append(rows, keeping: window)
             } catch {
-                Self.log.error("style counts not saved: \(ErrorLog.failure(error), privacy: .public)")
+                Self.log.error("evidence not saved: \(ErrorLog.failure(error), privacy: .public)")
             }
         }
     }
@@ -3043,6 +3077,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var lastVocabularyPrompt: [String] = []
     /// What the dictation pipeline last reported. See where it is written.
     private var lastDictationState: DictationState = .idle
+    private var announcer = DictationAnnouncer<ContinuousClock.Instant>(
+        repeatWindow: DictationController<ContinuousClock>.doubleTapWindow)
     private var snippetEditorIsOpen = false
     /// The same, for the word editor.
     private var wordEditorIsOpen = false
@@ -3345,6 +3381,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     return
                 }
                 _ = try await dictionary.recordRevert(of: entryID)
+                if let evidence {
+                    noteEvidence(
+                        [EvidenceSources.revert(of: entryID, day: EvidenceRow.day(of: Date()))], in: evidence)
+                }
             }
 
         case .flagDictation(let id):
@@ -3920,6 +3960,8 @@ final class RetryBadgeOwnership {
 private struct StoreCounters: DictationLearning {
     let dictionary: PersonalDictionaryStore
     let snippets: SnippetStore
+    /// Told the entries a landed dictation used, after the dictionary counted them, so the ledger sees the same set.
+    var noteUses: @Sendable ([UUID]) async -> Void = { _ in }
 
     func recordUse(ofEntries ids: [UUID], writtenIn text: String) async throws(DictationChangeError) {
         let used = DictionaryAppearances.used(await dictionary.allEntries(), applied: ids, writtenIn: text)
@@ -3929,6 +3971,7 @@ private struct StoreCounters: DictationLearning {
         } catch {
             throw .storeRefused
         }
+        await noteUses(used)
     }
 
     func recordUse(ofSnippets ids: [UUID]) async throws(DictationChangeError) {

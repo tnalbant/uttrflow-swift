@@ -493,7 +493,7 @@ struct Bakeoff: AsyncParsableCommand {
         }
     }
 
-    /// Precision, recall and F1 per punctuation mark over aligned words, then which mark was written for which.
+    /// Precision, recall and F1 per punctuation mark over aligned words, then which mark is written for which.
     private func printMarks(of measurements: [Measurement]) {
         let header =
             "candidate".padded(to: 17) + "params".padded(to: 8) + "mark".padded(to: 13)

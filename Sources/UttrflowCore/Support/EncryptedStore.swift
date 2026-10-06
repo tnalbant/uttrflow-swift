@@ -114,6 +114,15 @@ public struct EncryptedStore: Sendable {
         return try Self.seal(payload, key: key, name: logicalName)
     }
 
+    /// A keyed hash of `text` under this installation's key, separated by `purpose`, so equal text matches without being stored.
+    public func digest(of text: String, for purpose: String) throws -> String {
+        let key = try keys.key(createIfMissing: true)
+        let subkey = HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: key, info: Data(purpose.utf8), outputByteCount: 32)
+        let code = HMAC<SHA256>.authenticationCode(for: Data(text.utf8), using: subkey)
+        return code.map { String(format: "%02x", $0) }.joined()
+    }
+
     /// Revokes the shared key after all reset targets have been deleted successfully.
     public func revokeKey() throws {
         try keys.revokeKey()

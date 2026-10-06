@@ -34,7 +34,7 @@ struct SpokenPunctuationPassTests {
             ("we discussed colon cancer", "we discussed colon cancer"),
             ("export comma separated values", "export comma separated values"),
             ("we checked dash cam footage", "we checked dash cam footage"),
-            ("meet at five colon thirty", "meet at five: 30"),
+            ("meet at five colon thirty", "meet at five: thirty"),
             ("the build passed period the tests passed period", "the build passed. the tests passed."),
             ("that was amazing exclamation point", "that was amazing!"),
         ]
@@ -372,7 +372,6 @@ struct SpokenPunctuationPassTests {
             "reduce comma usage in prose", "sprint dash training starts monday",
             "we checked dash cam footage", "he keeps writing comma splices",
             "the main road is closed", "turn left at the main gate",
-            "done comma next", "two things colon milk", "milk comma eggs and bread",
         ]
     )
     func leavesAnOrdinaryNameWithoutEvidence(input: String) {
@@ -393,6 +392,9 @@ struct SpokenPunctuationPassTests {
             ("note colon kal chutti hai", "note: kal chutti hai"),
             ("chai dash phir biscuit", "chai \u{2014} phir biscuit"),
             ("apples comma pears comma plums", "apples, pears, plums"),
+            ("done comma next", "done, next"),
+            ("two things colon milk", "two things: milk"),
+            ("milk comma eggs and bread", "milk, eggs and bread"),
             ("red comma green. blue comma white", "red comma green. blue comma white"),
             ("we have colon trouble. the colon comma and more", "we have colon trouble. the colon, and more"),
         ]

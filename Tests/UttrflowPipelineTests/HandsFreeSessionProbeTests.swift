@@ -42,6 +42,8 @@ private actor HandsFreeProbe {
     private let controller: DictationController<ManualClock>
     private var presses = 0
     private var announced = 0
+    private var announcer = DictationAnnouncer<ManualClock.Instant>(
+        repeatWindow: DictationController<ManualClock>.doubleTapWindow)
 
     init(heard: String) {
         pipeline = DictationPipeline(
@@ -63,6 +65,16 @@ private actor HandsFreeProbe {
         let log = log
         Task { for await state in states { log.record(state) } }
         await Task.yield()
+    }
+
+    /// The menu bar's Talk button or the Start Dictation intent, which Voice Control and Siri reach.
+    func startFromControl() async {
+        _ = await controller.command(.start)
+    }
+
+    /// The same control again (Stop), the gesture a control-started recording shows.
+    func stopFromControl() async {
+        _ = await controller.command(.stop)
     }
 
     /// One press and release of a key, short enough to count as a tap.
@@ -97,7 +109,8 @@ private actor HandsFreeProbe {
     func step(_ name: String) async -> ProbeStep {
         for _ in 0..<20 { await Task.yield() }
         let states = log.states
-        let said = states[announced...].compactMap { DictationPresenter.announcement(for: $0)?.text }
+        let now = clock.now
+        let said = states[announced...].compactMap { announcer.announcement(for: $0, at: now)?.text }
         announced = states.count
         defer { presses = 0 }
         return ProbeStep(name: name, keyPresses: presses, announcements: said)
@@ -111,6 +124,40 @@ struct HandsFreeSessionProbeTests {
     /// The measured session; `Docs/segments.md` lists each key press with the issue that removes it.
     @Test("start, dictate, correct and stop: the key presses and what VoiceOver hears")
     func session() async throws {
+        let probe = HandsFreeProbe(heard: Self.heard)
+        await probe.listen()
+        var steps: [ProbeStep] = []
+
+        await probe.startFromControl()
+        steps.append(await probe.step("start"))
+
+        steps.append(await probe.step("dictate"))
+
+        await probe.stopFromControl()
+        try await probe.waitForIdle()
+        steps.append(await probe.step("stop"))
+
+        await probe.holdCommandKey()
+        try await probe.waitForIdle()
+        steps.append(await probe.step("correct"))
+
+        for step in steps {
+            print("hands-free probe: \(step.name) keyPresses=\(step.keyPresses) said=\(step.announcements)")
+        }
+        #expect(steps.map(\.keyPresses) == [0, 0, 0, 1])
+        #expect(steps.map(\.keyPresses).reduce(0, +) == 1)
+        #expect(steps[0].announcements == ["Listening."], "a control opens the microphone once")
+        #expect(steps[2].announcements.contains { $0.hasPrefix("Inserted:") })
+        #expect(
+            steps[3].announcements.last
+                == "That isn't an edit command Uttrflow knows, so nothing was changed.",
+            "no edit command is registered, so a spoken correction changes nothing")
+        #expect(await probe.inserted.count == 1, "the correction typed nothing, and changed nothing")
+    }
+
+    /// The keyboard route remains measured alongside the zero-key control route.
+    @Test("double tap, dictate, correct and double tap: key presses and announcements")
+    func keyboardSession() async throws {
         let probe = HandsFreeProbe(heard: Self.heard)
         await probe.listen()
         var steps: [ProbeStep] = []
@@ -129,13 +176,13 @@ struct HandsFreeSessionProbeTests {
         steps.append(await probe.step("correct"))
 
         for step in steps {
-            print("hands-free probe: \(step.name) keyPresses=\(step.keyPresses) said=\(step.announcements)")
+            print("hands-free keyboard probe: \(step.name) keyPresses=\(step.keyPresses) said=\(step.announcements)")
         }
         #expect(steps.map(\.keyPresses) == [2, 0, 2, 1])
         #expect(steps.map(\.keyPresses).reduce(0, +) == 5)
         #expect(
-            steps[0].announcements == ["Listening.", "Listening."],
-            "each tap of the double tap opens the microphone")
+            steps[0].announcements == ["Listening."],
+            "a double tap that goes hands-free announces once")
         #expect(steps[2].announcements.contains { $0.hasPrefix("Inserted:") })
         #expect(
             steps[3].announcements.last

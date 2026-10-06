@@ -896,7 +896,9 @@ struct DictationControllerModeChangeTests {
         await harness.controller.setActivation(.pressToToggle)
         await harness.controller.handle(.released)
 
-        #expect(await harness.capture.calls.isEmpty, "the microphone never opened")
+        #expect(
+            await harness.capture.calls.events == [.start, .cancel],
+            "the key-down microphone closes with the mode change and nothing reopens it")
         await harness.controller.stop()
     }
 }

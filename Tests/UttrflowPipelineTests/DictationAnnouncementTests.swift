@@ -145,4 +145,24 @@ struct DictationAnnouncementTests {
             #expect(!said.text.isEmpty)
         }
     }
+
+    @Test("a microphone reopened within the double-tap window is not announced twice")
+    func reopenedWithinWindow() {
+        let start = ContinuousClock.now
+        var announcer = DictationAnnouncer<ContinuousClock.Instant>(repeatWindow: .milliseconds(450))
+        #expect(announcer.announcement(for: .recording, at: start)?.text == "Listening.")
+        #expect(announcer.announcement(for: .idle, at: start + .milliseconds(60)) == nil)
+        #expect(announcer.announcement(for: .recording, at: start + .milliseconds(120)) == nil)
+    }
+
+    @Test("a later start, or one after other news, still says Listening")
+    func laterStartAnnounced() {
+        let start = ContinuousClock.now
+        var announcer = DictationAnnouncer<ContinuousClock.Instant>(repeatWindow: .milliseconds(450))
+        _ = announcer.announcement(for: .recording, at: start)
+        #expect(announcer.announcement(for: .recording, at: start + .seconds(1))?.text == "Listening.")
+        #expect(announcer.announcement(for: .failed(.stillLoading), at: start + .milliseconds(1010)) != nil)
+        #expect(
+            announcer.announcement(for: .recording, at: start + .milliseconds(1020))?.text == "Listening.")
+    }
 }
