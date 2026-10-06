@@ -91,7 +91,7 @@ extension LocalStore {
         return .read(value)
     }
 
-    /// Decodes a stored value; a list keeps every element this build can read, copying the file's original bytes aside when one is dropped.
+    /// Decodes a stored value; a list keeps every element this build can read, copying the file's original bytes aside once when one is dropped.
     static func decodeKeepingReadable<Value: Decodable>(
         _ type: Value.Type, from data: Data, readFrom url: URL, now: Date
     ) -> Value? {
@@ -104,7 +104,7 @@ extension LocalStore {
             log.error(
                 "Kept the readable entries of \(url.lastPathComponent, privacy: .public), dropping \(dropped)"
             )
-            _ = putAside(url, now: now, keepingOriginal: true)
+            if !hasSetAside(url) { _ = putAside(url, now: now, keepingOriginal: true) }
         }
         return value
     }

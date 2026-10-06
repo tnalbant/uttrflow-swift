@@ -214,6 +214,10 @@ struct StoredListTests {
         #expect(try Data(contentsOf: file) == mixedList)
         let aside = file.deletingLastPathComponent().appending(path: "list.json.unreadable-1800000000")
         #expect(try Data(contentsOf: aside) == mixedList)
+        _ = LocalStore.read([Entry].self, from: file, now: now.addingTimeInterval(60))
+        let folder = file.deletingLastPathComponent().path
+        let copies = try FileManager.default.contentsOfDirectory(atPath: folder)
+        #expect(copies.count == 2)
     }
 
     @Test("A list whose every entry decodes leaves nothing aside.")
