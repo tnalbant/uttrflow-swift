@@ -10,9 +10,9 @@ the corpus is `EvaluationCorpus` (`Sources/UttrflowEval/EvaluationCorpus.swift`)
 
 ## The corpus
 
-**The corpus is 521 cases in ten categories** — `everyday` 165, `contextual` 110, `grammar` 26,
-`technical` 45, `multilingual` 17, `notARequest` 77, `oneLineField` 10, `secondLanguage` 40,
-`bareLiteral` 23, `commandInput` 8 — and everything in it is synthesised or
+**The corpus is 532 cases in eleven categories** — `everyday` 165, `contextual` 110, `grammar` 26,
+`technical` 45, `multilingual` 17, `notARequest` 83, `oneLineField` 10, `secondLanguage` 40,
+`bareLiteral` 27, `commandInput` 8, `longInput` 1 — and everything in it is synthesised or
 written by hand. `Scripts/docs_audit.sh` checks this sentence against `EvaluationCorpus.swift`.
 The count of record for any run is the one `make bakeoff` prints in its header, from
 `EvaluationCorpus.all.count`, beside the prompt version (`PromptBuilder.version`, 11).
@@ -20,6 +20,9 @@ The count of record for any run is the one `make bakeoff` prints in its header, 
 `contextual` is the same words under different windows ([`predict.md`](predict.md) and the
 destination rows in [`cleanup.md`](cleanup.md) are what it measures); `grammar` is the slips a
 formatter may repair beside the dialect that must stay ([`cleanup-design.md`](cleanup-design.md)).
+`longInput` is unmarked dictation past three hundred words; its case is named after the issue it
+guards (`long-input-2351`), must end with a stop and must close at least half its sentences, so one
+run-on sentence fails it however many words survive.
 
 ## How a case is scored
 

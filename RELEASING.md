@@ -68,6 +68,8 @@ tag the release:
 | `make verify` on the tagged commit | exit 0 | the release workflow's verify step for the `-rc` tag |
 | Transcription accuracy against `Scripts/accuracy_baseline.json` | no slice worse | `make accuracy-gate` on the tagged commit, with the shipping model installed |
 | Live-model suites (`*LiveModelTests`) on a Mac with Apple Intelligence | 0 skipped, 0 failed | `make verify` prints `live-model tests: N run, 0 skipped` |
+| The candidate's bundle launches, draws every settings pane and quits cleanly | exit 0 | `make uitest` against the candidate's `Uttrflow.app` ([`Docs/ui-tests.md`](Docs/ui-tests.md)) |
+| Heap growth over a used session with suggestions on | no class whose count only rises, and a clean quit | `make soak` against the running candidate, then quit it ([`Docs/soak.md`](Docs/soak.md)) |
 
 A new candidate restarts the soak time. A criterion with no data, such as a candidate
 nobody has run yet, is not met.

@@ -22,8 +22,10 @@ residual risks here when it lands, and is held to the rules below.
    `Tests/UttrflowDiagnosticsTests/CrashReporterTests.swift`.
 3. **Every learned store is resettable.** Reset personalisation removes it, and a store that is
    added without a reset target is a bug.
-4. **Learning refuses by default.** Text from a secure field is never read, and an application
-   nobody has been asked about teaches nothing.
+4. **Learning stops where it is refused.** Text from a secure field is never read, and an
+   application the user declined teaches nothing. An application nobody has been asked about is
+   learned from, because everything learned stays on this Mac; that default is
+   `ConsentState.dictationMayLearn` and `CapturePreferences` ([predict.md](predict.md)).
 
 ## Assets
 
@@ -48,7 +50,7 @@ residual risks here when it lands, and is held to the rules below.
 | A crash or hang report | No learned value, and no application name: the event is scrubbed before it leaves. |
 | The unified log | Lengths and application identifiers only, never typed, read or said text. Stays on the Mac unless the user shares a system diagnostic. |
 | Somebody looking at the screen | Yes: Settings lists dictionary words and the applications that taught the corpus. |
-| A page or document that shows text to feed the learner | Limited: a title word must also be spoken in three separate dictations, and learned lines come from the user's keystrokes or accepted suggestions in an application they opted in. |
+| A page or document that shows text to feed the learner | Limited: a title word must also be spoken in three separate dictations, and learned lines come from the user's keystrokes or accepted suggestions in an application they have not declined. |
 | Uttrflow's own servers | Not an adversary for this data, because none of it is sent. |
 
 ## Mitigations
@@ -63,7 +65,7 @@ residual risks here when it lands, and is held to the rules below.
 | A word is learned only after three sightings that were also spoken, never from window chrome | `Tests/UttrflowDictionaryTests/DictionaryLearningTests.swift`, `Tests/UttrflowDictionaryTests/LearnableWordsTests.swift` |
 | Secure and one-time-code fields are refused before consent is consulted; unasked applications are refused | `Tests/UttrflowPredictCaptureTests/CaptureGateTests.swift` |
 | Secrets are swept out of captured lines | `Tests/UttrflowPredictCaptureTests/SecretSweepTests.swift` |
-| Nothing is read in or around a secure field | `Tests/UttrflowContextTests/SurroundingsSecureTests.swift`, `Tests/UttrflowPredictTests/SecureFieldTests.swift` |
+| Nothing is read in or around a secure field | `Tests/UttrflowContextTests/SurroundingsSecureTests.swift`, `Tests/UttrflowCoreTests/SecureFieldTests.swift` |
 | Dictation into a secure field is marked as kept nowhere | `Tests/UttrflowPipelineTests/DictationSecureFieldTests.swift` |
 | A credential-shaped dictation is inserted and kept nowhere | `Tests/UttrflowPipelineTests/DictationCredentialTests.swift` |
 | No log line carries typed, read or said text | `make log-audit`, `Tests/UttrflowTests/SuggestionLogTests.swift` |
@@ -84,3 +86,5 @@ residual risks here when it lands, and is held to the rules below.
 - **A system diagnostic** the user chooses to share carries the unified log, application
   identifiers included.
 - **A screenshot of Settings** shows learned words and the applications that taught the corpus.
+- **Learning has no single off switch.** It runs in every application not declined, and the only
+  way to stop it is to decline each application in Settings.

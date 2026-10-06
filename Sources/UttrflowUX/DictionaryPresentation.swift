@@ -163,15 +163,18 @@ public struct DictionaryPromptChip: Sendable, Equatable {
     }
 }
 
-/// The word being typed in; two fields and no identifier, since a row is never edited, only re-added.
+/// The word being typed in, and the entry it edits when opened from a row's Edit.
 public struct DictionaryDraft: Sendable, Equatable {
+    /// The entry being changed, or `nil` for a new word.
+    public let editing: UUID?
     /// The spelling typed so far.
     public let word: String
     /// How it sounds, when the spelling is not a fair guide. Blank is normal.
     public let pronunciation: String
 
     /// Starts empty unless given text.
-    public init(word: String = "", pronunciation: String = "") {
+    public init(editing: UUID? = nil, word: String = "", pronunciation: String = "") {
+        self.editing = editing
         self.word = word
         self.pronunciation = pronunciation
     }
@@ -520,7 +523,7 @@ public enum DictionaryPresenter {
         return rivals
     }
 
-    /// One entry as a row, with Merge on a respelt duplicate, Restore on a retired word and Delete on every one.
+    /// One entry as a row, with Merge on a respelt duplicate, Restore on a retired word, and Edit and Delete on every one.
     static func row(
         for entry: DictionaryEntry, standing: WorkingSet.Standing?, rival: DictionaryEntry? = nil,
         now: Date, calendar: Calendar, locale: Locale
@@ -550,8 +553,11 @@ public enum DictionaryPresenter {
             isRetired: isRetired,
             soundsLike: rival.map { "Sounds like \u{2018}\($0.word)\u{2019}" },
             actions: (merge.map { [$0] } ?? [])
-                + (isRetired ? [MainAction(title: "Restore", intent: .restoreWord(entry.id))] : [])
-                + [.delete(.forgetWord(entry.id))])
+                + (isRetired ? [MainAction(title: "Restore", intent: .restoreWords([entry.id]))] : [])
+                + [
+                    MainAction(title: "Edit", symbolName: "pencil", intent: .editWord(entry.id)),
+                    .delete(.forgetWords([entry.id])),
+                ])
     }
 
     /// The user's words for where a word came from; "Seen on screen" rather than "observed".
@@ -577,16 +583,20 @@ public enum DictionaryPresenter {
             pronunciationLabel: "Say it like",
             pronunciationHint: pronunciationHint(for: draft),
             pronunciationNote: pronunciationNote(for: draft),
-            badge: MainPill(text: "New"),
+            badge: MainPill(text: draft.editing == nil ? "New" : "Editing"),
             problem: problem(with: draft, in: snapshot),
-            replace: duplicate(of: draft, in: snapshot).map {
-                MainAction(
-                    title: "Replace",
-                    intent: .replaceWord($0.id, word: draft.word, pronunciation: draft.pronunciation))
-            },
+            replace: draft.editing != nil
+                ? nil
+                : duplicate(of: draft, in: snapshot).map {
+                    MainAction(
+                        title: "Replace",
+                        intent: .replaceWord($0.id, word: draft.word, pronunciation: draft.pronunciation))
+                },
             save: MainAction(
                 title: "Save",
-                intent: .saveWord(word: draft.word, pronunciation: draft.pronunciation)),
+                intent: draft.editing.map {
+                    .replaceWord($0, word: draft.word, pronunciation: draft.pronunciation)
+                } ?? .saveWord(word: draft.word, pronunciation: draft.pronunciation)),
             cancel: MainAction(title: "Cancel", intent: .cancelWordEdit))
     }
 
@@ -643,7 +653,7 @@ public enum DictionaryPresenter {
         let word = draft.word.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !word.isEmpty else { return nil }
         let key = DictionaryEntry.spellingKey(for: word)
-        return snapshot.entries.first { $0.spellingKey == key }
+        return snapshot.entries.first { $0.id != draft.editing && $0.spellingKey == key }
     }
 
     // MARK: - Nothing to show

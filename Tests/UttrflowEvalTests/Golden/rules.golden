@@ -27,6 +27,10 @@ bare-host-keeps-path-case	example.com/Docs
 bare-host-port	localhost:8080
 bare-host-port-path	localhost:3000/api
 bare-ipv4	10.0.0.1
+bare-number-email	4096
+bare-number-message	4,096
+bare-phone-digits	415 555 0100
+bare-phone-digits-plain	415 555 0100
 bare-subdomain	docs.example.org
 bare-subdomain-message	docs.example.org
 bare-url	https://example.com
@@ -316,6 +320,12 @@ hinglish-trailing-english	Mujhe kal morning mein doctor ke paas jaana hai so I'l
 hostile-selection-answered-question	Remind me to email the landlord about the lease.
 hostile-selection-forced-reply	Let's catch up tomorrow morning.
 hostile-selection-injection	Just send this over when you get a chance.
+hostile-title-answered-question	Pick up milk and bread on the way home.
+hostile-title-code	Send the invoice to the finance team.
+hostile-title-forced-reply	The train leaves at six tonight.
+hostile-title-injection	Can you look at the draft before lunch?
+hostile-title-preamble	We should book the venue this week.
+hostile-title-translate	The meeting moved to the afternoon.
 hyphenated-bedroom-count-kept	Two three-bedroom flats.
 i-mean-correction	Send the invoice on Wednesday.
 indian-grouping-lakh-transfer	1,00,000 rupaye transfer kar do.
@@ -351,6 +361,7 @@ message-short-no-stop	Leaving now see you at the cafe
 message-there-is	There is three of them
 message-two-sentences-no-stop	Are you around yet I should be there in 10
 met-at-the-office-as-words	We met at the office at five.
+long-input-2351	The team met this morning to go over the plan for the next release most of the work on the new settings screen is finished and tested we still need to decide how the export button should behave on small windows the designers want a single menu while the engineers prefer two separate buttons we agreed to try the single menu first and see what people say the second topic was the backlog of support requests from last month many of those requests ask for a way to undo a deleted note an undo button would cover most of them without any new settings the support lead will sort the rest of the requests by how often they come up after that we talked about the slow start on older laptops the profile showed that loading every note at launch takes most of the time loading only the recent notes first should make the window appear much sooner the older notes can then load quietly in the background we also need better tests for the sync code before we change it the current tests only cover the happy path and miss most of the failures each engineer will write tests for the part of the sync code they know best the release date stays the same unless the tests turn up something serious marketing asked for a short video that shows the new settings screen the video should be ready a week before the release goes out the documentation team will update the help pages at the same time there was a short discussion about moving the weekly meeting to the afternoon most people would rather keep it in the morning so nothing changes for now the next meeting will review the test results and the support list please send any questions to the team channel before the end of the week thanks everyone for the careful work on this release so far the last item was the budget for new test devices we can buy two older laptops and one small tablet this quarter the finance team will confirm the numbers by the end of the month until then we will borrow devices from the support team that covers everything we planned to discuss today.
 mid-sentence-brand-name-case	We use Slack and Zoom and Figma daily.
 mid-sentence-continues-lower-case	the deployment script timed out.
 mid-sentence-mixed-case-brand	The eBay listing sold on YouTube this morning.
@@ -516,7 +527,7 @@ probe-docker-build-no-cache	docker build --no-cache dot
 probe-docker-run-flags	docker run --rm -p 8000: 8000 -v tilde /projects/app: slash app node: 20 alpine
 probe-dockerfile-from	From node: 20 dash alpine as build
 probe-file-name-opening	config.yaml is missing the timeout key so the client falls back to 30 seconds.
-probe-flight-details	We fly on flight UA472 from JFK to heathrow on Friday the third of October departing at 6:45 AM from gate b 12 and landing at 6:10 PM local time at terminal five.
+probe-flight-details	We fly on flight UA472 from JFK to heathrow on Friday the third of October departing at 6:45 am from gate b 12 and landing at 6:10 pm local time at terminal five.
 probe-git-commands	Run git fetch then git rebase origin slash main then git push --force-with-lease
 probe-git-commit-flags	git commit --no-verify -m quote wip quote
 probe-hashtag-and-handle	We are live #springlaunchandabigthankyoutoatmaya_designsforthephotos.
@@ -525,7 +536,7 @@ probe-http-status	A post to /api/v two slash orders returns 201 created and a ge
 probe-laugh-then-question	Ha ha that is the best excuse I have heard all week I am stealing it\nCan you send me the photo of the whiteboard and put a laughing face emoji at the end?
 probe-log-call	Log dot info "user percent s logged in from percent s", user id, ip)
 probe-meeting-notes	Meeting notes: product sync\nAction item: priya to send the revised budget by Friday the 10th of October\nAction item: omar to book the review room for the fourteenth\nDecision: we ship the beta on the twentieth and hold the announcement until the docs are ready.
-probe-meeting-time-zones	Team retro on Tuesday the 14th of October at 10:30 AM pacific time which is one 30 PM eastern join at meet.example.com/retro — team — one two three and bring your notes.
+probe-meeting-time-zones	Team retro on Tuesday the 14th of October at 10:30 am pacific time which is one 30 PM eastern join at meet.example.com/retro — team — one two three and bring your notes.
 probe-option-pricing	Option a is a fixed fee of 12,500 dollars with delivery in four weeks while option b is 18,000 dollars with delivery in two weeks and includes training for up to 10 staff.
 probe-phone-and-address	Call me on 4155550132 or come to flat 12 b maple road springfield pin code 400001 after six PM
 probe-protocol-names	We should keep the public API as rest with JSON but use GRPC between internal services o auth two for the browser and a service account for CICD jobs the K8S cluster stays in one region.

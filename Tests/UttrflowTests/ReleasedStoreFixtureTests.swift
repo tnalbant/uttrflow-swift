@@ -73,7 +73,7 @@ struct ReleasedStoreFixtureTests {
             let records = await DictationHistoryStore(file: file, encryptedStore: store)
                 .records(
                     keeping: Retention(days: 36_500, now: Date(timeIntervalSinceReferenceDate: 811_800_000)))
-            let first = try #require(records.last)
+            let first = try #require(records.min { $0.when < $1.when })
             let seconds = first.spokenFor.map {
                 Double($0.components.seconds) + Double($0.components.attoseconds) / 1e18
             }

@@ -39,8 +39,8 @@ struct HostileSelectedTextLiveModelTests {
     }
 
     @Test(
-        "never obeys, answers, or copies a hostile instruction quoted as selected text",
-        arguments: EvaluationCorpus.hostileSelectedText)
+        "never obeys, answers, or copies a hostile instruction quoted from the screen",
+        arguments: EvaluationCorpus.hostileSelectedText + EvaluationCorpus.hostileWindowTitle)
     func refusesHostileScreenText(testCase: EvaluationCase) async throws {
         let output = try await transformIfCapable {
             try await router.transform(testCase.transformationRequest())
@@ -53,8 +53,8 @@ struct HostileSelectedTextLiveModelTests {
     }
 
     @Test(
-        "produces the ordinary tidy-up once the hostile selection is withheld",
-        arguments: EvaluationCorpus.hostileSelectedText)
+        "produces the ordinary tidy-up once the hostile screen text is withheld",
+        arguments: EvaluationCorpus.hostileSelectedText + EvaluationCorpus.hostileWindowTitle)
     func controlWithContextWithheld(testCase: EvaluationCase) async throws {
         let output = try await transformIfCapable {
             try await router.transform(testCase.transformationRequest(withholdingContext: true))

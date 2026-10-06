@@ -436,6 +436,12 @@ struct Bakeoff: AsyncParsableCommand {
         ) { report, segment in
             report.passRate(for: Segment(rawValue: segment) ?? .student)
         }
+        // Per request class, so a prompt change that brings back obeying or answering one shape is seen in its row.
+        printBreakdown(
+            "By request class", columns: RequestClass.allCases.map(\.rawValue), of: byMultilingual
+        ) { report, requestClass in
+            RequestClass(rawValue: requestClass).flatMap(report.passRate(in:))
+        }
 
         printCapitalisation(of: byMultilingual)
         printMarks(of: byMultilingual)
@@ -701,6 +707,11 @@ struct StoredReport: Codable, Sendable {
     /// Pass rate over one segment's slice; a result stored before segments were labelled is in no column.
     func passRate(for segment: Segment) -> Double? {
         passRate(over: cases.filter { $0.segment == segment.rawValue })
+    }
+
+    /// Pass rate over one request class, read from the case id so a result stored before the classes still divides.
+    func passRate(in requestClass: RequestClass) -> Double? {
+        passRate(over: cases.filter { RequestClass(caseID: $0.caseID) == requestClass })
     }
 
     private func passRate(over slice: [CaseResult]) -> Double? {
