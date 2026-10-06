@@ -67,7 +67,8 @@ public actor Verifier {
             let allowed = await allowed(candidate, in: surface, typed: typed, now: now, before: deadline)
             guard generation == forgetGeneration else { return [] }
             guard let allowed else { continue }
-            if let same = kept.firstIndex(where: { $0.text == allowed.text }) {
+            let key = TextMatching.caseFoldedKey(allowed.text)
+            if let same = kept.firstIndex(where: { TextMatching.caseFoldedKey($0.text) == key }) {
                 kept[same] = Self.combine(kept[same], allowed)
             } else {
                 kept.append(allowed)
@@ -76,13 +77,14 @@ public actor Verifier {
         return kept
     }
 
-    /// A converged text sums its evidence and keeps the nearest source, favoring the first on a tie.
+    /// A converged text sums its evidence, keeps the nearest source and the machine's confirmation, and is spelled as the machine spells it.
     private static func combine(_ first: Candidate, _ second: Candidate) -> Candidate {
         let nearest = first.editDistance <= second.editDistance ? first : second
+        let text = second.source == .environment && first.source != .environment ? second.text : first.text
         let evidence: Entry?
         if let firstEvidence = first.evidence, let secondEvidence = second.evidence {
             evidence = Entry(
-                text: first.text, count: firstEvidence.count + secondEvidence.count,
+                text: text, count: firstEvidence.count + secondEvidence.count,
                 accepted: firstEvidence.accepted + secondEvidence.accepted,
                 rejected: firstEvidence.rejected + secondEvidence.rejected,
                 selfSourced: firstEvidence.selfSourced + secondEvidence.selfSourced,
@@ -91,8 +93,9 @@ public actor Verifier {
             evidence = first.evidence ?? second.evidence
         }
         return Candidate(
-            text: first.text, source: nearest.source, evidence: evidence,
-            editDistance: nearest.editDistance, isIrreversible: nearest.isIrreversible)
+            text: text, source: nearest.source, evidence: evidence,
+            editDistance: nearest.editDistance, isIrreversible: nearest.isIrreversible,
+            isConfirmedByEnvironment: first.isConfirmedByEnvironment || second.isConfirmedByEnvironment)
     }
 
     /// The verdict on one candidate, taken from the cache whenever the gates have already reached it.
