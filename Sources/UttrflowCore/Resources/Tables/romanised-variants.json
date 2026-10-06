@@ -5,8 +5,7 @@
    "id": "hai",
    "variants": [
     "he",
-    "hey",
-    "hain"
+    "hey"
    ]
   },
   {
@@ -24,7 +23,8 @@
     "main",
     "mai",
     "me",
-    "mei"
+    "mei",
+    "men"
    ]
   },
   {
@@ -1141,6 +1141,38 @@
     "kareeb",
     "karib",
     "qarib"
+   ]
+  },
+  {
+   "id": "hoon",
+   "variants": [
+    "hun",
+    "hu",
+    "hoo"
+   ]
+  },
+  {
+   "id": "chai",
+   "variants": [
+    "chaay",
+    "chay",
+    "chaai"
+   ]
+  },
+  {
+   "id": "dhanyavaad",
+   "variants": [
+    "dhanyavad",
+    "dhanyawad",
+    "dhanyawaad"
+   ]
+  },
+  {
+   "id": "arre",
+   "variants": [
+    "are",
+    "arey",
+    "arrey"
    ]
   }
  ]

@@ -200,6 +200,15 @@
       "bytes": 7359
     },
     {
+      "path": "Sources/UttrflowCore/Resources/Tables/romanised-variants.json",
+      "origin": "authored",
+      "licence": "MIT",
+      "redistribution": true,
+      "note": "read through DataTable; see Docs/data-tables.md",
+      "sha256": "c595648412417f8f4e96b6905092cd488c102214492b2da23b470f9a6ccc02ed",
+      "bytes": 12215
+    },
+    {
       "path": "Sources/UttrflowCore/Resources/Tables/kinship-words.json",
       "origin": "authored",
       "licence": "MIT",
