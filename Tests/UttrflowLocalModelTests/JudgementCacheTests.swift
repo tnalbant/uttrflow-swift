@@ -1,4 +1,5 @@
 import Foundation
+import MLX
 import Testing
 
 @testable import UttrflowLocalModel
@@ -156,6 +157,45 @@ struct JudgedLineTests {
         smallVocabulary.resetExaminedEntries()
         _ = JudgedLine.judged(from: recalled, typedTokens: [0, 1], vocabulary: smallVocabulary)
         #expect(smallVocabulary.examinedEntries == 3)
+    }
+
+    @Test("A zero-probability rival mass leaves the first token's score unconditioned")
+    func cachedCutWithNoRivalMassKeepsItsScore() {
+        let vocabulary = TokenHealing.Vocabulary(
+            bytes: ["<bos>", "p", "pl", "please", "lease", "x"].map { Array($0.utf8) },
+            ending: [])
+        let line = JudgedLine(
+            tokens: [0, 3, 4], tokenLogProbabilities: [-8, -0.25, -8],
+            prefixLogMasses: [nil, -.infinity, nil], prefixMassIndex: 1,
+            texts: ["", "please", "lease"])
+
+        let judged = JudgedLine.judged(from: line, typedTokens: [0, 1], vocabulary: vocabulary)
+
+        #expect(judged.map(\.logProbability) == [-0.25, -8])
+    }
+
+    @Test("A row with no probability on continuing rivals stays unconditioned after scorer mass reduction")
+    func scorerReadbackWithZeroProbabilityRivalsKeepsItsScore() {
+        let vocabulary = TokenHealing.Vocabulary(
+            bytes: ["<bos>", "p", "pl", "please", "lease", "x"].map { Array($0.utf8) },
+            ending: [])
+        let row = MLXArray([Float(0), -.infinity, -.infinity, -0.25, -8, -.infinity])
+        let token = 3
+        let continuing = ScoredSpan.continuing(Array("p".utf8), in: vocabulary).filter { $0 != token }
+        #expect(continuing == [1, 2])
+
+        let mass = MLXCandidateScorer.logMass(of: continuing, in: row)
+        let prefixMass = mass?.item(Float.self)
+        #expect(prefixMass == -.infinity)
+        let line = JudgedLine(
+            tokens: [0, token, 4],
+            tokenLogProbabilities: [0, token, 4].map { row[$0].item(Float.self) },
+            prefixLogMasses: [nil, prefixMass, nil], prefixMassIndex: 1,
+            texts: ["", "please", "lease"])
+
+        let judged = JudgedLine.judged(from: line, typedTokens: [0, 1], vocabulary: vocabulary)
+
+        #expect(judged.map(\.logProbability) == [-0.25, -8])
     }
 
     @Test("A cached mass from a different typed-prefix position is ignored")
