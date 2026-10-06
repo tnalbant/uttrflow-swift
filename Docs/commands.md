@@ -79,3 +79,13 @@ app; anywhere else the same words are not understood and nothing changes.
 
 A span mark with nothing selected has no span, so it writes nothing.
 `Tests/UttrflowAITests/MarkdownCommandTests.swift` pins each rule and the negative class.
+
+## Edits on the last dictation
+
+"delete that", "select that" and "undo that", said whole under the command key, are read by
+`RecordedEdit` and carried out by `RecordedEditor` against `InsertionLedger`, over
+`CommandScope.default`. They only remove or select what Uttrflow wrote; no word is rewritten.
+"undo that" undoes the newest spoken edit held in `EditHistory`, and with none held it takes the
+last dictation out. Every edit refuses, changing nothing, when another field is in front or the
+dictation is no longer exactly where it was written (`Docs/insertion.md`).
+`Tests/UttrflowInputTests/RecordedEditTests.swift` pins each edit and the refusals.

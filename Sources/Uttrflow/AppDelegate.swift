@@ -1314,13 +1314,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         dock.setLevelSource { microphone.momentaryLevel }
         dock.onInputSilent = { [weak self] in self?.announce(InputSilence.line, urgently: false) }
 
+        // Where each dictation landed, so "delete that" under the command key can find it. See `Docs/commands.md`.
+        let ledger = InsertionLedger()
         let pipeline = DictationPipeline(
             capture: microphone,
             speech: speech,
             cleaner: cleaner(for: settings),
             context: context,
             // Announced, like every write this app makes. See `Docs/insertion.md`.
-            inserter: TextInsertion.dictation(),
+            inserter: TextInsertion.dictation(ledger: ledger),
             speechWords: { seeing in await speechWords.vocabulary(favouring: seeing) },
             corrector: DictionaryCorrections { [dictionary] in await dictionary.index() },
             snippets: StoredSnippets(store: snippets),
@@ -1348,6 +1350,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     secretClassifier: { ClipKindDetector.kind(of: $0) == .secret })
             ]),
             profile: settings.profile,
+            commands: EditCommandRegistry([RecordedEditCommand(ledger: ledger)]),
             layers: qualityLayers
         )
         self.pipeline = pipeline

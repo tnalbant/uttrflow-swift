@@ -52,13 +52,14 @@ public enum TextInsertion {
     /// Dictation never writes the clipboard: after Accessibility, it types or leaves the transcript for explicit copy.
     public static func dictation(
         focus: any AccessibilityFocus = AXAccessibilityFocus(),
-        typist: any KeystrokeTyping = CGEventTypist()
+        typist: any KeystrokeTyping = CGEventTypist(),
+        ledger: InsertionLedger? = nil
     ) -> TextInsertionCoordinator {
         TextInsertionCoordinator(
             strategies: [
                 AccessibilityTextInsertionEngine(focus: focus),
                 TypedTextInsertionEngine(focus: focus, typist: typist),
-            ], focus: focus)
+            ], focus: focus, ledger: ledger)
     }
 
     /// The route an accepted suggestion takes, which has no clipboard in it at all. See `Docs/predict-accept.md`.
