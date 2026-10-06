@@ -1,6 +1,7 @@
 // The text a suggestion pass is read through: echoes found, copies of the screen cut, runaway lines refused.
 
 import Foundation
+import NaturalLanguage
 import UttrflowAI
 import UttrflowCore
 import UttrflowPredict
@@ -181,6 +182,8 @@ enum CompletionText {
             // A command or a query reuses the paths and names on screen, so only prose is held to its own words.
             if register.endsAtSentence {
                 kept = firstSentence(of: kept, typed: typed)
+                guard let whole = withoutDanglingEnd(kept, typed: typed) else { return nil }
+                kept = whole
                 guard
                     let unsigned = SignOff.unsigned(
                         kept, typed: typed, ownLines: situation.recentLines)
@@ -202,6 +205,38 @@ enum CompletionText {
             else { return nil }
             return kept
         }
+    }
+
+    /// Word classes that cannot end a phrase: "and", "or", "the", "a".
+    private static let danglingClasses: Set<NLTag> = [.conjunction, .determiner]
+
+    /// Prose cut back past an opening bracket or quote, a lone dash, or a conjunction or article at its end; nothing when the cut leaves no more than was typed.
+    static func withoutDanglingEnd(_ line: String, typed: String) -> String? {
+        var kept = withoutTrailingWhitespace(line)
+        while kept.count > typed.count {
+            let start = kept.lastIndex(where: \.isWhitespace).map { kept.index(after: $0) } ?? kept.startIndex
+            let word = String(kept[start...])
+            guard isDangling(word, endingLine: kept) else { return kept }
+            kept = withoutTrailingWhitespace(String(kept[..<start]))
+        }
+        return nil
+    }
+
+    /// Whether the last word of a line leaves its phrase open.
+    private static func isDangling(_ word: String, endingLine line: String) -> Bool {
+        guard let last = word.last else { return false }
+        if word.allSatisfy({ "-\u{2013}\u{2014}".contains($0) }) { return true }
+        if let scalar = last.unicodeScalars.first, last.unicodeScalars.count == 1,
+            scalar.properties.generalCategory == .openPunctuation
+                || scalar.properties.generalCategory == .initialPunctuation
+        {
+            return true
+        }
+        if isStraightQuote(last), word.count == 1 || hasUnmatchedQuote(last, in: line) { return true }
+        guard word.allSatisfy(\.isLetter), let tagged = LexicalClass.tags(in: line).last,
+            tagged.word == word
+        else { return false }
+        return danglingClasses.contains(tagged.tag)
     }
 
     /// The comma-separated parts of one screen label long enough to be a label's own, as they compare.
