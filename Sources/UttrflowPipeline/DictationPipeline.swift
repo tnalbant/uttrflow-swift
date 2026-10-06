@@ -207,6 +207,8 @@ public actor DictationPipeline {
 
     /// Whether the recogniser has loaded and the next dictation will not wait for it.
     public private(set) var isReady = false
+    /// Why the last load ended without a model; cleared by a load that works.
+    public private(set) var lastLoadFailure: SpeechLoadFailureClass?
 
     /// Whether `prepare` is loading the recogniser right now, which is when a new dictation is refused.
     public var isLoading: Bool { loadsUnderWay > 0 }
@@ -236,6 +238,7 @@ public actor DictationPipeline {
         loadsUnderWay += 1
         defer { loadsUnderWay -= 1 }
         let engine = speech
+        var timedOut = false
         do {
             // Stops waiting at the limit rather than awaiting a cancel, since a blocked load ignores one. See `Docs/startup.md`.
             let loaded = try await withStageTimeout(speechLoadLimit, clock: clock) {
@@ -243,14 +246,17 @@ public actor DictationPipeline {
                 return true
             }
             guard loaded == true else {
+                timedOut = true
                 throw SpeechEngineError.modelLoadFailed(
                     description: "the load did not finish within \(speechLoadLimit)")
             }
             isReady = true
+            lastLoadFailure = nil
             // A retry that works clears the notice the failed attempt left behind.
             if case .failed = state, !isBusy { transition(to: .idle) }
         } catch {
             isReady = false
+            lastLoadFailure = timedOut ? .timedOut : SpeechLoadFailureClass(error)
             // Never over a dictation in progress: loading can run while the user speaks.
             if !isBusy {
                 transition(to: .failed(DictationFailure(error, speechEngineKind: engine.kind)))
