@@ -112,6 +112,10 @@ phantom entry in their own clip history — from a feature they experience as au
 So `TextInsertion.completion` is Accessibility first and synthesised keystrokes second,
 with nothing beneath, and a completion that lands nowhere is simply not accepted.
 
+When both routes prove that no text was written, the session restores the offer and returns the
+swallowed accept key to the application. When an error leaves it unclear whether text reached the
+field, the session keeps the speculative acceptance and consumes the key to avoid replaying it.
+
 ## What accepting inserts, and what it takes back
 
 `Acceptance.edit(accepting:after:)` answers with an `Edit`: the already-typed characters
