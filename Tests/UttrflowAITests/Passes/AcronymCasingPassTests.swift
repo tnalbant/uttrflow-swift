@@ -44,6 +44,14 @@ struct AcronymCasingPassTests {
             pass.apply(Draft(text: "the kpix and okrz for zorbix")).text == "the KPIx and OKRz for Zorbix")
     }
 
+    @Test("takes an English word's screen casing only beside the same spoken neighbour")
+    func englishWordNeedsNeighbour() {
+        let pass = AcronymCasingPass(onScreen: ["SELECT id FROM orders;"])
+        let prose = "select a seat from the front row"
+        #expect(pass.apply(Draft(text: prose)).text == prose)
+        #expect(pass.apply(Draft(text: "then select id from orders")).text == "then SELECT id from orders")
+    }
+
     @Test(
         "writes a tool or language name in the lexicon's casing on the rules path",
         arguments: [

@@ -347,14 +347,18 @@ public enum DoubtReason: Int, Sendable, Comparable {
     public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
 }
 
-/// The words the frontmost document and selection show, in their written case; the app's own name is not one.
-struct ScreenWords {
+/// Words the screen shows in their written case; the one test of whether it writes an English word a special way.
+struct ScreenWords: Sendable {
     private let words: [String]
 
+    /// The frontmost document and selection; the app's own name is not one.
     init(_ context: AppContext) {
-        let text = [context.documentName, context.selectedText].compactMap { $0 }.joined(separator: " ")
-        words = text.split { !$0.isLetter && !$0.isNumber }.prefix(CorrectionEvidence.maximumWordsOnScreen)
-            .map(String.init)
+        self.init(texts: [context.documentName, context.selectedText].compactMap { $0 })
+    }
+
+    init(texts: [String]) {
+        words = texts.joined(separator: " ").split { !$0.isLetter && !$0.isNumber }
+            .prefix(CorrectionEvidence.maximumWordsOnScreen).map(String.init)
     }
 
     /// Whether `written` appears in exactly this case with one of `neighbours` right before or after it.
