@@ -80,6 +80,15 @@ struct CompletionParsingTests {
         #expect(CompletionText.parse(headings, typed: "on my") == ["on my way, be there at 7"])
     }
 
+    @Test("Prompt-marker words in the typed line do not suppress its continuation.")
+    func promptMarkerInTypedTextDoesNotSuppressContinuation() {
+        #expect(
+            CompletionText.parse("Some hints: keep it short", typed: "Some hints:") == [
+                "Some hints: keep it short"
+            ])
+        #expect(CompletionText.parse("Some hints: continue this text", typed: "Some hints:").isEmpty)
+    }
+
     @Test(
         "A line the model repeated without its marks, in another case or spacing, is still read past what was typed."
     )

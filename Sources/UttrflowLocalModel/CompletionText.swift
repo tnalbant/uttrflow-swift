@@ -335,7 +335,7 @@ enum CompletionText {
                 !Self.closesTypedNumber(typed, with: continuation),
                 SuggestionTextSafety.allows(continuation),
                 Self.comparable(continuation).contains(where: { $0 != " " }),
-                !promptMarkers.contains(where: text.lowercased().contains),
+                !promptMarkers.contains(where: continuation.lowercased().contains),
                 !isDegenerate(continuation)
             else { continue }
             let whole = typed + continuation
