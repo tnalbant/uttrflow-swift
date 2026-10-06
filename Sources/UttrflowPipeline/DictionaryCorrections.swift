@@ -13,20 +13,23 @@ public struct DictionaryCorrections: WordCorrecting {
     private let engine = WordCorrectionEngine()
     /// The dictation's running budget once fixed; unfixed, every call is its own dictation.
     private let spent: Spent?
+    /// The held dictionary's revision once fixed; unfixed, the dictionary can change under every call.
+    public let revision: UInt64?
 
     public init(index: @escaping Indexing) {
-        self.init(index: index, spent: nil)
+        self.init(index: index, spent: nil, revision: nil)
     }
 
-    private init(index: @escaping Indexing, spent: Spent?) {
+    private init(index: @escaping Indexing, spent: Spent?, revision: UInt64?) {
         self.index = index
         self.spent = spent
+        self.revision = revision
     }
 
     /// The dictionary as it stands now and one budget for every piece; a word learnt later waits for the next dictation.
     public func fixed() async -> any WordCorrecting {
         let held = await index()
-        return DictionaryCorrections(index: { held }, spent: Spent())
+        return DictionaryCorrections(index: { held }, spent: Spent(), revision: held.revision)
     }
 
     public func weighAcrossSeams(
