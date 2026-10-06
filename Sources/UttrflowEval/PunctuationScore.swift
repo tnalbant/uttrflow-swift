@@ -40,7 +40,7 @@ public enum MarkClass: String, CaseIterable, Sendable, Codable, CodingKeyReprese
 }
 
 /// A text's words, lowercased, and each mark keyed by how many of those words come before it.
-struct MarkedText {
+struct PunctuatedWords {
     var words: [String] = []
     var marks: [(slot: Int, mark: MarkClass)] = []
 
@@ -95,8 +95,8 @@ public struct PunctuationTally: Sendable, Equatable, Codable {
 
     /// Aligns the two texts' words with `WordErrorRate` and compares the marks that follow each aligned place.
     public static func measure(_ output: String, against reference: String) -> PunctuationTally {
-        let wantedText = MarkedText(reference)
-        let producedText = MarkedText(output)
+        let wantedText = PunctuatedWords(reference)
+        let producedText = PunctuatedWords(output)
         let alignment = WordErrorRate.measure(reference: wantedText.words, hypothesis: producedText.words)
             .alignment
         // Each reference place maps to the output place it lands on; a deleted word's place lands where it would have been.
