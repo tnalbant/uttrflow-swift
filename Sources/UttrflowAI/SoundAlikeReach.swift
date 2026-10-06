@@ -17,7 +17,8 @@ public struct SoundAlikeReach: Sendable, Equatable {
         let heardClosed = ReadingRestraint.closedUp(heard)
         let meantClosed = ReadingRestraint.closedUp(meant)
         isSameSpelling = heardClosed == meantClosed
-        sharesKey = DoubleMetaphone.code(for: heardClosed).sounds(like: DoubleMetaphone.code(for: meantClosed))
+        let meantKey = DoubleMetaphone.code(for: meantClosed)
+        sharesKey = DoubleMetaphone.code(for: heardClosed).sounds(like: meantKey)
         passesOpening = sharesKey && ReadingRestraint.opensAlike(meant, heard: heard)
         let entry = DictionaryEntry(word: meant, origin: .added, firstSeen: .distantPast)
         entrySpells = WordCorrectionEngine.spells(entry, asHeard: heard)

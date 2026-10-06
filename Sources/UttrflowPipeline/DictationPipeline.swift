@@ -1012,8 +1012,8 @@ public actor DictationPipeline {
             return
         }
         // An application the user declined is learned nothing from, by counting or by the dictionary.
-        guard await consent.mayLearn(from: landedIn(attempt)?.bundleIdentifier ?? appContext?.bundleIdentifier)
-        else { return }
+        let learnedFrom = landedIn(attempt)?.bundleIdentifier ?? appContext?.bundleIdentifier
+        guard await consent.mayLearn(from: learnedFrom) else { return }
         // A secret is not a word to learn or count, by the same gate that keeps it out of History.
         let kept = KeptWords.of(toWrite, intoSecureField: wasSecure)
         // Both run after the words are on screen, and neither can fail the dictation. §19.
