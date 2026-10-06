@@ -58,7 +58,7 @@ public struct SnippetExpander: Sendable {
                 let terminal = Self.terminalMark(in: body.text),
                 Self.sameTerminalClass(next, terminal)
             {
-                // A full stop after the trigger is the tidier's; any other mark was said, and replaces the expansion's.
+                // A full stop after the trigger is the tidier's; any other mark is the speaker's and replaces the expansion's.
                 if next != ".", let index = written.lastIndex(where: { !$0.isWhitespace }) {
                     written.remove(at: index)
                 } else {
