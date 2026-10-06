@@ -37,10 +37,19 @@ struct CodeEditorCommandsPass: PieceCleaningPass {
         }
     }
 
-    /// Whether any present word is evidence that the utterance is prose, not code.
+    /// Whether a present word is prose evidence: an article, or "a" before a longer non-notation word ("a cup", not "a equals").
     static func readsAsProse(_ draft: Draft) -> Bool {
-        draft.presentIndices.contains { proseEvidence.contains(bare(draft.words[$0].text)) }
+        let words = draft.presentIndices.map { bare(draft.words[$0].text) }
+        return words.indices.contains { index in
+            if proseEvidence.contains(words[index]) { return true }
+            guard words[index] == nounMarker, index + 1 < words.count else { return false }
+            let next = words[index + 1]
+            return next.count > 1 && FunctionWords.isContent(next) && !notationWords.contains(next)
+        }
     }
+
+    /// Every word that begins a spoken notation command.
+    private static let notationWords: Set<String> = Set(SpokenCommands.codeSymbols.compactMap(\.words.first))
 
     private static func bare(_ text: String) -> String {
         text.lowercased().trimmingCharacters(in: .letters.inverted)

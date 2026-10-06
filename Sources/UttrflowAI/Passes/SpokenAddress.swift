@@ -516,7 +516,10 @@ struct SpokenAddress: Equatable {
             shape.suffix.isEmpty
         {
             let next = draft.shape(at: live[place + 1])
-            guard next.prefix.isEmpty, joiners[next.key] == nil, next.key != "dot", isLabel(next.core) else {
+            // A determiner after the joiner opens a noun phrase, so the joiner is a word: "results underscore the need".
+            guard next.prefix.isEmpty, joiners[next.key] == nil, next.key != "dot", isLabel(next.core),
+                !MentionGuard.phraseOpeners.contains(next.key)
+            else {
                 return nil
             }
             return (String(joiner) + next.core, 2, !proseJoiners.contains(joiner))
