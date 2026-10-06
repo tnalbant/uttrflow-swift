@@ -20,6 +20,7 @@ final class FakeClipboard: ClipboardSource, Sendable {
         var markers: PasteboardMarkers = []
         var landsDuringMarkers: (text: String, markers: PasteboardMarkers)?
         var reads = 0
+        var changeCountReadInstants: [ContinuousClock.Instant] = []
         var contentReads = 0
         var htmlReads = 0
     }
@@ -55,12 +56,16 @@ final class FakeClipboard: ClipboardSource, Sendable {
     }
 
     var reads: Int { state.withLock(\.reads) }
+    var changeCountReadInstants: [ContinuousClock.Instant] {
+        state.withLock(\.changeCountReadInstants)
+    }
     var contentReads: Int { state.withLock(\.contentReads) }
     var htmlReads: Int { state.withLock(\.htmlReads) }
 
     func changeCount() -> Int {
         state.withLock {
             $0.reads += 1
+            $0.changeCountReadInstants.append(ContinuousClock().now)
             return $0.count
         }
     }
@@ -791,6 +796,35 @@ struct PasteboardWatcherTests {
 
         task.cancel()
         await task.value
+    }
+
+    @Test("the run loop polls quickly through a copy burst, then returns to its idle cadence")
+    func burstRunCadence() async throws {
+        let clipboard = FakeClipboard()
+        let cadence = PasteboardPollingCadence(
+            idleInterval: PasteboardWatcher.pollInterval,
+            burstInterval: PasteboardWatcher.defaultBurstInterval,
+            burstDuration: PasteboardWatcher.defaultBurstDuration)
+        let watcher = PasteboardWatcher(source: clipboard, cadence: cadence)
+        let seen = Mutex<[String]>([])
+        let task = Task {
+            await watcher.run { clip in seen.withLock { $0.append(clip.clip.text) } }
+        }
+
+        for index in 1...20 {
+            try await Task.sleep(for: .milliseconds(200))
+            clipboard.write("burst-\(index)")
+        }
+        try await Task.sleep(for: .milliseconds(4_800))
+        task.cancel()
+        await task.value
+
+        let readInstants = clipboard.changeCountReadInstants
+        let gaps = zip(readInstants, readInstants.dropFirst()).map { $0.duration(to: $1) }
+        let fastGaps = gaps.filter { $0 < .milliseconds(250) }
+        #expect(seen.withLock { $0.count } >= 17)
+        #expect(fastGaps.count >= 25)
+        #expect(gaps.last.map { $0 >= .milliseconds(300) } == true)
     }
 
     /// The panel catches up as it opens, so the poll is set by battery rather than by the gesture. See `Docs/performance-idle.md`.
