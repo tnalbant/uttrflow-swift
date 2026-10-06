@@ -41,4 +41,16 @@ enum EvidenceSources {
                 }
         }
     }
+
+    /// Appends History's pre-ledger dictations to the ledger once, when there is one; a refused write is retried on the next sweep.
+    static func backfill(
+        _ ledger: EvidenceLedgerStore?, from records: [DictationRecord], dictionary: PersonalDictionaryStore,
+        overrides: DestinationOverrides, keeping window: RetentionWindow
+    ) async {
+        guard let ledger else { return }
+        let rows = backfill(
+            records, entries: await dictionary.allEntries(), ledger: await ledger.rows(keeping: window),
+            overrides: overrides)
+        if !rows.isEmpty { try? await ledger.append(rows, keeping: window) }
+    }
 }
