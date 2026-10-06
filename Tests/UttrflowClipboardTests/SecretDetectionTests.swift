@@ -338,6 +338,12 @@ struct SecretDetectionTests {
             "X=123\nJWT_KEY=" + hexKey,
             "X=123\njwt-key=" + hexKey,
             "X=123\njwtkey=" + hexKey,
+            "Endpoint=https://example.invalid/\nAccountKey=" + hexKey + "==",
+            "X=123\nSharedAccessKey=" + hexKey,
+            "X=123\nSharedAccessSignature=sv2023" + hexKey,
+            "X=123\nAZURE_STORAGE_KEY=" + hexKey,
+            "Accept: */*\nOcp-Apim-Subscription-Key: " + hexKey,
+            "Accept: */*\nX-Auth-Key: " + hexKey,
         ])
     func namedSecrets(_ text: String) {
         #expect(ClipKindDetector.kind(of: text) == .secret)
@@ -699,6 +705,9 @@ struct SecretDetectionTests {
         arguments: [
             "var password: String",
             "var signing_key: String",
+            "var key: String",
+            "var accountKey: String",
+            "X=123\npublic_key=" + hexKey,
             "let apiKey: String?",
             "password = nil",
             "Change your password: now",

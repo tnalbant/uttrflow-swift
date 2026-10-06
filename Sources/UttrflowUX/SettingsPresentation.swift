@@ -371,6 +371,8 @@ public enum SettingsChange: Sendable, Equatable {
     case pauses(PauseLength)
     case retention(days: Int)
     case appearance(AppAppearance)
+    /// The input device dictation opens, by UID; nil follows the system default.
+    case microphone(uid: String?)
     case handsFreeDoubleTap(milliseconds: Int)
     /// How long a press may last and still count as a tap.
     case handsFreeHold(milliseconds: Int)

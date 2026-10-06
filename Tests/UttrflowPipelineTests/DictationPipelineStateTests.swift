@@ -185,6 +185,25 @@ struct DictationPipelineStateTests {
         #expect(await metrics.measurements.contains { $0.stage == .capture } == false)
     }
 
+    @Test("describes each finished recording's audio to the metrics, once")
+    func measuresTheRecordingsQuality() async throws {
+        let metrics = RecordingMetricsRecorder()
+        let recording = AudioSamples.silence(seconds: 1)
+        let pipeline = DictationPipeline(
+            capture: FakeAudioCaptureEngine(stopOutcome: .success(recording)),
+            speech: FakeSpeechEngine(transcribeOutcome: .success(.fixture(text: spoken))),
+            cleaner: FakeTranscriptCleaner(answering: tidiedAnswer),
+            context: FakeContextEngine(context: .fixture()),
+            inserter: FakeTextInserter(), metrics: metrics, clock: ManualClock())
+
+        await pipeline.startRecording()
+        await pipeline.finishRecording()
+
+        let expected = try #require(
+            CaptureQuality.measure(samples: recording.samples, sampleRate: recording.sampleRate))
+        #expect(await metrics.captureQualities == [expected])
+    }
+
     @Test("ignores a second start while it is already recording")
     func startWhileRecordingIsIgnored() async {
         let capture = FakeAudioCaptureEngine()

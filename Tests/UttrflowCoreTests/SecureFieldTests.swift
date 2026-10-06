@@ -44,6 +44,11 @@ struct SecureFieldTests {
             "Credit card number",
             "PIN",
             "Security answer",
+            "recovery_answer",
+            "Recovery answer",
+            "recoveryQuestion",
+            "Recovery code",
+            "recovery-phrase",
             "SSN",
             "Date of birth",
         ])
@@ -65,10 +70,30 @@ struct SecureFieldTests {
     }
 
     @Test(
+        "An all-lowercase name that glues a short code to a whole field word is secure.",
+        arguments: ["otpcode", "cardcvv", "ssnfield", "userotp", "atmpin", "cvvnumber", "pininput"])
+    func lowercaseGluedShortCodesAreSecure(name: String) {
+        #expect(SecureField.namesASecret(name))
+    }
+
+    @Test(
+        "An all-lowercase word holding a code's letters, or a postal pin code, is not secure.",
+        arguments: ["mapping", "shipping", "pincode", "topping", "spinbox", "cvsreceipt"])
+    func lowercaseWordsWithCodeLettersAreNotSecure(name: String) {
+        #expect(!SecureField.namesASecret(name))
+    }
+
+    @Test(
         "A word that merely starts or ends with a short code's letters is not secure.",
         arguments: ["pinterest", "Pinned", "spinner", "shipping", "Topping", "cvsReceipt", "Spin"])
     func wordsContainingCodeLettersAreNotSecure(name: String) {
         #expect(!SecureField.namesASecret(name))
+    }
+
+    @Test("A recovery field that names an email address or a phone number is not secure.")
+    func recoveryContactIsNotSecure() {
+        #expect(!SecureField.namesASecret("Recovery email"))
+        #expect(!SecureField.namesASecret("recovery_phone"))
     }
 
     @Test("An ordinary field is not secure.")

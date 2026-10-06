@@ -3,6 +3,7 @@ public import UttrflowCore
 /// Joins spoken letter names into an initialism, and letters then digits into one code, keeping "a" and "I" distinct.
 public struct SpelledInitialismPass: WholeTextCleaningPass {
     public static let id: PassID = .spelledInitialism
+    public static let laws: Set<PassLaw> = [.idempotent, .keepsDigits, .latinOnly]
 
     static let letterNames: [String: String] = [
         "a": "A", "b": "B", "be": "B", "bee": "B", "c": "C", "cee": "C", "see": "C",
@@ -71,7 +72,7 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
             live.removeSubrange((position + 1)..<end)
             position += 1
         }
-        return Self.joinCodes(in: draft, initialisms: joined)
+        return Self.writingMeridiems(in: Self.joinCodes(in: draft, initialisms: joined))
     }
 
     private enum CodePiece {

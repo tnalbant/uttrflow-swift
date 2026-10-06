@@ -1,7 +1,10 @@
 // A rested tap restarts after its wait, and never once the rest is cancelled.
 
+import AppKit
 import Foundation
+import os
 import Testing
+import UttrflowInput
 import UttrflowPredict
 
 @testable import Uttrflow
@@ -56,6 +59,24 @@ import UttrflowPredict
         coordinator.tapRest.schedule(after: .seconds(90)) {}
         coordinator.stop()
         #expect(!coordinator.tapRest.isPending)
+    }
+
+    @Test func secureEntryCancelsARestingTap() async throws {
+        let container = FileManager.default.temporaryDirectory.appending(path: "taprest-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: container, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: container) }
+        let secureOn = OSAllocatedUnfairLock(initialState: false)
+        let coordinator = try SuggestionCoordinator(
+            container: container, preferences: SuggestionPreferences(isEnabled: true),
+            secureInput: SecureInputWatch { secureOn.withLock { $0 } })
+        defer { coordinator.stop() }
+        coordinator.start()
+        coordinator.tapRest.schedule(after: .seconds(90)) {}
+        secureOn.withLock { $0 = true }
+        NSWorkspace.shared.notificationCenter.post(
+            name: NSWorkspace.didActivateApplicationNotification, object: nil)
+        while coordinator.tapRest.isPending { await Task.yield() }
+        #expect(coordinator.isSecureInputBlocking)
     }
 
     /// Returns once `rest` has restarted after `delay`.
