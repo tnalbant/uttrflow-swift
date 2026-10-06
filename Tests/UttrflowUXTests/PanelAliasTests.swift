@@ -230,9 +230,11 @@ struct PanelAliasRoundTripTests {
     }
 
     /// The slash and spaces are part of how an alias is typed, so every keystroke on the way keeps the clip.
-    @Test("a partly typed alias finds its clip with or without the slash", arguments: [
-        "/p", "/pg", "/pgpro", "pg pr", "pgp", "/PG Pr",
-    ])
+    @Test(
+        "a partly typed alias finds its clip with or without the slash",
+        arguments: [
+            "/p", "/pg", "/pgpro", "pg pr", "pgp", "/PG Pr",
+        ])
     func partlyTypedIsFound(typed: String) {
         var aliased = PanelFixture.clip("postgres://example.invalid/main", minutesAgo: 1)
         aliased.alias = "pgprod"
