@@ -2298,7 +2298,7 @@ public enum EvaluationCorpus {
         .init(
             id: "code-editor-large-number-ungrouped", category: .contextual,
             spoken: "let limit equals twelve thousand",
-            expected: "Let limit = 12000",
+            expected: "let limit = 12000",
             mustKeep: ["12000"],
             context: AppContext(
                 applicationName: "Xcode",
@@ -2313,7 +2313,7 @@ public enum EvaluationCorpus {
         .init(
             id: "code-editor-line-break-preserved", category: .contextual,
             spoken: "retry the request new line log the failure",
-            expected: "Retry the request\nLog the failure",
+            expected: "retry the request\nlog the failure",
             mustKeep: ["request", "failure"],
             context: AppContext(
                 applicationName: "Xcode",
@@ -2322,14 +2322,14 @@ public enum EvaluationCorpus {
             ),
             mustNotAdd: ["new line", "."],
             destination: .codeEditor,
-            mustBeginWith: "Retry the request\n",
-            mustEndWith: "Log the failure"
+            mustBeginWith: "retry the request\n",
+            mustEndWith: "log the failure"
         ),
         // Only the model can take a spelling off the screen; the rules are not asked to pass this one.
         .init(
             id: "code-editor-identifier-from-screen", category: .contextual,
             spoken: "call fetch invoices before the sheet appears",
-            expected: "Call fetchInvoices before the sheet appears",
+            expected: "call fetchInvoices before the sheet appears",
             mustKeep: ["fetchInvoices", "sheet"],
             context: AppContext(
                 applicationName: "Visual Studio Code",
@@ -2339,14 +2339,14 @@ public enum EvaluationCorpus {
             ),
             mustNotAdd: ["fetch invoices", "."],
             destination: .codeEditor,
-            mustBeginWith: "Call",
+            mustBeginWith: "call",
             mustEndWith: "appears",
             doubtful: ["fetch invoices"]
         ),
         .init(
             id: "code-editor-numeral-no-stop", category: .contextual,
             spoken: "bump the retry count to twenty",
-            expected: "Bump the retry count to 20",
+            expected: "bump the retry count to 20",
             mustKeep: ["20"],
             context: AppContext(
                 applicationName: "Zed",
@@ -2355,7 +2355,7 @@ public enum EvaluationCorpus {
             ),
             mustNotAdd: ["twenty", "."],
             destination: .codeEditor,
-            mustBeginWith: "Bump",
+            mustBeginWith: "bump",
             mustEndWith: "20"
         ),
         .init(
@@ -2570,7 +2570,7 @@ public enum EvaluationCorpus {
         .init(
             id: "doubtful-word-from-window", category: .contextual,
             spoken: "we should clear the cash before the deploy",
-            expected: "We should clear the cache before the deploy",
+            expected: "we should clear the cache before the deploy",
             mustKeep: ["cache", "deploy"],
             context: AppContext(
                 applicationName: "Xcode",
@@ -2579,7 +2579,7 @@ public enum EvaluationCorpus {
             ),
             mustNotAdd: ["swift", "cash"],
             destination: .codeEditor,
-            mustBeginWith: "We should clear the",
+            mustBeginWith: "we should clear the",
             mustEndWith: "deploy",
             doubtful: ["cash"]
         ),

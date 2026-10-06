@@ -611,7 +611,7 @@ struct GenerativeTextTransformerTests {
         #expect(
             model.calls.first?.text.contains(
                 "Doubtful words: \"payment sheet\" (heard at 0.30) — could be: PaymentSheet") == true)
-        #expect(result.text == "The crash is in PaymentSheet")
+        #expect(result.text == "the crash is in PaymentSheet")
     }
 
     @Test("refuses a reading the sources never offered")
@@ -665,7 +665,7 @@ struct GenerativeTextTransformerTests {
 
         let result = try await sut.transform(doubtfulRequest())
 
-        #expect(result.text == "The crash is in PaymentSheet")
+        #expect(result.text == "the crash is in PaymentSheet")
         #expect(result.entriesTaken.isEmpty)
     }
 }

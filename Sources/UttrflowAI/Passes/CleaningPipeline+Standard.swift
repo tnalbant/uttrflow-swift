@@ -104,7 +104,7 @@ extension CleaningPipeline {
                 casing,
                 SentenceBoundaryPass(),
                 FirstWordPass(
-                    policy: formatter.firstWord, state: situation.insertion.sentenceState,
+                    policy: firstWord(formatter, in: situation), state: situation.insertion.sentenceState,
                     onScreen: situation.app.textOnScreen, heard: heard,
                     capitaliseCalendarWords: formatter.firstWord == .fromInsertionPoint
                         && formatter.destination != .codeEditor,
@@ -124,6 +124,16 @@ extension CleaningPipeline {
     /// The one registration of the spelled-letter join, a whole-text pass filtered like every other step.
     private static func initialisms(steps: CleaningSteps) -> [any WholeTextCleaningPass] {
         [SpelledInitialismPass()].filter { steps.runs($0.id) }
+    }
+
+    /// The formatter's first-word policy, except executable source keeps the case each word was heard in.
+    private static func firstWord(
+        _ formatter: DestinationFormatter, in situation: Situation
+    ) -> FirstWordPolicy {
+        guard formatter.destination == .codeEditor else { return formatter.firstWord }
+        let region = CaretStructure.region(
+            precedingText: situation.insertion.precedingText, documentName: situation.app.documentName)
+        return region.isCode ? .asSpoken : formatter.firstWord
     }
 
     /// The formatter's stop policy, except a code editor takes `.always` when the caret sits in a comment.

@@ -39,7 +39,7 @@ struct TerminalHeardCaseTests {
         let formatter = DestinationFormatter.standard(for: .terminal)
         #expect(formatter.firstWord == .asSpoken)
         #expect(formatter.terminalStop == .never)
-        #expect(formatter.layout.contains(.preserveNewlines))
+        #expect(formatter.layout == [.singleLine, .breaksAreSpaces])
         #expect(formatter.grammar == .asSpoken)
     }
 
@@ -64,10 +64,10 @@ struct TerminalHeardCaseTests {
     }
 
     /// A code editor still capitalises the start of a sentence, so the fix has not over-corrected.
-    @Test("a code editor capitalises the start of a dictated sentence")
-    func codeEditorStillCapitalises() {
-        #expect(cleaned("the build failed", into: codeEditor) == "The build failed")
-        #expect(cleaned("function do thing", into: codeEditor) == "Function do thing")
+    @Test("a code editor keeps a code line's first word as spoken, since it may be a keyword")
+    func codeEditorKeepsFirstWordAsSpoken() {
+        #expect(cleaned("the build failed", into: codeEditor) == "the build failed")
+        #expect(cleaned("function do thing", into: codeEditor) == "function do thing")
     }
 
     /// A capitalised word mid-sentence in a code editor is left alone; a terminal never capitalises anyway.
