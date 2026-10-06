@@ -196,6 +196,25 @@ struct DestructiveCommandTests {
     }
 
     @Test(
+        "A destroyer spelled as only some shells read it is still judged.",
+        arguments: [
+            "ls #;rm -rf ~", "ls #; rm -rf build", #"$"rm" -rf x"#, #"sudo $"rm" -rf x"#, "=rm -rf x",
+            "sudo =rm -rf x", "=/bin/rm -rf x",
+        ])
+    func shellDependentDestroyers(_ line: String) {
+        #expect(DestructiveCommand.matches(line), "\(line)")
+        #expect(DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line)")
+    }
+
+    @Test(
+        "A comment that names no destroyer in either shell stays ordinary.",
+        arguments: ["ls # list files", "echo hi # don't worry", "git status #check", "echo a#b"])
+    func harmlessComments(_ line: String) {
+        #expect(!DestructiveCommand.matches(line), "\(line)")
+        #expect(!DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line)")
+    }
+
+    @Test(
         "Recursive permission and ownership changes are destructive, including clustered flags.",
         arguments: [
             "chmod -R 000 ~", "chmod --recursive 000 /", "chmod -vfR 000 tree", "chown -R nobody /",

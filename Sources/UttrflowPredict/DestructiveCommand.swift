@@ -20,8 +20,22 @@ public enum DestructiveCommand {
         {
             return true
         }
-        guard let clauses = ShellWords.commands(in: text, home: "") else { return failClosedOnUnresolved }
-        return clauses.contains { clause in
+        // Which shell will run the line is unknown, so a `#` is read both as bash's comment and as zsh's word.
+        let readings = text.contains("#") ? [true, false] : [true]
+        return readings.contains { hashComments in
+            // A line only the word reading cannot settle, as `ls # it's` is, is one zsh would not run.
+            guard let clauses = ShellWords.commands(in: text, home: "", hashComments: hashComments) else {
+                return hashComments && failClosedOnUnresolved
+            }
+            return destroys(clauses, failClosedOnUnresolved: failClosedOnUnresolved, files: files)
+        }
+    }
+
+    /// Whether any of one reading's simple commands destroys data.
+    private static func destroys(
+        _ clauses: [SimpleCommand], failClosedOnUnresolved: Bool, files: (any FileSystemProbing)?
+    ) -> Bool {
+        clauses.contains { clause in
             if failClosedOnUnresolved,
                 (clause.words + clause.inputs).contains(where: \.isUnresolved)
             {
@@ -468,9 +482,10 @@ public enum DestructiveCommand {
         } || arguments.contains { $0 == "-xdelete" || $0 == "--method=delete" }
     }
 
-    /// A parsed command word as the program it names, lowercased.
+    /// A parsed command word as the program it names, lowercased; zsh expands a leading `=` to the command's path.
     private static func programName(_ word: String) -> String {
-        (word.split(separator: "/").last.map(String.init) ?? word).lowercased()
+        let path = word.count > 1 && word.hasPrefix("=") ? String(word.dropFirst()) : word
+        return (path.split(separator: "/").last.map(String.init) ?? path).lowercased()
     }
 
     /// The flags a `docker exec` / `docker run` line takes within its subcommand, whose values the parser must skip.
