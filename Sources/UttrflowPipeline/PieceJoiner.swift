@@ -263,6 +263,8 @@ enum PieceJoiner {
         "a", "an", "and", "as", "at", "but", "by", "for", "from", "if", "in", "into", "of",
         "on", "or", "so", "that", "the", "then", "these", "this", "those", "to", "when",
         "which", "while", "who", "with",
+        // A form of "be" or "have" after a run-on seam is the verb of the clause the seam split.
+        "is", "are", "was", "were", "has", "have", "had",
     ]
 
     private static let determiners: Set<String> = [

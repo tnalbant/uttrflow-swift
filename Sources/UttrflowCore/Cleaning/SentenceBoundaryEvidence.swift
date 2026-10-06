@@ -8,6 +8,7 @@ public enum SentenceBoundaryEvidence {
         let previousKeys = previous.map(\.key)
         let followingKeys = following.map(\.key)
         if text.last == ".", subordinators.contains(previous[0].key) { return true }
+        if opensOnPostmodifier(following) { return true }
         if neverLast.contains(last.key) || opensWithAPhrase(previous, following)
             || completesFinalPhrase(previous, following) || completesSeamPreposition(previous, following)
             || splitsSubjectFromPredicate(previous, following) || awaitsComplement(previous, following)
@@ -32,6 +33,12 @@ public enum SentenceBoundaryEvidence {
         else { return false }
         if neverFronted.contains(following[0].key) { return true }
         return seamPrepositions.contains(following[0].key) && isVerbless(following, after: previous)
+    }
+
+    /// "a new line. of shoes": "of" attaches a phrase to the noun before it and opens no sentence, bar the idiom "of course".
+    private static func opensOnPostmodifier(_ following: [WordShape]) -> Bool {
+        guard following.count > 1, following[0].key == "of" else { return false }
+        return following[1].key != "course"
     }
 
     /// Whether the words up to the next stop hold no verb, read in context with the words before them.
