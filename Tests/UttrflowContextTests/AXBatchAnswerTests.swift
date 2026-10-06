@@ -27,6 +27,15 @@ struct AXBatchAnswerTests {
         #expect(answers[1] == .noValue)
     }
 
+    @Test("The cached surroundings batch keeps values around absent slots.")
+    func padsWithoutDiscardingPartialValues() {
+        let values = FocusedFieldReader.Answers.padded(["AXTextField" as CFString], to: 2)
+
+        #expect(values.count == 2)
+        #expect(values[0] as? String == "AXTextField")
+        #expect(CFGetTypeID(values[1]) == CFNullGetTypeID())
+    }
+
     @Test("A batch cannot-complete at its messaging timeout remains timed out.")
     func timedOutSlotsStayTimedOut() throws {
         var cannotComplete = AXError.cannotComplete
