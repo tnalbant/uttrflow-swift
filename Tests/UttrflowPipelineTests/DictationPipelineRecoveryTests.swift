@@ -405,8 +405,9 @@ struct DictationPipelineRecoveryTests {
 
         _ = await dictate(pipeline)
 
+        // One read to tidy against and one of the caret just before writing.
         let contextLookups = await contextEngine.calls.count
-        #expect(contextLookups == 1)
+        #expect(contextLookups == 2)
         let request = try #require(cleaner.requests.first)
         #expect(request.context == appContext)
         #expect(request.transcription.text == spokenWords)
