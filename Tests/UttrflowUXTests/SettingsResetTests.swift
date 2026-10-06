@@ -561,7 +561,9 @@ struct SettingsRemovalCopyTests {
             }
             #expect(!message.contains(" 0 "), "counts nothing: \(message)")
             #expect(message.hasSuffix("It cannot be undone."))
-            #expect(message.contains("clipboard history, pinned clips included"), "hides the clips: \(message)")
+            #expect(
+                message.contains("clipboard history, pinned clips included"),
+                "hides the clips: \(message)")
             for count in [counts.transcripts, counts.words] where count > 0 {
                 #expect(message.contains("\(count)"), "does not count \(count)")
             }
