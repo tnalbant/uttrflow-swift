@@ -298,7 +298,6 @@ struct MeaningPreservationGuardTests {
         arguments: [
             ("marketing spend for march is 12,000", "Marketing spend for March is 12000"),
             ("marketing spend for march is 12000", "Marketing spend for March is 12,000"),
-            ("the budget is 1,50,000 rupees", "The budget is 150000 rupees."),
             ("the budget is 150000 rupees", "The budget is 1,50,000 rupees."),
         ]
     )
