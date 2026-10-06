@@ -956,7 +956,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Finishes the dictation in flight before letting the process die, but not for ever.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         completions?.stop()
-        Task { [weak self, pipeline, clipboard, telemetry] in
+        let watchingClipboard = settings.clipboardEnabled && !isClipboardPaused
+        let arrived: @Sendable (NoticedClip) async -> Void = { [weak self] noticed in
+            await self?.clipArrived(noticed)
+        }
+        Task { [weak self, pipeline, clipboard, clipboardWatcher, telemetry] in
             let controller = self?.controller
             let finishingCompletions = self?.completions
             let quittingPipeline = pipeline.map { pipeline in
@@ -969,6 +973,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 budget: Self.quitBudget,
                 clock: ContinuousClock(),
                 pipeline: quittingPipeline,
+                catchUpClipboard: {
+                    guard watchingClipboard else { return }
+                    await clipboardWatcher.catchUp(handing: arrived)
+                },
                 flushClipboard: { await clipboard.flushUse() },
                 finishCompletions: { await finishingCompletions?.finishWrites() },
                 stopController: { await controller?.stop() },
