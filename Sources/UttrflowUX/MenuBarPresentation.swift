@@ -1,3 +1,4 @@
+public import struct Foundation.UUID
 public import UttrflowClipboard
 public import UttrflowCore
 
@@ -10,16 +11,20 @@ public enum DictationActivity: Sendable, Equatable, CaseIterable {
     case working
     /// Text was confirmed in the target app.
     case inserted
+    /// Text was confirmed, but part of the speech decoded to no words and is missing from it.
+    case partial
     /// The target did not confirm the text, which remains on the clipboard.
     case unconfirmed
     /// Text remains on the clipboard for the user to paste.
     case copied
 
     /// Carries the insertion outcome through the menu without claiming text arrived when it did not.
-    public static func completion(method: TextInsertionMethod, arrival: InsertionArrival) -> Self {
+    public static func completion(
+        method: TextInsertionMethod, arrival: InsertionArrival, missedPieces: Int = 0
+    ) -> Self {
         if method == .clipboard { return .copied }
         if arrival == .unconfirmed { return .unconfirmed }
-        return .inserted
+        return MissedSpeech.isMissing(missedPieces) ? .partial : .inserted
     }
 }
 
@@ -81,6 +86,8 @@ public enum SpeechModelReadiness: Sendable, Equatable {
 
 /// A recent dictation, as much of it as a menu can show.
 public struct MenuBarRecent: Sendable, Equatable {
+    /// Identifies the dictation across menu redraws.
+    public let id: UUID
     /// Already shortened by whoever keeps the list, so only one place decides a menu's width.
     public let title: String
     /// The whole of it, for the tooltip, since the row says less than it will insert.
@@ -88,7 +95,8 @@ public struct MenuBarRecent: Sendable, Equatable {
     /// Whether the text is a secret and its tooltip must be omitted.
     public let isSecret: Bool
 
-    public init(title: String, fullText: String, isSecret: Bool = false) {
+    public init(id: UUID = UUID(), title: String, fullText: String, isSecret: Bool = false) {
+        self.id = id
         self.title = title
         self.fullText = fullText
         self.isSecret = isSecret
@@ -171,10 +179,14 @@ public struct MenuBarState: Sendable, Equatable {
     public var speechLoadElapsed: Duration
     /// How a long recording is going, so the status line can count it down.
     public var recordingAdvice: DictationAdvice
+    /// What ends the recording under way, so the status line says how to finish one that release does not.
+    public var stopGesture: StopGesture
     /// Newest first.
     public var recents: [MenuBarRecent]
     /// The clipboard's kept copies, newest first; the popover shows the first few.
     public var clips: [Clip]
+    /// Words the dictionary learned within ``RecentlyLearned/holdingPeriod``, newest first.
+    public var learned: [LearnedWord]
     /// How far along an update is, if one is under way.
     public var updateProgress: UpdateProgress
     /// Whether this build has a configured, verifiable update feed.
@@ -193,6 +205,8 @@ public struct MenuBarState: Sendable, Equatable {
     public var shortcutUnheard: String?
     /// Why AI suggestions cannot receive keyboard input right now, or nil when they can.
     public var suggestionUnheard: String?
+    /// Whether AI suggestions can receive keyboard input right now.
+    public var suggestionRuntime: SuggestionRuntimeStatus
     /// How far along the AI suggestion model is, so a switch that is on but waiting says so.
     public var suggestionModel: SuggestionModelReadiness
     /// Whether the dictation shortcut is held or pressed, so the hint uses the right verb.
@@ -206,8 +220,10 @@ public struct MenuBarState: Sendable, Equatable {
         speechModel: SpeechModelReadiness = .ready,
         speechLoadElapsed: Duration = .zero,
         recordingAdvice: DictationAdvice = .keepGoing,
+        stopGesture: StopGesture = .letGo,
         recents: [MenuBarRecent] = [],
         clips: [Clip] = [],
+        learned: [LearnedWord] = [],
         updateProgress: UpdateProgress = .idle,
         canCheckForUpdates: Bool = false,
         features: MenuBarFeatures = MenuBarFeatures(),
@@ -215,6 +231,7 @@ public struct MenuBarState: Sendable, Equatable {
         unarmedShortcuts: Set<ShortcutAction> = [],
         shortcutUnheard: String? = nil,
         suggestionUnheard: String? = nil,
+        suggestionRuntime: SuggestionRuntimeStatus = .idle,
         suggestionModel: SuggestionModelReadiness = .notAsked,
         activation: HotkeyActivation = .holdToTalk,
         speechModelBytes: Int64? = nil
@@ -224,8 +241,10 @@ public struct MenuBarState: Sendable, Equatable {
         self.speechModel = speechModel
         self.speechLoadElapsed = speechLoadElapsed
         self.recordingAdvice = recordingAdvice
+        self.stopGesture = stopGesture
         self.recents = recents
         self.clips = clips
+        self.learned = learned
         self.updateProgress = updateProgress
         self.canCheckForUpdates = canCheckForUpdates
         self.features = features
@@ -233,6 +252,7 @@ public struct MenuBarState: Sendable, Equatable {
         self.unarmedShortcuts = unarmedShortcuts
         self.shortcutUnheard = shortcutUnheard
         self.suggestionUnheard = suggestionUnheard
+        self.suggestionRuntime = suggestionRuntime
         self.suggestionModel = suggestionModel
         self.activation = activation
         self.speechModelBytes = speechModelBytes
@@ -248,13 +268,15 @@ public enum MenuBarIntent: Sendable, Equatable {
     case stopDictation
     /// Carry out the one fix the current failure offered.
     case recover(RecoveryAction)
-    /// A position into ``MenuBarState/recents``, so no text travels back to the app that has it.
-    case insertRecent(index: Int)
-    case copyRecent(index: Int)
-    /// A position into ``MenuBarState/clips``, for the same reason.
-    case insertClip(index: Int)
-    case copyClip(index: Int)
-    case open(Destination)
+    /// Identifies the dictation to insert, so a redraw cannot change the chosen words.
+    case insertRecent(id: UUID)
+    case copyRecent(id: UUID)
+    /// Identifies the clip to insert, so a redraw cannot change the chosen copy.
+    case insertClip(id: UUID)
+    case copyClip(id: UUID)
+    /// Removes and refuses a learned word, named by its entry so a redraw cannot change which.
+    case undoLearnedWord(id: UUID)
+    case open(AppLocation)
     /// Opens the clipboard panel, which is otherwise reachable only by a shortcut nothing mentions.
     case openClipboard
     /// Move one of the three switches, naming the one it moves so the other two cannot follow.
@@ -365,6 +387,16 @@ public enum MenuBarEmphasis: Sendable, Equatable, CaseIterable {
     case live
     /// Something is waiting on the user.
     case attention
+
+    /// The SF Symbol beside the status line: one dot, or a shape per emphasis when colour must not carry it alone.
+    public func marker(differentiatesWithoutColour: Bool) -> String {
+        guard differentiatesWithoutColour else { return "circlebadge.fill" }
+        return switch self {
+        case .normal: "circle.fill"
+        case .live: "record.circle"
+        case .attention: "exclamationmark.triangle.fill"
+        }
+    }
 }
 
 /// A row of the menu, in the order the menu shows them.
@@ -402,6 +434,8 @@ public struct MenuBarPresentation: Sendable, Equatable {
     public let lastDictation: MenuBarRow?
     /// The newest clips, empty when there are none or the clipboard is switched off.
     public let clips: [MenuBarRow]
+    /// Words learned lately, each with its Undo; empty when there are none.
+    public let learned: [MenuBarLearnedRow]
     /// The right-click menu, in the order it shows them.
     public let items: [MenuBarItem]
 
@@ -409,7 +443,8 @@ public struct MenuBarPresentation: Sendable, Equatable {
         icon: MenuBarIcon, statusLine: String, emphasis: MenuBarEmphasis,
         accessibilityLabel: String, clipboardCaptureEnabled: Bool = true,
         header: MenuBarHeader, buttons: [MenuBarButton],
-        lastDictation: MenuBarRow?, clips: [MenuBarRow], items: [MenuBarItem]
+        lastDictation: MenuBarRow?, clips: [MenuBarRow], learned: [MenuBarLearnedRow] = [],
+        items: [MenuBarItem]
     ) {
         self.icon = icon
         self.statusLine = statusLine
@@ -420,6 +455,7 @@ public struct MenuBarPresentation: Sendable, Equatable {
         self.buttons = buttons
         self.lastDictation = lastDictation
         self.clips = clips
+        self.learned = learned
         self.items = items
     }
 
@@ -430,7 +466,9 @@ public struct MenuBarPresentation: Sendable, Equatable {
     public var commands: [MenuBarCommand] {
         let action: [MenuBarCommand] =
             if case .status(let status) = header, let command = status.action { [command] } else { [] }
-        let rows = ([lastDictation].compactMap(\.self) + clips).flatMap { [$0.insert, $0.copy] }
+        let rows =
+            ([lastDictation].compactMap(\.self) + clips).flatMap { [$0.insert, $0.copy] }
+            + learned.map(\.undo)
         let menu = items.compactMap { if case .command(let command) = $0 { command } else { nil } }
         return action + buttons.map(\.command) + rows + menu
     }
@@ -454,7 +492,8 @@ public enum MenuBarPresenter {
 
         let statusLine = statusLine(for: state)
         return MenuBarPresentation(
-            icon: icon(for: state.activity, needsAttention: needsAttention),
+            icon: icon(
+                for: state.activity, failure: state.failure, dictationEnabled: state.features.dictation),
             statusLine: statusLine,
             emphasis: emphasis,
             accessibilityLabel: spokenForm(of: statusLine),
@@ -463,6 +502,7 @@ public enum MenuBarPresenter {
             buttons: buttons(for: state),
             lastDictation: lastDictation(for: state),
             clips: clipRows(for: state),
+            learned: learnedRows(for: state),
             items: items(for: state, statusLine: statusLine, emphasis: emphasis)
         )
     }
@@ -470,16 +510,26 @@ public enum MenuBarPresenter {
     // MARK: The icon
 
     /// States differ at a glance, so the bar alone says whether the microphone is live or text arrived.
-    static func icon(for activity: DictationActivity, needsAttention: Bool) -> MenuBarIcon {
-        guard !needsAttention else { return .symbol("exclamationmark.triangle.fill") }
+    static func icon(
+        for activity: DictationActivity, failure: FailurePresentation?, dictationEnabled: Bool = true
+    ) -> MenuBarIcon {
+        if let failure { return icon(for: failure) }
+        guard dictationEnabled else { return .symbol("mic.slash") }
         return switch activity {
         case .idle: .mark
         case .listening: .symbol("mic.fill")
         case .working: .symbol("sparkles")
         case .inserted: .symbol("checkmark")
+        case .partial: .symbol("exclamationmark.circle")
         case .unconfirmed: .symbol("questionmark.circle")
         case .copied: .symbol("doc.on.clipboard")
         }
+    }
+
+    /// A failure's glyph differs by shape from every activity, so it never looks like rest or success.
+    static func icon(for failure: FailurePresentation) -> MenuBarIcon {
+        if failure.placement == .menuBar { return .symbol("exclamationmark.triangle.fill") }
+        return failure.severity == .informational ? .symbol("info.circle") : .symbol("xmark.circle")
     }
 
     // MARK: The status line
@@ -488,8 +538,8 @@ public enum MenuBarPresenter {
     static func statusLine(for state: MenuBarState) -> String {
         if let failure = state.failure { return failure.headline }
 
-        // Above the model and the activity, below a failure: it takes the app away, but is not a fault.
-        if let updating = updateLine(for: state.updateProgress) { return updating }
+        // Above the model and a resting activity, below a failure and a live dictation, which it waits for.
+        if !isBusy(state.activity), let updating = updateLine(for: state.updateProgress) { return updating }
 
         switch state.speechModel {
         case .downloading(let fraction):
@@ -504,11 +554,13 @@ public enum MenuBarPresenter {
         case .notInstalled:
             return SpeechModelLoad.missing.status
         case .ready:
+            guard state.features.dictation else { return "Dictation off" }
             return switch state.activity {
             case .idle: "Ready"
-            case .listening: listeningLine(for: state.recordingAdvice)
+            case .listening: listeningLine(for: state.recordingAdvice, stopGesture: state.stopGesture)
             case .working: "Tidying up…"
             case .inserted: "Inserted"
+            case .partial: MissedSpeech.line
             case .unconfirmed: "Inserted — not confirmed"
             case .copied: "Copied — press ⌘V"
             }
@@ -544,8 +596,8 @@ public enum MenuBarPresenter {
 
     /// The status line as VoiceOver reads it, built from the same string so the two cannot drift.
     static func spokenForm(of statusLine: String) -> String {
-        // An ellipsis means "still going" to the eye and nothing at all to the ear.
-        let spoken = String(statusLine.filter { $0 != "…" })
+        // An ellipsis means "still going" to the eye; to the ear it is a pause before what follows, or nothing.
+        let spoken = statusLine.replacing("… ", with: ". ").filter { $0 != "…" }
         let stop = spoken.hasSuffix(".") ? "" : "."
         return "Uttrflow. \(spoken)\(stop)"
     }
@@ -616,10 +668,16 @@ public enum MenuBarPresenter {
         return "\(name) — \(headline)"
     }
 
-    /// What a recording says about itself, counting down once it nears its cap.
-    static func listeningLine(for advice: DictationAdvice) -> String {
-        guard let remaining = RemainingTime.phrase(for: advice) else { return "Listening…" }
-        return "Listening… \(remaining)"
+    /// What a recording says about itself: how to finish when releasing the keys does not, and a countdown near its cap.
+    static func listeningLine(for advice: DictationAdvice, stopGesture: StopGesture = .letGo) -> String {
+        let instruction: String? =
+            switch stopGesture {
+            case .pressAgain, .pressAgainHandsFree: stopGesture.recordingLine
+            case .letGo, .clickAgain: nil
+            }
+        let details = [instruction, RemainingTime.phrase(for: advice)].compactMap(\.self)
+        guard !details.isEmpty else { return "Listening…" }
+        return "Listening… \(details.joined(separator: ", "))"
     }
 
     /// Whether the microphone is open, and so whether Stop must be offered. Never while working.
@@ -633,7 +691,7 @@ public enum MenuBarPresenter {
         guard state.failure?.severity != .blocking else { return false }
         guard state.speechModel == .ready else { return false }
         return switch state.activity {
-        case .idle, .inserted, .unconfirmed, .copied: true
+        case .idle, .inserted, .partial, .unconfirmed, .copied: true
         case .listening, .working: false
         }
     }
@@ -647,7 +705,7 @@ public enum MenuBarPresenter {
     static func isBusy(_ activity: DictationActivity) -> Bool {
         switch activity {
         case .listening, .working: true
-        case .idle, .inserted, .unconfirmed, .copied: false
+        case .idle, .inserted, .partial, .unconfirmed, .copied: false
         }
     }
 
@@ -655,7 +713,7 @@ public enum MenuBarPresenter {
     static func menuTitle(for action: FailureAction) -> String {
         switch action.recovery {
         case .openSystemSettings: "\(action.title)…"
-        case .retry, .downloadSpeechModel, .pasteManually, .showRecentDictations, .retryFromRecording,
+        case .retry, .downloadSpeechModel, .pasteManually, .showHistory, .retryFromRecording,
             .copyTranscript:
             action.title
         }

@@ -3,24 +3,29 @@
 Readability, maintainability and design quality outrank speed of delivery. The principles below
 are non-negotiable on every change, without exception: **single source of truth (DRY), SOLID,
 KISS, YAGNI, design patterns where they remove duplication or branching, and modular low-level
-design.** Every rule has a measure, a limit and the way it is checked. "Pass" means the command exits 0.
-A rule whose check is a command is a gate; a rule whose check is reading the diff is a review
+design.** A rule whose check is a command is a gate; a rule whose check is reading the diff is a review
 rule, and the measure shown is what the reviewer counts.
 
 ## Gated limits
 
 | Rule | Measure | Limit | Check |
 |---|---|---|---|
-| Comment length | lines in one `//` or `///` block | 1 | `make comment-audit` |
-| Multi-line comment blocks per file | count | never above `Scripts/comment_baseline.json` | `make comment-audit` |
+| Comments | lines in a new `//` or `///` block; multi-line blocks per file | 1; never above `Scripts/comment_baseline.json` | `make comment-audit` |
 | Line coverage per module | percent | at least 95 | `make coverage` |
-| Coverage exclusion size | lines per excluded file | at most 400, unless listed in `OVERSIZED_EXCLUSIONS` | `make exclusion-audit` |
+| User-facing claims | privacy, accuracy or speed sentences in `Sources/UttrflowUX`, `Sources/Uttrflow` and `README.md` not in `Docs/claims.json` with live, unexpired evidence | 0 | `make claims-audit` |
+| Coverage exclusion size | lines per excluded file | at most 400, unless listed in `OVERSIZED_EXCLUSIONS`; a listed file never above `Scripts/exclusion_baseline.json` | `make exclusion-audit` |
 | Spelling matches decided by shape, per file | count | never above `Scripts/loose_match_baseline.json` | `make match-audit` |
+| Closed word lists: literal collections of 4 or more words, per file | count | never above `Scripts/closed_list_baseline.json` | `make closed-list-audit` |
+| Duplicate word tables: literal string tables of 6 or more members sharing 60% of the smaller with a table in another file, per file | pairings | never above `Scripts/duplicate_table_baseline.json` | `make duplicate-table-audit` |
+| Text split by a hand-written separator (`split(whereSeparator:` or `split {`) in `UttrflowAI`, `UttrflowPipeline`, `UttrflowCore/Cleaning`, `UttrflowEval`, per file | count | never above `Scripts/word_split_baseline.json` | `make word-split-audit` |
+| Fixed English literals handed to `Text`, `Button`, `Label`, `.help`, `.accessibilityLabel`, per file | count | never above `Scripts/string_baseline.json`; see [localisation.md](../localisation.md) | `make string-audit` |
+| Top-level type names declared in more than one module, per name | modules past the first | never above `Scripts/type_name_baseline.json` | `make type-name-audit` |
 | Line length and indentation | characters, spaces | 110, 4 | `make lint` |
 | Force unwraps, `try!`, implicitly unwrapped optionals, leading underscores, non-`///` doc comments | count | 0 | `make lint` |
 | Compiler warnings | count | 0 | `make build` |
 | Swift language mode | version | 6, strict concurrency | `make build` |
 | Real email or postal addresses in fixtures | count | 0 | `make pii-audit` |
+| Audio files outside `Tests/Fixtures/SyntheticAudio/`, by extension or header | count | 0 | `make audio-audit` |
 | Connections opened on the dictation path | count | 0 | `make offline-audit` |
 | Pasteboard access outside the clipboard adapters | count | 0 | `make pasteboard-audit` |
 | Local-store writes outside `PrivateFile` | count | 0 | `make store-permissions` |
@@ -31,7 +36,6 @@ rule, and the measure shown is what the reviewer counts.
 | XCTest in the test suite | count | 0; tests use Swift Testing (`import Testing`) | `grep -rlE 'import XCTest' Tests` prints nothing |
 | Test functions named after an issue number | count | 0 | `grep -rE 'func test[A-Za-z_]*(Issue\|issue)[0-9]+' Tests` prints nothing |
 | Files named `*_v2`, `*_new`, `*_old` or `* copy` | count | 0 | `git ls-files \| grep -c -E '_v2\|_new\.\|_old\.\| copy'` prints 0 |
-| Cleanup change, corpus score after versus before | each metric | no drop without the metric named and justified in the PR | `make bakeoff` |
 
 ## Design limits for code you add or touch
 
@@ -79,11 +83,11 @@ Use these owners; do not reimplement them.
 
 | Question | Single owner | Held by |
 |---|---|---|
-| Are two spellings one word? | `MeaningPreservationGuard.sameForm` | `make match-audit` |
+| Are two spellings one word? | `WordForms.sameForm` | `make match-audit` |
 | Is a word written out at its own boundaries? | `spelledInto`, `isWritten` | `make match-audit` |
 | Is a word still there, in the order spoken? | `WordErrorRate.measure` | `make match-audit` |
 | Is a scalar in the Latin range? | `UttrflowCore.LatinScript.isInLatinRange` | tests, `Docs/latin-output.md` |
-| Does text write only Latin? | `LatinScript.writes` in `UttrflowPredict`, built on the row above | tests, `Docs/latin-output.md` |
+| Does text write only Latin? | `LatinScript.writesOnlyLatin` in `UttrflowCore`, built on the row above | tests, `Docs/latin-output.md` |
 | What is the current line? | `FocusedFieldSnapshot.currentLine` | tests, `Docs/predict.md` |
 | Which application is a terminal? | `TerminalApplications` | tests, `Docs/predict.md` |
 | How much memory may the clipboard use? | `ClipboardBudget.standard` | `Docs/clipboard-budget.md` |
@@ -113,9 +117,8 @@ Use these owners; do not reimplement them.
 
 ## KISS and YAGNI
 
-1. Write the check first: the test or command that fails now and passes when the work is done.
-   Build the smallest design that passes it. A simpler design that
-   passes is the one you ship.
+1. Build the smallest design that passes the check you wrote first (`AGENTS.md`, "Working
+   agreement"). A simpler design that passes is the one you ship.
 2. A protocol, generic, option, parameter or configuration key has at least 2 uses, or 1 use plus
    a test double that needs the seam. Otherwise delete it.
 3. 0 compatibility shims, aliases or re-exports for code you removed; the app is not a library.
@@ -144,9 +147,9 @@ and its doc comment say what it does.
 | Sequence several collaborators once per event | coordinator and session | `SuggestionCoordinator`, `SuggestionSession` |
 | A closed set of situations with different behaviour | enum with one exhaustive `switch` | `DictationState` |
 | Local persistence behind one seam | store actor | `ClipboardStore`, `SnippetStore` |
-| Keep presentation out of the view | presentation model in a value type | the modules under `UttrflowUX` |
+| Keep presentation out of the view | presentation model in a value type | `UttrflowUX` |
 
-Do not add: global mutable state or a new singleton (inject the dependency), a god object (a type
+Do not add: global mutable state, a god object (a type
 that other types need to know the internals of), inheritance to share code (compose), or a
 wrapper that only renames.
 
@@ -161,10 +164,27 @@ Dependencies are declared in `Package.swift`; a cycle fails the build.
 | Everything else | logic, stores, models, presentation, evaluation | 0 |
 
 ```bash
-grep -rlE '^import (AppKit|ApplicationServices|SwiftUI|Cocoa)' Sources/UttrflowCore Sources/UttrflowAI Sources/UttrflowPredict
+make layering-audit
 ```
 
-prints nothing, and the same holds for every module in the second row.
+fails on a UI-framework import in any module of the second row, and on a `Package.swift` target
+dependency from one of those modules to a module of the first row. The count is baselined in
+`Scripts/layering_baseline.json` and may fall and never rise; `python3 Scripts/layering_audit.py
+--report` lists what is left.
+
+It also fails on any module edge, a `Package.swift` dependency or an `import` of a package module,
+that `Scripts/module_layers.json` does not list, and on a listed edge nothing uses. Adding an edge
+is a reviewed diff to that file, with a line under `reasons` when the edge is not obvious.
+
+```bash
+make public-api-audit
+```
+
+fails on a `public` or `open` declaration whose module, kind and name are not in
+`Scripts/public_api_baseline.json`. Make a new one `internal` unless another module needs it;
+otherwise record it with `python3 Scripts/public_api_audit.py --update` so the baseline line shows
+in the diff. `--unused` lists public declarations named nowhere outside their module, counting a
+test that reaches the module through `@testable import` as inside.
 
 A change that adds a module states, in the pull request: the module's one-sentence
 responsibility, the modules it depends on and why none points the wrong way, its public surface in
@@ -184,9 +204,9 @@ of each type in one sentence each, the direction of every new dependency, the te
 3. **Errors are explicit, and a fallback needs a promise behind it.** A silent substitute for a
    failure hides the defect, so a failure propagates unless a product promise requires a
    fallback (the user's words stay reachable, `Docs/definition-of-done.md`). Input from the
-   user, the screen, a model or the disk never reaches `fatalError`, `precondition` or `try!`.
-   **Errors are explicit.** A failure is typed and handled or propagated. A new `try?` carries a
-   one-line reason for discarding the error, and ends in an unchanged user-visible state.
+   user, the screen, a model or the disk never reaches `fatalError`, `precondition` or `try!`. A
+   failure is typed and handled or propagated; a new `try?` carries a one-line reason for
+   discarding the error and leaves the user-visible state unchanged.
 4. **Concurrency is declared.** Shared mutable state is an actor or has one owner; strict
    concurrency stays on. 0 blocking I/O inside a lock or critical section; work that must follow
    it is handed off after the lock is released.
@@ -259,6 +279,42 @@ A baselined match is legitimate when the shape is the question rather than a sta
 `CaretEchoPass` asks which completion targets begin with what the user typed. The author says why
 a given match is right.
 
+## Closed word lists
+
+A literal collection of four or more words in code is a rule keyed to the words someone said, and
+each one makes the next defect a patch. Decide by the property the words share, or move the list
+into a data file; the count per file never rises.
+
+```bash
+make closed-list-report                                      # every list left, with the line
+python3 Scripts/closed_list_audit.py --update                # record a fall
+python3 Scripts/closed_list_audit.py --update --after-merge  # only when main moved under you
+```
+
+## Duplicate word tables
+
+A word table has one home. A second copy in another file drifts from the first, so two stages
+read different sentence ends, abbreviations or number words. Use the existing table the failure
+names, or move both into one shared home; the pairings per file never rise.
+
+```bash
+make duplicate-table-report                                    # every overlapping pair, with lines
+python3 Scripts/duplicate_table_audit.py --update                # record a fall
+python3 Scripts/duplicate_table_audit.py --update --after-merge  # only when main moved under you
+```
+
+## Word splits
+
+Each hand-written split decides where a word ends, so two call sites count different words for one
+text and an index, a range or a verdict moves by a word. Word boundaries belong to one seam,
+`WordTokens.swift`; the count of splits elsewhere per file never rises.
+`Tests/UttrflowEvalTests/WordTokeniserCharacterisationTests.swift` pins what each tokeniser does today.
+
+```bash
+python3 Scripts/word_split_audit.py --report                 # every split left, with the line
+python3 Scripts/word_split_audit.py --update                 # record a fall
+```
+
 ## Measurements and thresholds
 
 1. **Show the measured value; missing evidence is its own value.** An unknown is never defaulted
@@ -274,34 +330,40 @@ a given match is right.
    decision that changed it.
 6. **A gate fails when it cannot run.** A check whose tool is missing exits non-zero instead of
    passing, and a count quoted in a document is re-measured by the command in the same commit.
+7. **A latency claim states where its clock starts and stops**, both as named events (key down,
+   last audio frame, words ready, text inserted), and records each sub-stage on its own. A total
+   without its stages cannot say which stage moved.
+8. **Read the artefact before writing the premise.** A claim about a third-party model's
+   internals cites the symbol and its access level, or the run that showed it.
+9. **A derived constant names its source**: the corpus, language and command it was fitted on.
+   A constant fitted on one language is not a default for the others.
+10. **One current table per measurement.** A new run replaces the table on its page; an older run
+    is history and goes in the pull request, not beside the current one.
+
+Evidence for rules 7 to 10: [measurement-claims.md](../measurement-claims.md).
 
 ## Tests and coverage
 
-0. Tests are load-bearing. Deleting, skipping or weakening an existing assertion is agreed in the
+1. Tests are load-bearing. Deleting, skipping or weakening an existing assertion is agreed in the
    pull request first; list each one the diff removes:
-   `git diff origin/main -- Tests \| grep -E '^-.*(#expect\|#require\|@Test)'`. A test that is
+   `git diff origin/main -- Tests | grep -E '^-.*(#expect|#require|@Test)'`. A test that is
    genuinely broken is surfaced in the PR, not edited until it passes.
-1. Prefer a real object, then a hand-written fake, and a mock last. A test asserts behaviour a user
+2. Prefer a real object, then a hand-written fake, and a mock last. A test asserts behaviour a user
    or caller depends on, never code structure, and its name is a
    sentence. It fails only when our code changes.
-2. A test asserts exact values and counts, never a bound ("more than 0") or the mere absence of
+3. A test asserts exact values and counts, never a bound ("more than 0") or the mere absence of
    an error. It never asserts a value the test itself just set and stored.
-3. A test that executes lines without asserting behaviour is worse than the exclusion it hides.
+4. A test that executes lines without asserting behaviour is worse than the exclusion it hides.
    A new test is run by name (`swift test --filter`), and the run shows it executed: a test that
    is not discovered covers 0 lines.
-4. An exclusion lives in `Scripts/coverage_report.py` with a stated reason, printed on every
-   run. Adding tests until the exclusion can go is the way out.
-5. A change to recognition, correction or cleanup runs `make bakeoff` and records the score
-   before and after.
-6. A change to insertion, input or context reading is run once in a real target app, and the PR
-   names the app and the result.
-7. A test leaves 0 side effects: every temporary file, `UserDefaults` suite and Keychain item it
+5. An exclusion lives in `Scripts/coverage_report.py` with a stated reason, printed on every
+   run. Adding tests until the exclusion can go is the way out. Logic worth a test goes in a
+   covered module and the excluded file only wires it.
+6. A test leaves 0 side effects: every temporary file, `UserDefaults` suite and Keychain item it
    creates is removed (`Docs/preferences-suites.md`).
-8. A test injects a fake for the Keychain, the pasteboard and `UserDefaults`; `make test` shows 0
+7. A test injects a fake for the Keychain, the pasteboard and `UserDefaults`; `make test` shows 0
    macOS permission prompts. A new `sleep` to fix a race is 0: wait on the event, and a `sleep` that
    must stay carries a one-line reason.
-9. Probe the real API before coding. A command-line tool is not a representative test bed for the
-   Accessibility API; `Docs/` and `Sources/UttrflowInput/` carry the traps.
 
 ## Protected files
 
@@ -309,17 +371,18 @@ Change one only when the task is about it, and say so in the PR.
 
 | File | Rule |
 |---|---|
-| `Package.swift`, `Package.resolved` | a dependency change is agreed in an issue first |
-| `.github/workflows/`, `.githooks/` | a change is agreed in an issue first |
+| `Package.swift`, `Package.resolved`, `.github/workflows/`, `.githooks/` | see "Dependencies" |
 | `Scripts/*_baseline.json` | written only by the script's `--update`; never by hand |
 | `Scripts/disclosure_audit.py` | never loosened |
 | `Resources/Uttrflow-Info.plist` version fields | changed only by a release |
 | Bundle identifier and signing identity | unchanged across builds; Keychain items are tied to the signature (`Docs/account-keychain.md`) |
 | `Design/*.dc.html` artboards | regenerated from `Design/_gen_*.py`; edit the generator |
+| `Scripts/design_*.py`, the `design-audit` target and its place in `verify`, `ALLOWED` and `SCENERY` | never loosened; an exception is added with its reason ([design.md](design.md#exceptions)) |
 
 ## Dependencies
 
-1. A new package dependency or workflow is agreed in an issue before the pull request.
+1. A new package dependency, workflow or hook change is agreed in an issue before the pull
+   request.
 2. The pull request states the dependency's purpose, a licence compatible with `LICENSE`, whether
    the project is maintained, and the count of transitive dependencies it adds. A dependency
    that duplicates an existing one is refused.

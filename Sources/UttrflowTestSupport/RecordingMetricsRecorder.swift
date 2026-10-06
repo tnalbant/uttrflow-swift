@@ -25,6 +25,13 @@ public actor RecordingMetricsRecorder: MetricsRecording {
         captureQualities.append(quality)
     }
 
+    /// What reading the screen cost each dictation, in the order they settled.
+    public private(set) var screenReads: [ScreenReadCost] = []
+
+    public func recordScreenReads(_ reads: ScreenReadCost) async {
+        screenReads.append(reads)
+    }
+
     public func measurements(for stage: PipelineStage) -> [StageMeasurement] {
         measurements.filter { $0.stage == stage }
     }

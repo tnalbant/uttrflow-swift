@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 @testable import UttrflowClipboard
 import UttrflowCore
@@ -71,6 +72,7 @@ struct SettingsResetLevelTests {
     /// Every level, listed rather than enumerated because one of them names an application.
     static let everyLevel: [SettingsReset] = [
         .learnedWords, .everything, .suggestions(inApplication: "com.example.editor"),
+        .persona, .personaFact(.noticedWords),
     ]
 
     /// The switch is exhaustive, so a sixth level cannot be added without this failing to build.
@@ -78,7 +80,7 @@ struct SettingsResetLevelTests {
     func everyLevelIsSwept() {
         for level in Self.everyLevel {
             switch level {
-            case .learnedWords, .everything, .suggestions: continue
+            case .learnedWords, .everything, .suggestions, .persona, .personaFact: continue
             }
         }
         #expect(Set(Self.everyLevel).count == Self.everyLevel.count)
@@ -177,7 +179,7 @@ struct FilePersonalisationStoreTests {
 
             let counts = await FilePersonalisationStore(
                 dictionary: dictionary, history: history,
-                clipboard: clipboardStore(in: directory)
+                clipboard: clipboardStore(in: directory), ledger: NetworkActivityLedger(file: nil)
             )
             .personalisation(keeping: Retention(days: 7, now: now))
             #expect(counts == SettingsPersonalisation(learnedWords: 3, addedWords: 2, transcripts: 4))
@@ -196,7 +198,7 @@ struct FilePersonalisationStoreTests {
 
             let counts = await FilePersonalisationStore(
                 dictionary: dictionary, history: history,
-                clipboard: clipboardStore(in: directory)
+                clipboard: clipboardStore(in: directory), ledger: NetworkActivityLedger(file: nil)
             )
             .personalisation(keeping: Retention(days: 7, now: now))
             #expect(counts.transcripts == 0)
@@ -212,7 +214,7 @@ struct FilePersonalisationStoreTests {
             try await fill(dictionary, history, now: now)
             let store = FilePersonalisationStore(
                 dictionary: dictionary, history: history,
-                clipboard: clipboardStore(in: directory))
+                clipboard: clipboardStore(in: directory), ledger: NetworkActivityLedger(file: nil))
 
             try await store.carryOut(.learnedWords)
 
@@ -234,7 +236,8 @@ struct FilePersonalisationStoreTests {
             let store = FilePersonalisationStore(
                 dictionary: dictionary, history: history,
                 clipboard: clipboardStore(in: directory),
-                elsewhere: KeptElsewhere(revokeEncryptionKey: { await tracker.revoke() }))
+                elsewhere: KeptElsewhere(revokeEncryptionKey: { await tracker.revoke() }),
+                ledger: NetworkActivityLedger(file: nil))
 
             try await store.carryOut(.everything)
 
@@ -251,7 +254,8 @@ struct FilePersonalisationStoreTests {
             let store = FilePersonalisationStore(
                 dictionary: dictionary, history: history,
                 clipboard: clipboardStore(in: directory),
-                elsewhere: KeptElsewhere(revokeEncryptionKey: { throw CocoaError(.fileWriteUnknown) }))
+                elsewhere: KeptElsewhere(revokeEncryptionKey: { throw CocoaError(.fileWriteUnknown) }),
+                ledger: NetworkActivityLedger(file: nil))
 
             await #expect(throws: SettingsResetFailure.self) {
                 try await store.carryOut(.everything)
@@ -270,7 +274,7 @@ struct FilePersonalisationStoreTests {
 
             let store = FilePersonalisationStore(
                 dictionary: dictionary, history: history,
-                clipboard: clipboardStore(in: directory))
+                clipboard: clipboardStore(in: directory), ledger: NetworkActivityLedger(file: nil))
             await #expect(throws: SettingsResetFailure.self) {
                 try await store.carryOut(.learnedWords)
             }
@@ -355,6 +359,32 @@ struct SettingsRemovalRequestTests {
 
         session.dismissRemoval()
         #expect(session.confirm(removal) == .everything)
+    }
+
+    @Test("refuses a full reset while a dictation is under way, asked or answered")
+    func aDictationUnderWayHoldsTheResetBack() throws {
+        var session = session()
+        let removal = try #require(button(.privacy, "resetPersonalisation", in: session))
+        session.isDictating = true
+        #expect(session.request(removal) == nil)
+        #expect(session.pendingRemoval == nil)
+        #expect(session.rejection == SettingsEditor.finishTheDictationFirst)
+
+        session.isDictating = false
+        session.request(removal)
+        session.isDictating = true
+        #expect(session.confirm(removal) == nil)
+        #expect(session.rejection == SettingsEditor.finishTheDictationFirst)
+
+        session.isDictating = false
+        #expect(session.confirm(removal) == .everything)
+    }
+
+    @Test("only a level that removes what a dictation writes waits for one")
+    func whatADictationWrites() {
+        #expect(SettingsReset.everything.meetsADictation)
+        #expect(SettingsReset.learnedWords.meetsADictation)
+        #expect(!SettingsReset.suggestions(inApplication: "com.example.editor").meetsADictation)
     }
 
     /// Only a removal that asks can be answered; one with no question behind it cannot.
@@ -663,7 +693,8 @@ struct SettingsResetLeftoverTests {
                 elsewhere: KeptElsewhere(
                     recordings: { await calls.add("recordings") },
                     snippets: { await calls.add("snippets") },
-                    suggestionConsent: { await calls.add("consent") }))
+                    suggestionConsent: { await calls.add("consent") }),
+                ledger: NetworkActivityLedger(file: nil))
             let copies = [
                 "history.json", "clipboard.json", "saved.v1.json", "dictionary.json",
             ].map { directory.appending(path: "\($0).unreadable-1") }
@@ -676,6 +707,71 @@ struct SettingsResetLeftoverTests {
         }
     }
 
+    @Test(
+        "a full reset deletes the evidence ledger, forgetting learned words keeps it, and counting ages it out"
+    )
+    func evidenceFollowsResetAndRetention() async throws {
+        try await inATemporaryDirectory { directory in
+            let file = directory.appending(path: "evidence.json")
+            let evidence = EvidenceLedgerStore(file: file, encryptedStore: EncryptedStore(keys: FixedKeys()))
+            let now = Date(timeIntervalSince1970: 20_001 * 86_400)
+            let always = RetentionWindow(days: RetentionWindow.keepAlwaysDays, now: now)
+            let row = EvidenceRow(kind: .use, subject: "entry-1", day: 20_000, provenance: .dictation)
+            let store = FilePersonalisationStore(
+                dictionary: PersonalDictionaryStore(file: directory.appending(path: "dictionary.json")),
+                history: DictationHistoryStore(file: directory.appending(path: "history.json")),
+                clipboard: ClipboardStore(file: directory.appending(path: "clipboard.json")),
+                ledger: NetworkActivityLedger(file: nil), evidence: evidence)
+
+            try await evidence.append([row], keeping: always)
+            try await store.carryOut(.learnedWords)
+            #expect(await evidence.rows(keeping: always) == [row])
+            _ = await store.personalisation(keeping: Retention(days: 1, now: now.addingTimeInterval(86_400)))
+            #expect(!FileManager.default.fileExists(atPath: file.path()))
+
+            try await evidence.append([row], keeping: always)
+            try await store.carryOut(.everything)
+            #expect(!FileManager.default.fileExists(atPath: file.path()))
+        }
+    }
+
+    @Test("the persona lists only ledger rows, removes one fact alone, and resets to nothing")
+    func personaFollowsTheLedger() async throws {
+        try await inATemporaryDirectory { directory in
+            let evidence = EvidenceLedgerStore(
+                file: directory.appending(path: "evidence.json"),
+                encryptedStore: EncryptedStore(keys: FixedKeys()))
+            let now = Date(timeIntervalSince1970: 20_001 * 86_400)
+            let always = RetentionWindow(days: RetentionWindow.keepAlwaysDays, now: now)
+            let dictionary = PersonalDictionaryStore(file: directory.appending(path: "dictionary.json"))
+            let entry = DictionaryEntry(word: "Kubernetes", origin: .added, firstSeen: now)
+            _ = try await dictionary.add(entry)
+            let store = FilePersonalisationStore(
+                dictionary: dictionary,
+                history: DictationHistoryStore(file: directory.appending(path: "history.json")),
+                clipboard: ClipboardStore(file: directory.appending(path: "clipboard.json")),
+                ledger: NetworkActivityLedger(file: nil), evidence: evidence)
+            let retention = Retention(days: RetentionWindow.keepAlwaysDays, now: now)
+            #expect(await store.personalisation(keeping: retention).persona.isEmpty)
+
+            try await evidence.append(
+                [EvidenceRow(kind: .use, subject: entry.id.uuidString, day: 20_000, provenance: .dictation)]
+                    + StyleSignals.rows(for: "On my way.", into: .messaging, day: 20_000),
+                keeping: always)
+            let facts = await store.personalisation(keeping: retention).persona.map(\.fact)
+            #expect(facts == [.word(entry.id), .style(.messaging)])
+
+            try await store.carryOut(.personaFact(.word(entry.id)))
+            #expect(
+                await store.personalisation(keeping: retention).persona.map(\.fact) == [.style(.messaging)])
+            #expect(await dictionary.allEntries().map(\.id) == [entry.id])
+
+            try await store.carryOut(.persona)
+            #expect(await store.personalisation(keeping: retention).persona.isEmpty)
+            #expect(await evidence.rows(keeping: always).isEmpty)
+        }
+    }
+
     @Test("an owner that refuses is a reset that failed")
     func aRefusingOwnerIsReported() async throws {
         try await inATemporaryDirectory { directory in
@@ -683,7 +779,8 @@ struct SettingsResetLeftoverTests {
                 dictionary: PersonalDictionaryStore(file: directory.appending(path: "dictionary.json")),
                 history: DictationHistoryStore(file: directory.appending(path: "history.json")),
                 clipboard: ClipboardStore(file: directory.appending(path: "clipboard.json")),
-                elsewhere: KeptElsewhere(recordings: { throw Refused() }))
+                elsewhere: KeptElsewhere(recordings: { throw Refused() }),
+                ledger: NetworkActivityLedger(file: nil))
             await #expect(throws: SettingsResetFailure.self) {
                 try await store.carryOut(.everything)
             }
@@ -701,7 +798,8 @@ struct SettingsResetLeftoverTests {
                 elsewhere: KeptElsewhere(
                     recordings: { throw Refused() },
                     snippets: { await calls.add("snippets") },
-                    suggestionConsent: { await calls.add("consent") }))
+                    suggestionConsent: { await calls.add("consent") }),
+                ledger: NetworkActivityLedger(file: nil))
             await #expect(throws: SettingsResetFailure.self) {
                 try await store.carryOut(.everything)
             }
@@ -709,4 +807,10 @@ struct SettingsResetLeftoverTests {
         }
     }
 
+}
+
+/// One key for the whole test, so the ledger seals without the Keychain.
+private struct FixedKeys: StoreKeyProviding {
+    let value = SymmetricKey(size: .bits256)
+    func key(createIfMissing: Bool) throws -> SymmetricKey { value }
 }

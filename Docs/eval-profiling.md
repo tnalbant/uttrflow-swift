@@ -1,9 +1,11 @@
 # Reading memory and processor use from inside the process
 
-`UttrflowEval`'s `MemoryFootprint` and `CPUFootprint` read the kernel's own accounting for this
-process. The interfaces are not interchangeable, and the obvious single call gives the wrong
-answer in more than one place. This page holds what was measured so the code can say one line.
-`Docs/performance.md` holds the numbers these readers produced.
+`MemoryFootprint`, `PeakMemory` and `CPUFootprint` (`Sources/UttrflowEval/MemoryFootprint.swift`,
+`Sources/UttrflowEval/CPUFootprint.swift`) read the kernel's own accounting for this process, and
+`uttrflow-bakeoff profile` reports through them. The interfaces are not interchangeable, and the
+obvious single call gives the wrong answer in more than one place; this page holds what was
+measured so the code can say one line. [`performance.md`](performance.md) holds the numbers these
+readers produce.
 
 ## Two memory figures, and why both are reported
 
@@ -12,9 +14,9 @@ answer in more than one place. This page holds what was measured so the code can
   whether a Mac starts swapping.
 - `resident_size` is every page currently in physical RAM, mapped model weights included. It is
   larger and evictable under pressure, so it overstates the cost.
-- The product memory-maps a 646 MB CoreML model. The mapped weights are clean, file-backed
+- The product memory-maps a 648 MB CoreML model. The mapped weights are clean, file-backed
   pages, so they show in the resident size and not in the footprint. A report showing only the
-  footprint looks as though 300 MB of model has gone missing; a report showing only the resident
+  footprint looks as though hundreds of megabytes of model have gone missing; a report showing only the resident
   size charges the app for pages the kernel can drop.
 - Reported per model, because a laptop with 16 GB is a target and a model that wins on quality
   but needs 12 GB has not won.
@@ -23,7 +25,7 @@ answer in more than one place. This page holds what was measured so the code can
 
 - Readings before and after a transcription say nothing about the middle, and the middle is
   where a 16 GB Mac is pushed into swap. `PeakMemory.observed` keeps asking while the work runs.
-- The default interval is 20 ms: fast enough to catch a CoreML model materialising its weights,
+- The default interval is 20 ms (`PeakMemory.defaultInterval`): fast enough to catch a CoreML model materialising its weights,
   slow enough that the polling is not itself what is being measured.
 - Each field of the peak is its own maximum, and the two may come from different instants. That
   is what "peak" has to mean when the process is only sampled.

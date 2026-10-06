@@ -1,6 +1,7 @@
 // Tests for the formatter round-trip guard and the formatter allowlist.
 
 import Testing
+import UttrflowCore
 
 @testable import UttrflowClipboard
 

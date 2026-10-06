@@ -9,8 +9,8 @@
 #
 # A public repository does not pay for standard runners, so CI is back and this is no longer
 # the last line of defence. It is kept because it is still the fastest one. Below is
-# what .github/workflows/ci.yml did: `make verify`, which is lint, a full build, 8,000+
-# tests and the coverage floor.
+# what .github/workflows/ci.yml did: `make verify`, which is lint, a full build, the test
+# suite and the coverage floor.
 #
 # This is no longer the only gate. CI runs `make verify` on every pull request, and a
 # ruleset blocks pushing to `main` at the server. What the hook is now is the fast one: it
@@ -35,12 +35,14 @@ gate=no
 pushed=()
 while read -r _local_ref local_sha remote_ref remote_sha; do
     [[ "$local_sha" == "$ZERO" ]] && continue
-    # A new branch has no remote counterpart, so ask what the remote does not have yet
-    # rather than replaying the whole history of the project on every first push.
+    # Only what the remote does not have yet. `<remote sha>..<local sha>` is not that: after
+    # a branch merges main, it holds every main commit the old branch tip lacked, all of
+    # them already published, and the audit would refuse them. The remote sha is excluded
+    # as well, in case the remote-tracking refs are stale.
     if [[ "$remote_sha" == "$ZERO" ]]; then
         pushed+=("$local_sha --not --remotes=$REMOTE_NAME")
     else
-        pushed+=("$remote_sha..$local_sha")
+        pushed+=("$local_sha ^$remote_sha --not --remotes=$REMOTE_NAME")
     fi
     if [[ "$remote_ref" == "refs/heads/main" ]]; then
         gate=yes
@@ -100,7 +102,7 @@ if ((${#pushed[@]})); then
             else
                 printf '\n\033[31m  nothing was pushed\033[0m\n'
                 printf '  A commit message or an added line carries text that must not be\n'
-                printf '  published. See AGENTS.md, "What must never reach a tracked file".\n'
+                printf '  published. See Docs/agents/public-boundary.md.\n'
                 printf '  Amend or rewrite the commit — the branch has not left this machine,\n'
                 printf '  so this is still fixable. After a push it is not.\n\n'
             fi

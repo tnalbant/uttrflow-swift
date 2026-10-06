@@ -92,6 +92,12 @@ func resolve(_ variant: String?) throws -> SpeechModel {
     return model
 }
 
+/// The refusal for a model that is not installed, naming why and what to run.
+func notInstalled(_ model: SpeechModel, in store: FileSystemSpeechModelStore) -> CleanExit {
+    let reason = store.whyNotInstalled(model) ?? "\(model.variant) is not installed."
+    return CleanExit.message("\(reason) Run: uttrflow-dev models install")
+}
+
 func megabytes(_ bytes: Int64) -> String {
     String(format: "%.0f MB", Double(bytes) / 1_000_000)
 }

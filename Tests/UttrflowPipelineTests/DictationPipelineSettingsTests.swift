@@ -3,30 +3,11 @@ import Synchronization
 import Testing
 
 @testable import UttrflowCore
+import UttrflowDictionary
 @testable import UttrflowPipeline
 @testable import UttrflowTestSupport
 
 // MARK: - Doubles
-
-/// A recogniser that hands back the scripted pieces in order, repeating the last one.
-private actor ScriptedSpeechEngine: SpeechEngine {
-    let kind = SpeechEngineKind.whisperKit
-    private let pieces: [Transcription]
-    private(set) var calls = 0
-
-    init(_ pieces: [Transcription]) {
-        self.pieces = pieces
-    }
-
-    func prepare() async throws(SpeechEngineError) {}
-
-    func transcribe(
-        _ audio: AudioSamples, options: TranscriptionOptions
-    ) async throws(SpeechEngineError) -> Transcription {
-        calls += 1
-        return pieces[min(calls - 1, pieces.count - 1)]
-    }
-}
 
 /// A tidier that records every request and hands the words back unchanged.
 private final class WatchingCleaner: TranscriptCleaning, Sendable {
@@ -85,16 +66,6 @@ private actor GatedContextEngine: ContextEngine {
     }
 }
 
-/// A place for the words to land that never refuses.
-private struct QuietInserter: TextInserting {
-    /// What the insertion says it wrote into, which is what the record should follow.
-    var destination: InsertionDestination?
-
-    func insert(_ text: String) async throws(TextInsertionError) -> InsertionAttempt {
-        InsertionAttempt(.accessibility, destination: destination)
-    }
-}
-
 /// A dictionary that always proposes the same correction.
 private struct FixedCorrector: WordCorrecting {
     let correction: DictationCorrection
@@ -104,6 +75,23 @@ private struct FixedCorrector: WordCorrecting {
     ) async throws(DictationChangeError) -> [DictationCorrection] {
         [correction]
     }
+}
+
+/// A dictionary that knows one word for its first read only, as a removal mid-dictation does.
+private final class ChangingDictionary: Sendable {
+    private let reads = Mutex(0)
+    private let entry = DictionaryEntry(
+        word: "Uttrflow", pronunciation: "utter flow", origin: .added, firstSeen: .distantPast)
+
+    func index() -> PhoneticIndex {
+        let before = reads.withLock { count in
+            defer { count += 1 }
+            return count
+        }
+        return PhoneticIndex(entries: before == 0 ? [entry] : [])
+    }
+
+    var readCount: Int { reads.withLock { $0 } }
 }
 
 // MARK: - Fixtures
@@ -143,8 +131,10 @@ struct DictationPipelineSettingsTests {
         applicationName: "Slack", bundleIdentifier: "com.tinyspeck.slackmacgap",
         documentName: "#engineering")
 
-    private func pieces(_ texts: [String]) -> [Transcription] {
-        texts.map { Transcription(text: $0, audioDuration: .seconds(1)) }
+    /// A recogniser that hands back `texts` in order, repeating the last.
+    private func pieces(_ texts: [String]) -> FakeSpeechEngine {
+        FakeSpeechEngine(
+            transcribing: .successes(texts.map { Transcription(text: $0, audioDuration: .seconds(1)) }))
     }
 
     /// A long dictation is laid out when its pieces are joined, and that is where the override was missing.
@@ -156,10 +146,10 @@ struct DictationPipelineSettingsTests {
         let cleaner = WatchingCleaner()
         let pipeline = DictationPipeline(
             capture: capture,
-            speech: ScriptedSpeechEngine(pieces(["first check the logs", "second restart the box"])),
+            speech: pieces(["first check the logs", "second restart the box"]),
             cleaner: cleaner,
             context: FakeContextEngine(context: slack),
-            inserter: QuietInserter(),
+            inserter: FakeTextInserter(),
             destinationOverrides: overrides,
             windowing: quick)
 
@@ -181,10 +171,10 @@ struct DictationPipelineSettingsTests {
         let adopted = WatchingCleaner()
         let pipeline = DictationPipeline(
             capture: capture,
-            speech: ScriptedSpeechEngine(pieces(["ship it"])),
+            speech: pieces(["ship it"]),
             cleaner: started,
             context: FakeContextEngine(context: slack),
-            inserter: QuietInserter(),
+            inserter: FakeTextInserter(),
             windowing: quick,
             earlyPoll: .seconds(60))
 
@@ -218,10 +208,10 @@ struct DictationPipelineSettingsTests {
                 applicationName: "Notes", bundleIdentifier: "com.apple.Notes", documentName: "Ideas"))
         let pipeline = DictationPipeline(
             capture: capture,
-            speech: ScriptedSpeechEngine(pieces(["ship it"])),
+            speech: pieces(["ship it"]),
             cleaner: cleaner,
             context: context,
-            inserter: QuietInserter(),
+            inserter: FakeTextInserter(),
             windowing: quick,
             earlyPoll: .seconds(60))
 
@@ -245,15 +235,18 @@ struct DictationPipelineSettingsTests {
         let capture = FakeAudioCaptureEngine(stopOutcome: .success(Take.onePiece))
         let pipeline = DictationPipeline(
             capture: capture,
-            speech: ScriptedSpeechEngine(pieces(["ship it"])),
+            speech: pieces(["ship it"]),
             cleaner: WatchingCleaner(),
             context: FakeContextEngine(
                 context: .fixture(
                     applicationName: "Terminal", bundleIdentifier: "com.apple.Terminal",
                     documentName: "zsh")),
-            inserter: QuietInserter(
-                destination: InsertionDestination(
-                    applicationName: "Slack", bundleIdentifier: "com.tinyspeck.slackmacgap")),
+            inserter: FakeTextInserter(
+                .success(
+                    InsertionAttempt(
+                        .accessibility,
+                        destination: InsertionDestination(
+                            applicationName: "Slack", bundleIdentifier: "com.tinyspeck.slackmacgap")))),
             windowing: quick,
             earlyPoll: .seconds(60))
 
@@ -272,13 +265,13 @@ struct DictationPipelineSettingsTests {
         let capture = FakeAudioCaptureEngine(stopOutcome: .success(Take.onePiece))
         let pipeline = DictationPipeline(
             capture: capture,
-            speech: ScriptedSpeechEngine(pieces(["ship it"])),
+            speech: pieces(["ship it"]),
             cleaner: WatchingCleaner(),
             context: FakeContextEngine(
                 context: .fixture(
                     applicationName: "Terminal", bundleIdentifier: "com.apple.Terminal",
                     documentName: "zsh")),
-            inserter: QuietInserter(),
+            inserter: FakeTextInserter(),
             windowing: quick,
             earlyPoll: .seconds(60))
 
@@ -310,14 +303,14 @@ struct DictationPipelineSettingsTests {
         let cleaner = WatchingCleaner()
         let pipeline = DictationPipeline(
             capture: FakeAudioCaptureEngine(stopOutcome: .success(Take.onePiece)),
-            speech: ScriptedSpeechEngine([heard]),
+            speech: FakeSpeechEngine(transcribing: .successes([heard])),
             cleaner: cleaner,
             context: FakeContextEngine(context: slack),
-            inserter: QuietInserter(),
+            inserter: FakeTextInserter(),
             corrector: FixedCorrector(
                 correction: DictationCorrection(
                     heard: "payment sheet", wrote: "PaymentSheet", wordRange: 4..<6,
-                    entryID: UUID(), reason: "heardAsSeveralWords", heardConfidence: 0.2)),
+                    entryID: UUID(), reason: .heardAsSeveralWords, heardConfidence: 0.2)),
             windowing: quick)
 
         await pipeline.startRecording()
@@ -330,5 +323,45 @@ struct DictationPipelineSettingsTests {
         #expect(draft.words.map(\.text) == ["clear", "the", "cash", "in", "PaymentSheet"])
         #expect(draft.words[2].confidence == 0.3, "the half-heard word is still half-heard")
         #expect(draft.words[4].confidence == 1, "the word the dictionary settled is not doubtful")
+    }
+
+    /// Every piece of one dictation is corrected against the dictionary held at its start.
+    @Test("a dictionary changed while the user is speaking does not change that dictation")
+    func dictionaryIsFixedForTheDictation() async {
+        let dictionary = ChangingDictionary()
+        let cleaner = WatchingCleaner()
+        let pipeline = DictationPipeline(
+            capture: FakeAudioCaptureEngine(stopOutcome: .success(Take.twoPieces)),
+            speech: FakeSpeechEngine(
+                transcribing: .successes([doubted(Self.said), doubted(Self.said)])),
+            cleaner: cleaner,
+            context: FakeContextEngine(context: slack),
+            inserter: FakeTextInserter(),
+            corrector: DictionaryCorrections { dictionary.index() },
+            windowing: quick)
+
+        await pipeline.startRecording()
+        await pipeline.finishRecording()
+
+        #expect(
+            cleaner.requests.map(\.transcription.text) == [Self.wrote, Self.wrote],
+            "the second piece still knows the word held at the start")
+        #expect(dictionary.readCount == 1, "the dictionary is read once per dictation")
+    }
+
+    private static let said = "Uttrflow works offline and the point of ?utter ?flow is that nothing leaves"
+    private static let wrote = "Uttrflow works offline and the point of Uttrflow is that nothing leaves"
+
+    /// A transcript scored word by word, a word marked `?` doubted.
+    private func doubted(_ marked: String) -> Transcription {
+        let words = marked.split(separator: " ").map {
+            TranscribedWord(
+                text: $0.replacingOccurrences(of: "?", with: ""), confidence: $0.hasPrefix("?") ? 0.2 : 1)
+        }
+        let text = words.map(\.text).joined(separator: " ")
+        return Transcription(
+            text: text,
+            segments: [TranscriptionSegment(text: text, start: .zero, end: .seconds(1), words: words)],
+            audioDuration: .seconds(1))
     }
 }

@@ -1,15 +1,14 @@
 // The rules both sides go through before a word error rate is counted.
 private import Foundation
+import UttrflowCore
 
 /// Whether any Devanagari is present, the only script distinction the product turns on.
 public enum Script: String, Sendable, Equatable, CaseIterable, Codable {
     case latin
     case devanagari
 
-    private static let devanagariRange: ClosedRange<UInt32> = 0x0900...0x097F
-
     public static func of(_ text: String) -> Script {
-        text.unicodeScalars.contains { devanagariRange.contains($0.value) } ? .devanagari : .latin
+        Romaniser.containsDevanagari(text) ? .devanagari : .latin
     }
 }
 
@@ -134,6 +133,11 @@ public struct TextNormaliser: Sendable, Equatable {
 
     // MARK: Number rules
 
+    /// Number words below a hundred, English and Devanagari, less the Hindi words as often ordinary ones.
+    static let numberWordDigits: [String: Int] = NumberWords.english
+        .merging(NumberWords.hindi.filter { Script.of($0.key) == .devanagari }) { first, _ in first }
+        .filter { $0.value < 100 && !NumberWords.hindiHomographs.contains($0.key) }
+
     /// Maps a number word to its digits, with a second pass for "twenty five".
     private func foldNumberWords(_ tokens: [String]) -> [String] {
         var folded: [String] = []
@@ -147,7 +151,7 @@ public struct TextNormaliser: Sendable, Equatable {
                 index += 2
                 continue
             }
-            folded.append(NumberWords.digits[token].map(String.init) ?? token)
+            folded.append(Self.numberWordDigits[token].map(String.init) ?? token)
             index += 1
         }
         return folded
@@ -171,31 +175,6 @@ public struct TextNormaliser: Sendable, Equatable {
         }
         return joined
     }
-}
-
-/// The number words the normaliser knows: English to ninety-nine plus the Devanagari spellings.
-enum NumberWords {
-    static let units: [String: Int] = [
-        "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
-        "eight": 8, "nine": 9,
-    ]
-
-    static let tens: [String: Int] = [
-        "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70,
-        "eighty": 80, "ninety": 90,
-    ]
-
-    /// Everything that maps on its own; "एक" and "दो" are left out because they are also "a" and "give".
-    static let digits: [String: Int] =
-        units.merging(tens) { first, _ in first }
-        .merging([
-            "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
-            "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19,
-        ]) { first, _ in first }
-        .merging([
-            "तीन": 3, "चार": 4, "पाँच": 5, "पांच": 5, "छह": 6, "सात": 7, "आठ": 8, "नौ": 9,
-            "दस": 10, "बीस": 20, "तीस": 30, "चालीस": 40, "पचास": 50,
-        ]) { first, _ in first }
 }
 
 extension String {

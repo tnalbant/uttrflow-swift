@@ -5,9 +5,9 @@ import ApplicationServices
 import SwiftUI
 import UttrflowSettings
 import Testing
-import UttrflowUX
 
 @testable import Uttrflow
+@testable import UttrflowUX
 
 @MainActor
 @Suite(
@@ -54,11 +54,13 @@ struct OnboardingCardAccessibilityTests {
         askAsAnAssistiveApp()
 
         let found = elements(under: host)
-        let headings = found.filter { $0.accessibilityRole?() == .heading }
+        // The heading role constant is macOS 26 only; its raw value is what older systems report too.
+        let headings = found.filter { $0.accessibilityRole?() == NSAccessibility.Role(rawValue: "AXHeading") }
         let buttons = found.filter { $0.accessibilityRole?() == .button }
         let indicators = found.filter { $0.accessibilityLabel?() == "Step 1 of 5: Sign in" }
         #expect(headings.contains { ($0.accessibilityLabel?() ?? "").contains(page.explanation ?? "") })
-        #expect(Set(buttons.compactMap { $0.accessibilityLabel?() }).isSuperset(of: ["Reopen", "Cancel"]))
+        let buttonLabels = Set(buttons.compactMap { $0.accessibilityLabel?() })
+        #expect(buttonLabels.isSuperset(of: ["Reopen", "Cancel"]))
         #expect(indicators.count == 1)
         #expect((buttons + indicators).allSatisfy { ($0.accessibilityHelp?() ?? nil) == nil })
     }

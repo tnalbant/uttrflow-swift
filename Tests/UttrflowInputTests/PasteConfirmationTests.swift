@@ -3,40 +3,14 @@ import Testing
 
 @testable import UttrflowCore
 @testable import UttrflowInput
-
-/// A clock a test moves itself: sleeping on it costs no real time, so nothing here races CI for a core.
-final class ScriptedClock: Clock, Sendable {
-    struct Instant: InstantProtocol {
-        let offset: Duration
-
-        func advanced(by duration: Duration) -> Instant { Instant(offset: offset + duration) }
-        func duration(to other: Instant) -> Duration { other.offset - offset }
-        static func < (lhs: Instant, rhs: Instant) -> Bool { lhs.offset < rhs.offset }
-    }
-
-    private let offset = Mutex(Duration.zero)
-
-    var now: Instant { Instant(offset: elapsed) }
-    var minimumResolution: Duration { .nanoseconds(1) }
-
-    /// How far the clock has been moved, which is what a wall clock would have shown.
-    var elapsed: Duration { offset.withLock { $0 } }
-
-    /// Moves the clock on by hand, which is how a read charges the test for what it cost.
-    func advance(by duration: Duration) { offset.withLock { $0 += duration } }
-
-    func sleep(until deadline: Instant, tolerance: Duration?) async throws {
-        offset.withLock { $0 = max($0, deadline.offset) }
-        await Task.yield()
-    }
-}
+import UttrflowTestSupport
 
 /// A caret that answers nothing until the application has been asked a given number of times.
 private final class SlowFocus: AccessibilityFocus, @unchecked Sendable {
     private let answer: String?
     private let readsBeforeItLands: Int
     private let readCost: Duration
-    private let charging: ScriptedClock?
+    private let charging: ManualClock?
     private let reads = Mutex(0)
 
     /// `answer` is what the field holds once it has taken the paste; `nil` is a field that never says.
@@ -44,7 +18,7 @@ private final class SlowFocus: AccessibilityFocus, @unchecked Sendable {
         answer: String?,
         readsBeforeItLands: Int = 0,
         costing readCost: Duration = .zero,
-        on charging: ScriptedClock? = nil
+        on charging: ManualClock? = nil
     ) {
         self.answer = answer
         self.readsBeforeItLands = readsBeforeItLands
@@ -82,7 +56,7 @@ struct PasteConfirmationTests {
     private let budget = Duration.milliseconds(10)
 
     private func confirming(
-        _ focus: any AccessibilityFocus, on clock: ScriptedClock = ScriptedClock()
+        _ focus: any AccessibilityFocus, on clock: ManualClock = ManualClock(advancesWhenSlept: true)
     ) -> PasteConfirmation {
         PasteConfirmation(focus: focus, clock: clock, budget: budget, interval: interval)
     }
@@ -198,8 +172,8 @@ struct PasteConfirmationTests {
     /// #213: the shipped budget and interval, against a read that costs more than the sleep before it.
     private func inALargeDocument(
         _ answer: String, landingAfter readsBeforeItLands: Int = 0
-    ) -> (PasteConfirmation, ScriptedClock) {
-        let clock = ScriptedClock()
+    ) -> (PasteConfirmation, ManualClock) {
+        let clock = ManualClock(advancesWhenSlept: true)
         let focus = SlowFocus(
             answer: answer, readsBeforeItLands: readsBeforeItLands,
             costing: .milliseconds(100), on: clock)
@@ -219,7 +193,7 @@ struct PasteConfirmationTests {
         let outcome = await confirmation.waitFor("dictated words")
 
         #expect(outcome == .gaveUp(.milliseconds(1640)))
-        #expect(clock.elapsed == .milliseconds(1640), "the dictation is busy for every one of these")
+        #expect(clock.now.offset == .milliseconds(1640), "the dictation is busy for every one of these")
     }
 
     /// #213: the figure handed to the log is the wait the user sat through, reads included.
@@ -233,7 +207,7 @@ struct PasteConfirmationTests {
 
 /// A clock whose sleep lasts until its task is cancelled, then throws, time moving to its deadline.
 private final class CancellableClock: Clock, Sendable {
-    typealias Instant = ScriptedClock.Instant
+    typealias Instant = ManualClock.Instant
 
     private struct State {
         var waiting: CheckedContinuation<Void, any Error>?
@@ -334,7 +308,7 @@ struct PasteConfirmationCancellationTests {
     @Test("a clock that does not throw on cancellation still stops the reads")
     func cancelledWithAQuietClock() async {
         let focus = CancellingFocus(cancelOn: 2)
-        let clock = ScriptedClock()
+        let clock = ManualClock(advancesWhenSlept: true)
         let confirmation = PasteConfirmation(focus: focus, clock: clock)
         let task = Task { () -> PasteConfirmation.Outcome in
             while focus.canceller.withLock({ $0 }) == nil { await Task.yield() }

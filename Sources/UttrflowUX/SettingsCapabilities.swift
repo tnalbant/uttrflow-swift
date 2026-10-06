@@ -54,9 +54,6 @@ public struct SettingsCapabilities: Sendable, Equatable {
     /// Whether this build has an update feed; false without `SUFeedURL` or `SUPublicEDKey`.
     public var canCheckForUpdates: Bool
 
-    /// The speech engines whose model is present and usable right now.
-    public var readySpeechEngines: Set<SpeechEngineKind>
-
     /// The clean-up engines above the floor that are usable now; the floor itself is always ready.
     public var readyTransformers: Set<TransformerKind>
 
@@ -72,8 +69,8 @@ public struct SettingsCapabilities: Sendable, Equatable {
     /// Whether the suggestions key tap is starting or why it stopped.
     public var suggestionRuntime: SuggestionRuntimeStatus
 
-    /// Shortcuts the app could not claim, so a row never shows a key that does nothing.
-    public var unarmedShortcuts: Set<ShortcutAction>
+    /// Shortcuts the app could not claim, each with the refusal, so a row says why its key does nothing.
+    public var unarmedShortcuts: [ShortcutAction: HotkeyError]
 
     /// Whether clipboard capture is within its temporary pause window.
     public var clipboardCapturePaused: Bool
@@ -87,13 +84,12 @@ public struct SettingsCapabilities: Sendable, Equatable {
         canPlayRecordingSound: Bool,
         canCheckForUpdates: Bool = false,
         versionDescription: String? = nil,
-        readySpeechEngines: Set<SpeechEngineKind>,
         readyTransformers: Set<TransformerKind>,
         foundationModelAvailability: TransformerAvailability? = nil,
         transformerAvailability: [TransformerKind: TransformerAvailability] = [:],
         suggestionModel: SuggestionModelReadiness = .notAsked,
         suggestionRuntime: SuggestionRuntimeStatus = .idle,
-        unarmedShortcuts: Set<ShortcutAction> = [],
+        unarmedShortcuts: [ShortcutAction: HotkeyError] = [:],
         clipboardCapturePaused: Bool = false,
         globeKeyAction: GlobeKeyAction = .doNothing
     ) {
@@ -101,7 +97,6 @@ public struct SettingsCapabilities: Sendable, Equatable {
         self.canPlayRecordingSound = canPlayRecordingSound
         self.canCheckForUpdates = canCheckForUpdates
         self.versionDescription = versionDescription
-        self.readySpeechEngines = readySpeechEngines
         self.readyTransformers = readyTransformers
         self.foundationModelAvailability = foundationModelAvailability
         self.transformerAvailability = transformerAvailability
@@ -118,7 +113,6 @@ public struct SettingsCapabilities: Sendable, Equatable {
         canPlayRecordingSound: true,
         canCheckForUpdates: true,
         versionDescription: "1.0.0 (1)",
-        readySpeechEngines: Set(SpeechEngineKind.allCases),
         readyTransformers: Set(TransformerKind.selectable),
         suggestionModel: .ready
     )
@@ -139,6 +133,8 @@ public struct SettingsCapabilities: Sendable, Equatable {
 public enum SuggestionRuntimeStatus: Sendable, Equatable {
     case idle
     case starting
+    case tapResting
+    case restarting
     case running
     case secureInputBlocked
     case tapFailed

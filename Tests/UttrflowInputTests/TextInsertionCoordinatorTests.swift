@@ -44,6 +44,22 @@ struct TextInsertionCoordinatorTests {
         #expect(failing.insertCount == 1, "it should have been tried before falling through")
     }
 
+    /// Losing trust hides the field, so without the trust reading the failure reads as "no text field".
+    @Test("a dictation after Accessibility is turned off fails as the permission, with settings as recovery")
+    func lostTrustIsNamed() async throws {
+        let before = TextInsertion.dictation(
+            focus: FakeFocus(field: FakeTextField()), typist: SilentTypist())
+        _ = try await before.insert("first")
+
+        // As the system typist does once trust is gone: every keystroke is refused.
+        let after = TextInsertion.dictation(
+            focus: FakeFocus(trusted: false), typist: SilentTypist(refusal: .accessibilityDenied))
+        let error = await #expect(throws: TextInsertionError.self) { try await after.insert("second") }
+
+        #expect(error == .accessibilityDenied)
+        #expect(error?.recovery == .openSystemSettings(.accessibility))
+    }
+
     /// Which strategy carried the text, not merely that one did, because the harness counts them.
     @Test("reports the method the text actually arrived by", arguments: TextInsertionMethod.allCases)
     func reportsSucceedingMethod(method: TextInsertionMethod) async throws {
@@ -179,6 +195,35 @@ struct AccessibilityTextInsertionEngineTests {
 
         await #expect(throws: TextInsertionError.insertionTargetChanged) {
             try await engine.insert("private text", targeting: target)
+        }
+        #expect(field.replacements.isEmpty)
+    }
+
+    @Test("writes into an application that has a process but no bundle identifier")
+    func writesIntoUnbundledApplication() async throws {
+        let field = FakeTextField()
+        let target = InsertionDestination(
+            applicationName: "tool", bundleIdentifier: nil, processIdentifier: 4242)
+        let engine = AccessibilityTextInsertionEngine(
+            focus: TargetRaceFocus(field: field, applications: [target]))
+
+        _ = try await engine.insert("hello", targeting: target)
+
+        #expect(field.replacements.count == 1)
+    }
+
+    @Test("refuses when an unbundled application is replaced by another process of the same name")
+    func refusesWhenUnbundledProcessChanges() async {
+        let field = FakeTextField()
+        let target = InsertionDestination(
+            applicationName: "tool", bundleIdentifier: nil, processIdentifier: 4242)
+        let other = InsertionDestination(
+            applicationName: "tool", bundleIdentifier: nil, processIdentifier: 4343)
+        let engine = AccessibilityTextInsertionEngine(
+            focus: TargetRaceFocus(field: field, applications: [other]))
+
+        await #expect(throws: TextInsertionError.insertionTargetChanged) {
+            try await engine.insert("hello", targeting: target)
         }
         #expect(field.replacements.isEmpty)
     }
@@ -374,8 +419,10 @@ struct FakeFocus: AccessibilityFocus {
     var value: String?
     /// What is in front at the moment of the write, which a real reader answers from the window server.
     var frontmost: InsertionDestination?
-    /// Whether the focused field hides what is typed.
+    /// Whether the field hides what is typed.
     var secure = false
+    /// Whether macOS still lets this process drive other apps.
+    var trusted = true
 
     init(
         field: (any FocusedTextField)? = nil,
@@ -384,9 +431,11 @@ struct FakeFocus: AccessibilityFocus {
         preceding: String? = nil,
         value: String? = nil,
         frontmost: InsertionDestination? = nil,
-        secure: Bool = false
+        secure: Bool = false,
+        trusted: Bool = true
     ) {
         self.secure = secure
+        self.trusted = trusted
         self.field = field
         self.somethingFocused = somethingFocused
         self.isSelf = isSelf
@@ -402,8 +451,9 @@ struct FakeFocus: AccessibilityFocus {
     }
     func hasFocusedElement() -> Bool { somethingFocused ?? (field != nil) }
     func isSelfFrontmost() -> Bool { isSelf }
-    func frontmostApplication() -> InsertionDestination? { frontmost }
+    func focusedApplication() -> InsertionDestination? { frontmost }
     func focusedFieldIsSecure() -> Bool { secure }
+    func isTrusted() -> Bool { trusted }
     func precedingText(_ count: Int) -> String? {
         guard let value else { return preceding }
         return BackwardSelection.text(in: value, endingAt: value.utf16.count, exactly: count)
@@ -428,7 +478,7 @@ private final class TargetRaceFocus: AccessibilityFocus, Sendable {
     func focusedTextField(in destination: InsertionDestination) -> (any FocusedTextField)? { field }
     func hasFocusedElement() -> Bool { true }
     func isSelfFrontmost() -> Bool { false }
-    func frontmostApplication() -> InsertionDestination? {
+    func focusedApplication() -> InsertionDestination? {
         state.withLock { state in
             let index = min(state.index, applications.count - 1)
             state.index += 1
@@ -611,7 +661,14 @@ final class SwitchingDuringWaitFocus: AccessibilityFocus, @unchecked Sendable {
         return .text(read > 1 ? "hello there" : "")
     }
 
-    func frontmostApplication() -> InsertionDestination? {
+    func focusedApplication() -> InsertionDestination? {
         reads.withLock { $0 } > 1 ? Self.other : Self.target
     }
+}
+
+/// Accepts every keystroke, or refuses each one with `refusal`, recording nothing.
+private struct SilentTypist: KeystrokeTyping {
+    var refusal: TextInsertionError?
+    func type(_ text: String) throws(TextInsertionError) { if let refusal { throw refusal } }
+    func deleteBackwards(_ count: Int) throws(TextInsertionError) { if let refusal { throw refusal } }
 }

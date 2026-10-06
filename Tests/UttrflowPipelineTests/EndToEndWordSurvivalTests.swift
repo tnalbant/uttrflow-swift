@@ -1,8 +1,9 @@
 import Testing
 import UttrflowCore
-import UttrflowPipeline
 
 @testable import UttrflowAI
+@testable import UttrflowPipeline
+import UttrflowTestSupport
 
 @Suite("End-to-end word survival")
 struct EndToEndWordSurvivalTests {
@@ -31,7 +32,7 @@ struct EndToEndWordSurvivalTests {
                 "input \(input.index) [\(input.destination)]: '\($0.word)' first lost at \($0.stage)"
             }
         }
-        #expect(failures.isEmpty, failures.prefix(20).joined(separator: "\n"))
+        #expect(failures.isEmpty, Comment(rawValue: failures.prefix(20).joined(separator: "\n")))
     }
 
     @Test("the check identifies a known deletion at the stage that introduces it")
@@ -58,29 +59,22 @@ struct EndToEndWordSurvivalTests {
     @Test("keeps every digit when a PIN is cut at any word boundary")
     func repeatedPINDigitsSurviveEveryPieceBoundary() async throws {
         let words = "my pin is two two four four".split(separator: " ").map(String.init)
-        let situation = Situation(app: AppContext(), insertion: .unknown, destination: .plain)
-        let formatter = DestinationFormatter.standard(for: situation)
+        // The whole join, including the re-tidy of a number cut in two, is the pipeline's.
+        let pipeline = DictationPipeline(
+            capture: FakeAudioCaptureEngine(), speech: FakeSpeechEngine(), cleaner: router,
+            context: FakeContextEngine(), inserter: FakeTextInserter())
 
         for boundary in 1..<words.count {
             let parts = [
                 words[..<boundary].joined(separator: " "),
                 words[boundary...].joined(separator: " "),
             ]
-            var pieces: [Piece] = []
-            for part in parts {
-                let heard = Transcription(
-                    text: part, detectedLanguage: DetectedLanguage(code: .english, confidence: 1))
-                let request = TransformationRequest(
-                    transcription: heard, situation: situation, scope: .piece)
-                let cleaned = try await router.clean(request)
-                pieces.append(Piece(heard: heard, corrected: .unchanged(part), cleaned: cleaned))
+            let heard = parts.map {
+                Transcription(text: $0, detectedLanguage: DetectedLanguage(code: .english, confidence: 1))
             }
-            let joined = PieceJoiner.join(pieces, under: formatter)
-            let finished = await router.finishMessage(
-                joined.cleaned.text,
-                for: TransformationRequest(transcription: joined.heard, situation: situation))
+            let finished = await pipeline.clean(heard, seeing: AppContext()).text
 
-            #expect(finished == "My pin is 2244.", "boundary after word \(boundary): \(finished)")
+            #expect(finished == "My pin is 2244.", "boundary after word \(boundary): \(finished ?? "nil")")
         }
     }
 
@@ -109,20 +103,20 @@ struct EndToEndWordSurvivalTests {
         stages.append(("LatinScript enforcement", latin))
         let expanded = SnippetExpander(snippets: []).expand(latin)
         stages.append(("snippet expansion", expanded.text))
-        let padded = situation.insertion.paddedBoundary(for: expanded.text)
+        let padded = situation.insertion.paddedBoundary(for: expanded.text, in: situation.destination)
         stages.append(("insertion padding", padded))
         let reportWords = Set(input.text.split(whereSeparator: \.isWhitespace).map(String.init))
-        Self.firstLostWords(reference: input.text, stages: stages, reportWords: reportWords)
+        return Self.firstLostWords(reference: input.text, stages: stages, reportWords: reportWords)
     }
 
     private static func firstLostWords(
         reference: String, stages: [(String, String)], reportWords: Set<String>
     ) -> [LostWord] {
-        let referenceWords = reference.split(whereSeparator: \.isWhitespace).map(String.init)
+        let referenceWords = spokenWords(reference)
         var losses: [LostWord] = []
         var priorWords = referenceWords
         for (stage, text) in stages {
-            let current = text.split(whereSeparator: \.isWhitespace).map(String.init)
+            let current = spokenWords(text)
             let alignment = WordErrorRate.measure(reference: priorWords, hypothesis: current)
             let changed = alignment.alignment.compactMap { operation -> (String, String?)? in
                 let word: String
@@ -137,14 +131,14 @@ struct EndToEndWordSurvivalTests {
                 case .match, .insertion:
                     return nil
                 }
-                if let replacement, MeaningPreservationGuard.sameForm(word, replacement) { return nil }
-                guard reportWords.contains(where: { MeaningPreservationGuard.sameForm(word, $0) }) else {
+                if let replacement, WordForms.sameForm(word, replacement) { return nil }
+                guard reportWords.contains(where: { WordForms.sameForm(word, $0) }) else {
                     return nil
                 }
                 guard !losses.contains(where: { $0.word == word }) else { return nil }
                 guard
                     !current.contains(where: {
-                        MeaningPreservationGuard.sameForm(word, $0)
+                        WordForms.sameForm(word, $0)
                     })
                 else { return nil }
                 if let replacement, isNumberRewrite(word, replacement) { return nil }
@@ -158,6 +152,12 @@ struct EndToEndWordSurvivalTests {
             priorWords = current
         }
         return losses
+    }
+
+    /// The words of a stage's text without the stops and capitals that stage may write around them.
+    private static func spokenWords(_ text: String) -> [String] {
+        text.split(whereSeparator: \.isWhitespace).map { WordShape(String($0)).core.lowercased() }
+            .filter { !$0.isEmpty }
     }
 
     private static func dictations(count: Int, seed: UInt64) -> [Input] {
@@ -230,6 +230,13 @@ private struct SeededGenerator {
         }
         return shuffled
     }
+}
+
+/// Whether a generated dictation holds nothing the clean-up exists to change: no filler, number word or repeat.
+private func noCleaningTriggers(_ text: String) -> Bool {
+    let words = text.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
+    return words.allSatisfy { !FillersPass.fillerWords.contains($0) && NumberWords.value(of: $0) == nil }
+        && zip(words, words.dropFirst()).allSatisfy { $0 != $1 }
 }
 
 private func isNumberRewrite(_ spoken: String, _ written: String) -> Bool {

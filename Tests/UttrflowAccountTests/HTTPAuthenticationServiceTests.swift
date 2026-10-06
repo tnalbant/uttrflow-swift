@@ -220,7 +220,7 @@ struct HTTPAuthenticationServiceTests {
     func registersTheDevice() async throws {
         let transport = signingIn()
         let identity = MacDeviceIdentity(
-            storage: MemoryStorage(), name: { "Naveen's MacBook Pro" }, appVersion: "0.1.0",
+            storage: MemoryStorage(), name: { "Avery's MacBook Pro" }, appVersion: "0.1.0",
             makeInstallIdentifier: { "install-abcdef123456" })
 
         let backend = service(transport: transport, device: identity, listener: answering())
@@ -230,7 +230,7 @@ struct HTTPAuthenticationServiceTests {
         let registration = try #require(spent.jsonBody["device"] as? [String: Any])
         #expect(registration["installId"] as? String == "install-abcdef123456")
         #expect(registration["platform"] as? String == "macos")
-        #expect(registration["name"] as? String == "Naveen's MacBook Pro")
+        #expect(registration["name"] as? String == "Avery's MacBook Pro")
     }
 
     @Test("signs in a client that has nothing to say about itself")
@@ -735,6 +735,22 @@ struct DeviceGrantTests {
         #expect(verificationURL.absoluteString.contains("user_code=BCDF-GHJK"))
         #expect(challenge.authorisationURL == verificationURL)
         #expect(transport.requests(to: "/device/code").count == 1)
+    }
+
+    @Test("explains an unreadable device sign-in response")
+    func anUnreadableDeviceSignInIsRefusedWithItsContext() async {
+        let transport = StubTransport { request, _ in
+            request.url.path().hasSuffix("/device/code")
+                ? BackendResponse(status: 200, body: Data("{}".utf8))
+                : nil
+        }
+
+        await #expect(
+            throws: AccountError.providerRefused(
+                description: "the server started a sign-in we could not read")
+        ) {
+            try await service(transport: transport).beginSignIn(with: .google)
+        }
     }
 
     @Test("waits for the code to be approved, then reads the profile")

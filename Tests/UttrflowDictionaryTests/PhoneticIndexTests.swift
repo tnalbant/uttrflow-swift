@@ -47,6 +47,13 @@ struct PhoneticIndexTests {
         #expect(index.candidates(soundingLike: "Chevonne").map(\.word) == ["Siobhan"])
     }
 
+    /// A pronunciation with a number word is found whether the recogniser writes the number as a word or a digit.
+    @Test("finds a spoken-number pronunciation from a digit", arguments: ["s three", "S 3", "S3"])
+    func findsSpokenNumberFromDigit(heard: String) {
+        let index = PhoneticIndex(entries: [word("S3", saying: "s three", from: .added)])
+        #expect(index.candidates(soundingLike: heard).map(\.word) == ["S3"])
+    }
+
     /// A word with two readings is filed under both, found from either, and comes back once.
     @Test("finds a word with two readings from either of them, once")
     func ambiguousWords() {
@@ -178,7 +185,7 @@ struct PhoneticIndexTests {
     @Test(
         "files every entry where its own spelling finds it",
         arguments: [
-            "Uttrflow", "kubectl", "caf\u{00E9}", "2024", "\u{0928}\u{0935}\u{0940}\u{0928}",
+            "Uttrflow", "kubectl", "caf\u{00E9}", "2024", "\u{0930}\u{094B}\u{0939}\u{0928}",
             "\u{5317}\u{4EAC}", "\u{041C}\u{043E}\u{0441}\u{043A}\u{0432}\u{0430}",
         ])
     func everyEntryIsReachable(spelling: String) {
@@ -192,11 +199,11 @@ struct PhoneticIndexTests {
     /// A pronunciation is still what a user writes when the spelling misleads, and it still wins.
     @Test("keys on the pronunciation where there is one, whatever the spelling is")
     func pronunciationStillWins() {
-        let entry = word("\u{0928}\u{0935}\u{0940}\u{0928}", saying: "Naveen", from: .added)
+        let entry = word("\u{0930}\u{094B}\u{0939}\u{0928}", saying: "Rohan", from: .added)
         let index = PhoneticIndex(entries: [entry])
 
-        #expect(index.candidates(soundingLike: "naveen").map(\.id) == [entry.id])
-        #expect(index.candidates(soundingLike: "\u{0928}\u{0935}\u{0940}\u{0928}").map(\.id) == [entry.id])
+        #expect(index.candidates(soundingLike: "rohan").map(\.id) == [entry.id])
+        #expect(index.candidates(soundingLike: "\u{0930}\u{094B}\u{0939}\u{0928}").map(\.id) == [entry.id])
     }
 
     @Test("names an entry nothing can address rather than dropping it in silence")

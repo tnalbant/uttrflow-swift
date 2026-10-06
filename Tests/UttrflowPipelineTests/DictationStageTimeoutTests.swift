@@ -3,6 +3,8 @@ import Synchronization
 import Testing
 import UttrflowInput
 import struct Foundation.Data
+import struct Foundation.Date
+import struct Foundation.UUID
 
 @testable import UttrflowCore
 @testable import UttrflowPipeline
@@ -36,6 +38,13 @@ private struct TimeoutTestCleaner: TranscriptCleaning {
     ) async throws(TransformationError) -> TransformationResult {
         TransformationResult(text: "Tidied.", producedBy: .rules)
     }
+}
+
+/// Keeps every account the pipeline hands on, so a stage that gave up can be seen in it.
+private actor TimeoutCleaningRecorder: CleaningRecording {
+    private(set) var records: [CleaningRecord] = []
+
+    func record(_ record: CleaningRecord) async { records.append(record) }
 }
 
 /// A ``TextInserting`` that records what reached the screen.
@@ -152,9 +161,15 @@ private final class TimeoutPasteboard: Pasteboard, Sendable {
     private let stored = Mutex<String?>("older copied text")
 
     func text() -> String? { stored.withLock { $0 } }
-    func setText(_ text: String) { stored.withLock { $0 = text } }
-    func setConcealedText(_ text: String) { setText(text) }
-    func setImage(_ data: Data) { stored.withLock { $0 = nil } }
+    func setText(_ text: String) -> PasteboardWriteResult {
+        stored.withLock { $0 = text }
+        return .written(changeCount: nil)
+    }
+    func setConcealedText(_ text: String) -> PasteboardWriteResult { setText(text) }
+    func setImage(_ data: Data) -> PasteboardWriteResult {
+        stored.withLock { $0 = nil }
+        return .written(changeCount: nil)
+    }
 }
 
 @Suite("Dictation pipeline: a stage that never answers", .timeLimit(.minutes(1)))
@@ -164,8 +179,8 @@ struct DictationStageTimeoutTests {
         _ limit: Duration, at stage: DictationState, of pipeline: DictationPipeline,
         on clock: ManualClock
     ) async {
-        while !Task.isCancelled, await pipeline.currentState != stage { await Task.yield() }
-        while !Task.isCancelled, await pipeline.currentState == stage {
+        while !Task.isCancelled, !(await pipeline.currentState).isStage(of: stage) { await Task.yield() }
+        while !Task.isCancelled, (await pipeline.currentState).isStage(of: stage) {
             if clock.advanceIfSomethingIsWaiting(exactly: limit) { return }
             await Task.yield()
         }
@@ -221,10 +236,12 @@ struct DictationStageTimeoutTests {
         await expire(StageTimeout.transcription, at: .transcribing, of: pipeline, on: clock)
         await settle(finishing)
 
-        guard case .failed = await pipeline.currentState else {
+        guard case .failed(let failure) = await pipeline.currentState else {
             Issue.record("expected the dictation to fail, got \(await pipeline.currentState)")
             return
         }
+        // A hang is told apart from a fault, since its remedy is to wait or free the Mac.
+        #expect(failure.speechEngineError == .recogniserTimedOut)
         // The point of the whole thing: not busy, so the next dictation can start.
         #expect(await pipeline.currentState.isBusy == false)
         // An expired stage is a failed one, or the failure counts never see a hung recogniser.
@@ -256,6 +273,7 @@ struct DictationStageTimeoutTests {
         let clock = ManualClock()
         let metrics = RecordingMetricsRecorder()
         let inserter = TimeoutTestInserter()
+        let recorder = TimeoutCleaningRecorder()
         let pipeline = DictationPipeline(
             capture: FakeAudioCaptureEngine(stopOutcome: .success(.silence(seconds: 2))),
             speech: FakeSpeechEngine(
@@ -264,6 +282,7 @@ struct DictationStageTimeoutTests {
             context: FakeContextEngine(),
             inserter: inserter,
             metrics: metrics,
+            cleaningRecorder: recorder,
             clock: clock)
 
         await pipeline.startRecording()
@@ -273,13 +292,16 @@ struct DictationStageTimeoutTests {
 
         // Untidied but inserted: §19 says tidying's failure never costs the words.
         #expect(inserter.inserted == ["what I said"])
-        guard case .inserted = await pipeline.currentState else {
+        guard case .inserted(let outcome) = await pipeline.currentState else {
             Issue.record("expected the words to land, got \(await pipeline.currentState)")
             return
         }
+        #expect(outcome.text == "what I said")
+        #expect(outcome.cleanedBy == .untidied)
         // The words still landed, and the tidying is still counted as the failure it was.
         #expect(await metrics.measurements(for: .transformation).map(\.succeeded) == [false])
         #expect(await metrics.measurements(for: .insertion).map(\.succeeded) == [true])
+        #expect(await recorder.records.map(\.skippedStages) == [[.init(.tidy, .timeout)]])
     }
 
     @Test("an application that never takes the words fails the dictation and counts the insertion failed")
@@ -301,7 +323,7 @@ struct DictationStageTimeoutTests {
 
         await pipeline.startRecording()
         let finishing = Task { await pipeline.finishRecording() }
-        await expire(StageTimeout.quick, at: .inserting, of: pipeline, on: clock)
+        await expire(StageTimeout.insertion, at: .inserting(into: nil), of: pipeline, on: clock)
         await settle(finishing)
 
         guard case .failed(let failure) = await pipeline.currentState else {
@@ -309,7 +331,7 @@ struct DictationStageTimeoutTests {
             return
         }
         #expect(failure.transcript == "Tidied.")
-        #expect(failure.recovery == .showRecentDictations)
+        #expect(failure.recovery == .showHistory)
         #expect(failure.message.contains("Recent"))
         #expect(!failure.message.contains("copied"))
         #expect(!failure.message.contains("⌘V"))
@@ -340,15 +362,15 @@ struct DictationStageTimeoutTests {
             clock: clock)
 
         let retrying = Task { await pipeline.retry(recording.id) }
-        await expire(.seconds(2), at: .inserting, of: pipeline, on: clock)
-        await retrying.value
+        await expire(.seconds(2), at: .inserting(into: nil), of: pipeline, on: clock)
+        _ = await retrying.value
 
         guard case .failed(let failure) = await pipeline.currentState else {
             Issue.record("expected the copy to fail, got \(await pipeline.currentState)")
             return
         }
         #expect(failure.message == TextInsertionError.clipboardUnavailable.userMessage)
-        #expect(failure.recovery == .showRecentDictations)
+        #expect(failure.recovery == .showHistory)
     }
 
     /// The words are the only thing left when the application will not take them, so the failure carries them.
@@ -367,7 +389,7 @@ struct DictationStageTimeoutTests {
         await pipeline.startRecording()
         let finishing = Task { await pipeline.finishRecording() }
         await expire(StageTimeout.transformation, at: .tidying, of: pipeline, on: clock)
-        await expire(StageTimeout.quick, at: .inserting, of: pipeline, on: clock)
+        await expire(StageTimeout.insertion, at: .inserting(into: nil), of: pipeline, on: clock)
         await settle(finishing)
 
         guard case .failed(let failure) = await pipeline.currentState else {
@@ -394,7 +416,7 @@ struct DictationStageTimeoutTests {
         await pipeline.startRecording()
         let finishing = Task { await pipeline.finishRecording() }
         while !(await capture.calls.contains(.stop)) { await Task.yield() }
-        await expire(StageTimeout.quick, at: .recording, of: pipeline, on: clock)
+        await expire(StageTimeout.captureStop, at: .recording, of: pipeline, on: clock)
         await settle(finishing)
 
         guard case .failed(let failure) = await pipeline.currentState else {
@@ -425,7 +447,7 @@ struct DictationStageTimeoutTests {
 
         await pipeline.startRecording()
         await waitForCall(context.calls)
-        await expire(StageTimeout.quick, at: .recording, of: pipeline, on: clock)
+        await expire(StageTimeout.screenRead, at: .recording, of: pipeline, on: clock)
         await pipeline.finishRecording()
 
         #expect(inserter.inserted == ["Tidied."])
@@ -444,6 +466,7 @@ struct DictationStageTimeoutTests {
         let clock = ManualClock()
         let corrector = NeverAnsweringCorrector()
         let inserter = TimeoutTestInserter()
+        let recorder = TimeoutCleaningRecorder()
         let pipeline = DictationPipeline(
             capture: FakeAudioCaptureEngine(stopOutcome: .success(.silence(seconds: 2))),
             speech: FakeSpeechEngine(
@@ -452,15 +475,18 @@ struct DictationStageTimeoutTests {
             context: FakeContextEngine(),
             inserter: inserter,
             corrector: corrector,
+            cleaningRecorder: recorder,
             clock: clock)
 
         await pipeline.startRecording()
         let finishing = Task { await pipeline.finishRecording() }
         await waitForCall(corrector.calls)
-        await expire(StageTimeout.quick, at: .tidying, of: pipeline, on: clock)
+        await expire(StageTimeout.correction, at: .tidying, of: pipeline, on: clock)
         await settle(finishing)
 
         #expect(inserter.inserted == ["Tidied."])
+        // The words are as before; only the account says the dictionary gave up.
+        #expect(await recorder.records.map(\.skippedStages) == [[.init(.correction, .timeout)]])
         guard case .inserted = await pipeline.currentState else {
             Issue.record("expected the dictation to insert, got \(await pipeline.currentState)")
             return
@@ -475,6 +501,7 @@ struct DictationStageTimeoutTests {
         let clock = ManualClock()
         let snippets = NeverAnsweringExpander()
         let inserter = TimeoutTestInserter()
+        let recorder = TimeoutCleaningRecorder()
         let pipeline = DictationPipeline(
             capture: FakeAudioCaptureEngine(stopOutcome: .success(.silence(seconds: 2))),
             speech: FakeSpeechEngine(
@@ -483,15 +510,17 @@ struct DictationStageTimeoutTests {
             context: FakeContextEngine(),
             inserter: inserter,
             snippets: snippets,
+            cleaningRecorder: recorder,
             clock: clock)
 
         await pipeline.startRecording()
         let finishing = Task { await pipeline.finishRecording() }
         await waitForCall(snippets.calls)
-        await expire(StageTimeout.quick, at: .tidying, of: pipeline, on: clock)
+        await expire(StageTimeout.expansion, at: .tidying, of: pipeline, on: clock)
         await settle(finishing)
 
         #expect(inserter.inserted == ["Tidied."])
+        #expect(await recorder.records.map(\.skippedStages) == [[.init(.expansion, .timeout)]])
         guard case .inserted = await pipeline.currentState else {
             Issue.record("expected the dictation to insert, got \(await pipeline.currentState)")
             return
@@ -499,5 +528,13 @@ struct DictationStageTimeoutTests {
 
         await pipeline.startRecording()
         #expect(await pipeline.currentState == .recording)
+    }
+}
+
+extension DictationState {
+    /// The same stage, whichever app an insertion names.
+    func isStage(of other: DictationState) -> Bool {
+        if case .inserting = self, case .inserting = other { return true }
+        return self == other
     }
 }

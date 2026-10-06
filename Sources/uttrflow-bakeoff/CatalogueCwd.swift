@@ -1,7 +1,7 @@
 import UttrflowPredict
 
 extension FixtureCatalogue {
-    /// Shell lines whose arguments the machine can vouch for or deny: paths from the working directory, branches, targets and scripts, beside a stale scrollback and names that are not there. See `Docs/predict-agent.md`, A5.
+    /// Shell lines whose arguments the machine can vouch for or deny: paths from the working directory, branches, targets and scripts, beside a stale scrollback and names that are not there. See `Docs/predict-agent.md`.
     static let cwd: [Scenario] = [grounded, absent]
 
     /// What the substitute machine holds for a terminal sitting in `/Users/me/projects/api`.

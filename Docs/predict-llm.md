@@ -1,142 +1,109 @@
-# Tab-to-complete: the LLM-arbitrated design
+# AI suggestions: the local model
 
-The suggestion is not a lookup. A remembered or machine-attested candidate can be offered
-without a model pass at all — gate 2 of `Verifier` returns `.attested` before scoring when
-verification is not ready, and the statistical gates alone decide
-(`Sources/UttrflowPredict/Verifier.swift:75-95`). Where the model does run, it has a hand in
-the suggestion in one of two ways:
+AI suggestions (tab-to-complete) use one local language model, Gemma 3 4B (4-bit QAT, run with
+MLX), in two roles: it judges remembered lines in context, and it writes a line where the corpus and
+the machine have nothing. `MLXCandidateScorer` in `Sources/UttrflowLocalModel/MLXCandidateScorer.swift`
+implements both `CandidateScoring` and `CandidateGenerating`; `UttrflowApp`
+(`Sources/Uttrflow/UttrflowApp.swift`) builds it and hands it to the suggestion loop. Dictation keeps
+its own speech and clean-up engines, so a suggestion's speed is never traded for dictation quality.
+The loop that calls the model is [predict.md](predict.md); what the model is shown is
+[predict-context.md](predict-context.md); when its line is withheld is
+[predict-precision.md](predict-precision.md).
 
-- **Localization (personalization).** The corpus holds what *this* user types — their commands,
-  their phrasings — recalled by prefix and by edit distance, and (later) by meaning. Those local
-  candidates are ranked by evidence and then judged by the model *in context*, once it is
-  loaded: gate 2 of `Verifier` scores each remembered line's log-likelihood against
-  `plausibilityFloor`, and a model still loading is no objection, so the statistical gates
-  answer alone until then. A habit the model judges wrong in this situation is not shown,
-  however often it was typed. Correctness outranks habit.
-- **Generation.** When the corpus and the machine have nothing for the situation, the model
-  writes the continuation itself — `git c` in a shell offers `checkout`, then `commit`,
-  `cherry-pick` behind it. The corpus never held these; the model knows them. A generated
-  line is scored by the pass that wrote it and drawn only over `Verification.certainFloor`.
+## Two roles
 
-Context decides both. The model is told where the caret is (the application, and what kind of
-field — a shell, a SQL editor, a URL bar, prose), what surrounds the caret (the line, the text
-before and after it, nearby lines), and the ephemeral situation (a terminal's working directory
-and git branch). The same context that makes a local candidate right or wrong makes a generated
-one fit or not.
+- **Judging what this person types.** The corpus holds this user's own commands and phrasings,
+  recalled by prefix and by edit distance. Those candidates are ranked by evidence and then judged
+  by the model in context: gate 2 of `Verifier` scores each remembered line's log-likelihood
+  against `Verification.plausibilityFloor`. A line the machine attests (gate 1) is never sent to the
+  model, and a model that is not loaded yet is no objection, so the statistical gates answer alone
+  until it is. A habit the model judges wrong here is not shown, however often it was typed.
+- **Writing a line.** When the corpus and the machine have nothing, the model writes the
+  continuation itself — `git c` in a shell offers `checkout`, then `commit` and `cherry-pick` behind
+  it. A generated line is scored by the pass that wrote it and drawn only over
+  `Verification.certainFloor`, or `choiceFloor` in a list.
 
-## Working first, fast later
+Context decides both: where the caret is (the application and what kind of field), what surrounds
+it, this person's own lines there, and in a terminal the working directory and what is in it.
 
-A 1–4B model cannot answer inside a keystroke. For now that is accepted: a suggestion may land
-well under a second after a pause — measured at p50 666 ms and p95 787 ms in a Release build
-over the fixture set, the table in [predict-context.md](predict-context.md). Suggestions and
-dictation keep separate models: `UttrflowApp` wires a Gemma 3 `MLXCandidateScorer` for
-suggestions, wrapped in `DiscretionaryGenerator` and `DiscretionaryModel`
-(`Sources/Uttrflow/UttrflowApp.swift:16-38`); dictation uses its own WhisperKit-backed speech
-model in `AppDelegate`. The suggestion weights are fetched only once the feature is first
-asked for, not at launch — `AppDelegate.prepareTheModelIfNeeded`
-(`Sources/Uttrflow/AppDelegate.swift:527-553`) — and the model can later be released while idle
-and reloaded. The thermal, battery and active-dictation guards are already wired, not future
-work: both wrappers gate model work on `EnergyConditions.current().allowsDiscretionaryWork`
-and `!DictationInProgress.shared.isDictating`. What is done so far — a 120 ms
-debounce, one line first, a warm instruction prefix, a 160-token budget for the context around the line, and the
-line itself up to its last word written into the model's own turn so the answer can only
-continue it and no echo is paid for — is also there. In a terminal the machine now speaks before the
-model ([predict-agent.md](predict-agent.md)): where the next word is a directory, a file, a branch
-or a program's verb, the pass is told the values that exist and `TokenChoice` holds the decode to
-one of them, so the model ranks what is there and cannot write what is not; where nothing there
-begins as the word was typed, no pass runs and the turn is quiet for `notOnThisMachine`. A smaller
-model dedicated to suggestions and speculative decoding are still to come and do not gate a
-working system. Dictation keeps its own model so its quality is never traded for the speed of
-a suggestion.
+## How the model is held
 
-## Apple's on-device model, measured for completion
+`UttrflowApp` wraps one `MLXCandidateScorer(model: .gemma3)`:
 
-Apple's Foundation Models framework runs the dictation clean-up (`Docs/bakeoff.md`), so the
-question of using it for tab-to-complete too was measured rather than argued.
-`AppleCandidateGenerator` gives Apple's model the identical instructions, prompt, parser and
-copy-cut the local model gets, and `uttrflow-bakeoff complete --fixtures --model apple` holds
-it to the same 1 090-case catalogue (plus the ten chat-label cases), 2026-09-05, macOS 26,
-Apple Intelligence on.
+| Wrapper | What it does |
+|---|---|
+| `IdleReleasingModel` | Lets the weights go after `IdleRelease.window(physicalMemory:)` unasked — 600 s on a Mac with at least 16 GB, 180 s with less — and reloads them from disk on the next query |
+| `DiscretionaryModel`, `DiscretionaryGenerator` | Run a pass only when `EnergyConditions.current().allowsDiscretionaryWork` (not Low Power Mode, no thermal pressure) and `DictationInProgress.shared.isDictating` is false |
+
+The weights (about 3 GB) are fetched only once the feature is first turned on, never at launch
+(`AppDelegate.prepareTheModelIfNeeded`), and the AI suggestions screen says what the model is doing
+while it downloads, loads or is set aside for memory.
+
+A pass lands well under a second after a pause: p50 666 ms and p95 787 ms in a Release build over
+the 29 hand-written fixtures ([predict-context.md](predict-context.md)). What keeps it there: a
+120 ms debounce, one line first with the alternatives fetched behind it, the instruction prefix and
+the previous prompt kept in KV caches, a 160-token budget for the context around the line, and the
+line itself up to its last word written into the model's own turn so the answer can only continue
+it. In a terminal the machine speaks before the model: where the next word has a closed set of
+values, `TokenChoice` holds the decode to one of them ([predict-agent.md](predict-agent.md)).
+
+## Apple's on-device model is not used for completion
+
+Apple's Foundation Models framework runs the dictation clean-up ([bakeoff.md](bakeoff.md)), so it was
+measured for completion too. `AppleCandidateGenerator` gives it the identical instructions, prompt,
+parser and copy cut the local model gets, and `uttrflow-bakeoff complete --fixtures --model apple`
+holds it to the same catalogue (macOS 26, Apple Intelligence on):
 
 | Model | Hit | In register | p50 | p95 | Empty | Errors |
 |---|---|---|---|---|---|---|
-| Gemma 3 4B (4-bit, MLX), run 4 | 1 009 / 1 090 (93 %) | 98 % | 752 ms | 883 ms | 2 | 0 |
+| Gemma 3 4B (4-bit, MLX) | 1 009 / 1 090 (93 %) | 98 % | 752 ms | 883 ms | 2 | 0 |
 | Apple on-device, strict | 453 / 1 100 (41 %) | 44 % | 472 ms | 813 ms | 546 | 65 |
 | Apple on-device, most generous reading | 579 / 1 100 (53 %) | — | 471 ms | — | 419 | 65 |
 
-The generous reading treats an answer that did not repeat the line as its continuation, which a
-text-only model cannot be held to any other way — but only where a word boundary says how the two
-join: a space on either side, or punctuation opening the answer. Letters against letters are not
-joined, since "busy nahi" and "hoon bolo" would read as one word, and an earlier reading that
-glued them counted such lines as hits (63 %). The Apple rows cover 1 100 cases because the ten
-`robust/chat-labels` cases were added the same morning; Gemma's run 4 predates them. Apple's misses, read raw: 137 echo the line and
-stop (`git c` → `git c`), 350 answer something unrelated or drop the echo (`SELECT * FROM u` →
-`LIMIT 10;`), 34 fail to fill the structured answer, and 31 are guardrail refusals on ordinary
-chat text. By category, strict: chat 51 %, terminal 50 %, url 45 %, mail 37 %, notes 26 %,
-sql 24 %, code 20 %.
+The Apple rows include ten `robust/chat-labels` cases the Gemma row does not. The generous reading
+treats an answer that did not repeat the line as its continuation, but only where a word boundary
+says how the two join (a space on either side, opening punctuation, or a closing quote with an
+unmatched opener in the typed text); letters against letters are not joined, since "busy nahi" and
+"hoon bolo" would read as one word. Apple's misses,
+read raw: 137 echo the line and stop (`git c` → `git c`), 350 answer something unrelated or drop the
+echo (`SELECT * FROM u` → `LIMIT 10;`), 34 fail to fill the structured answer, and 31 are guardrail
+refusals on ordinary chat text. Both generators now read candidate replies through the same
+continuation filter: echo-less Apple answers must parse as an extension after joining, and refusal,
+apology and instruction-meta openings in the added words are rejected. The opening table is
+`CompletionText.rejectedOpenings` and its entries are covered by a table-driven test. By category,
+strict: chat 51 %, terminal 50 %, url 45 %, mail 37 %, notes 26 %, sql 24 %, code 20 %.
 
-What the numbers come from is the framework's shape, not the model's size. The framework gives
-back text: there is no way to write the line into the model's turn, hold its first tokens to the
-typed word, stop at a newline, read a token's probability, or keep the instructions warm across
-passes — the five things that took the local model from 78 % to 93 % on this catalogue. It also
-refuses content by policy, is available only with Apple Intelligence switched on, on Apple
-silicon, on macOS 26, and declares fifteen languages. Where it wins is what it does not cost:
-no 3 GB download, no 4 GB of memory, and a pass 280 ms faster at the median — which is why it
-stays the clean-up engine, where a whole sentence is rewritten and none of those controls are
-needed. A completion is a different job, and the local model keeps it.
+The gap is the framework's shape, not the model's size. It returns text: there is no way to write
+the line into the model's turn, hold its first tokens to the typed word, stop at a newline, read a
+token's probability, or keep the instructions warm across passes — the five controls that take the
+local model from 78 % to 93 % on this catalogue. It also refuses content by policy and runs only
+with Apple Intelligence on, on Apple silicon, on macOS 26. What it saves is a 3 GB download, 4 GB of
+memory and 280 ms at the median, which is why it stays the clean-up engine, where a whole sentence
+is rewritten and none of those controls are needed.
 
-## Phases
+## Where the seams are
 
-Phases A to C are done and are described as built in [predict-context.md](predict-context.md);
-what follows is what each set out to do.
+- `SuggestionCoordinator` builds its `Verifier` with the `CandidateScoring` the app hands it; the
+  race between the model and `Verification.budgetInMilliseconds` (7,000 ms) is `Verifier.raced`.
+- `SuggestionCoordinator.candidates(for:)` asks the corpus, then the environment; when both are
+  empty and the generator is ready, `generate` asks the model.
+- `SuggestionSession.turnBudgetInMilliseconds` (8,000 ms) is timed from after the field read, and
+  `resolve` and `resolveGenerated` drop what arrives later. A late answer is drawn against a fresh
+  read of the field.
 
-- **A — Context & de-fragmentation (no model) — done.** The text before the caret's line, the
-  window title and the visible text around the field are read and handed to the model as one
-  `GenerationSituation`; no dialect is classified — the register is computed from measurable
-  facts and the model infers the rest. The corpus answers from every document of the same field,
-  so a phrase learned in one folder is found in the next.
-- **B — Model in the app, validating — done.** The model is linked into the `xcodebuild`-built app
-  behind the `CandidateScoring` and `CandidateGenerating` protocols the tests already use
-  (`UttrflowApp` builds one `MLXCandidateScorer` and hands it over as both), fetched and prepared
-  only once the feature is first asked for (`AppDelegate.prepareTheModelIfNeeded`), and
-  wired as gate 2 of the `Verifier`. The turn budget is 8 000 ms and the verification budget
-  7 000 ms, so a slow answer is drawn rather than dropped.
-- **C — Generation — done.** When the corpus and the machine are empty the model writes the single
-  most likely line, which is drawn inline; the alternatives are fetched behind it and open on ⌥↓.
-- **D — Embeddings.** Store a vector per entry (a new column, brute-force cosine over the few
-  thousand entries a surface holds) so a phrase close in meaning is recalled, not only one close in
-  spelling. (The earlier decision against embeddings was about the dictation dictionary, a
-  different problem; it does not bind here.)
-- **E — Optimisation.** A smaller suggestion model and speculative decoding, measured against a
-  go/no-go. The debounce, the warm prefix and the prompt budget are already in, as are the
-  Low Power Mode, thermal and active-dictation guards (`EnergyConditions`,
-  `DictationInProgress`).
+## Where the weights come from
 
-## The seams (where the code changed)
+`AnonymousHub.client()` is the only hub client this app builds. It names two things a bare
+`HubClient()` would decide for itself:
 
-- Validate every candidate: `SuggestionCoordinator` builds its `Verifier` with the
-  `CandidateScoring` the app hands it, and the racing and budget machinery in `Verifier.raced`
-  runs against `Verification.budgetInMilliseconds` (7 000 ms).
-- Generate on empty: `SuggestionCoordinator.candidates(for:)` asks the corpus, then the
-  environment; when both are empty and the generator is ready, `generate` asks the model.
-- Budget: `SuggestionSession.turnBudgetInMilliseconds` is 8 000 ms, timed from after the field
-  read, and both `resolve` and `resolveGenerated` drop what arrives later. A late answer is drawn
-  against a fresh read of the field, so a caret that moved is followed and a line that changed is
-  not written over.
+- **`tokenProvider: .none`.** The default reads `HF_TOKEN`, `HUGGING_FACE_HUB_TOKEN`,
+  `$HF_TOKEN_PATH`, `$HF_HOME/token`, `~/.cache/huggingface/token` and `~/.huggingface/token`.
+  Uttrflow is not sandboxed, so the last two are the person's own files, and a personal token would
+  be attached to this app's downloads. Uttrflow fetches public weights and has no account on the
+  model host.
+- **`host: HubClient.defaultHost`.** The default follows `HF_ENDPOINT`.
 
-## Where the weights come from, and who asks for them
-
-`AnonymousHub.client()` is the only hub client this app builds. It names two things that
-`HubClient()` would otherwise decide for itself:
-
-- **`tokenProvider: .none`.** The default is `.environment`, which reads `HF_TOKEN`,
-  `HUGGING_FACE_HUB_TOKEN`, `$HF_TOKEN_PATH`, `$HF_HOME/token`, `~/.cache/huggingface/token` and
-  `~/.huggingface/token`. Uttrflow is not sandboxed, so the last two are the person's own files,
-  and anybody who has run `huggingface-cli login` had their personal token attached to this app's
-  downloads. Uttrflow fetches public weights and has no account on the model host.
-- **`host: HubClient.defaultHost`.** The default is `detectHost()`, which follows `HF_ENDPOINT`.
-
-Each model in `LocalModel.candidates` also names the commit its weights are fetched at, and
+Each model in `LocalModel.candidates` names the commit its weights are fetched at, and
 `ModelConfiguration(id:revision:)` uses it, so two installs a day apart run the same model.
 
 **To bump a model revision**, take the repository's current commit:
@@ -146,5 +113,5 @@ curl -s https://huggingface.co/api/models/<repository> | python3 -c 'import sys,
 ```
 
 Put it in `LocalModel`, and say in the pull request what changed. `Scripts/offline_audit.sh` fails
-on a bare `HubClient()`, on any token provider that is not `.none`, on `HF_ENDPOINT`, and on
-`revision: "main"`, so none of these can come back as a default nobody notices in a diff.
+on a bare `HubClient()`, on a token provider other than `.none`, on `HF_ENDPOINT` or `detectHost`,
+and on a model fetched from a branch (`revision: "main"`, `resolve/main/`).

@@ -1,6 +1,6 @@
 private import Synchronization
 
-/// Holds the first tokens of a pass to the word the person is in the middle of, so a line cut inside a token is continued rather than started over. See `Docs/predict-context.md`, G5.
+/// Holds the first tokens of a pass to the word the person is in the middle of, so a line cut inside a token is continued rather than started over. See `Docs/predict-context.md`.
 struct TokenHealing {
     /// Every token as the bytes it writes, read once per model, so a step can be masked by comparing bytes; a byte-fallback piece is its one byte, which is how an emoji or a mark is spelt.
     struct Vocabulary: Sendable {
@@ -160,7 +160,7 @@ struct TokenHealing {
         }
     }
 
-    /// What a token starting a new word costs in logits at the step after a word the person stopped inside, so the word is lengthened unless the model is this much surer of a break. See `Docs/predict-context.md`, G6.
+    /// What a token starting a new word costs in logits at the step after a word the person stopped inside, so the word is lengthened unless the model is this much surer of a break. See `Docs/predict-context.md`.
     static let newWordPenalty: Float = 3
 
     let vocabulary: Vocabulary
@@ -230,7 +230,7 @@ struct TokenHealing {
     }
 }
 
-/// Holds a pass to one of the machine's own values, so the model chooses among what exists and can write nothing else. See `Docs/predict-agent.md`, A3.
+/// Holds a pass to one of the machine's own values, so the model chooses among what exists and can write nothing else. See `Docs/predict-agent.md`.
 struct TokenChoice {
     let vocabulary: TokenHealing.Vocabulary
     /// What remains to be written of each choice still open; a choice written whole frees the model.

@@ -1,11 +1,22 @@
-# Tab-to-complete in a terminal: only what exists from here
+# AI suggestions in a terminal: only what exists from here
 
-A suggestion in a terminal is a command somebody may run with one key. A `cd` into a directory
-that is gone, a `cat` of a file in another project, a `git checkout` of a branch this repository
-never had: each costs more than no suggestion at all. So before a terminal line is drawn, from
-the corpus or from the model, `TerminalLineCheck` reads the whole line the way the shell would and
-asks the disk whether everything it names is there. False negatives are accepted; a wrong path is
-not.
+An AI suggestion (tab-to-complete) in a terminal is a command somebody may run with one key. A
+`cd` into a directory that is gone, a `cat` of a file in another project, a `git checkout` of a
+branch this repository never had: each costs more than no suggestion at all. So before a terminal
+line is drawn, from the corpus or from the model, `TerminalLineCheck`
+(`Sources/UttrflowPredict/TerminalLineCheck.swift`) reads the whole line the way the shell would
+and asks the disk whether everything it names is there. False negatives are accepted; a wrong path
+is not. The parser is `ShellWords`, the disk `FileSystemProbing`, the refs `GitRepository` and the
+session test `RemoteSession`, all in `Sources/UttrflowPredict`. What the machine offers before the
+model writes is in [predict-agent.md](predict-agent.md).
+
+## Who owns the prompt
+
+`ShellPrompt` (`Sources/UttrflowContext/ShellPrompt.swift`) owns prompt parsing and heredoc
+detection, and `FocusedFieldSnapshot.shellInput` is the one place either reader asks it. The
+suggestion snapshot takes its `currentLine` from it; the dictation read takes its text before the
+caret from it through `CaretText.inTerminal`. So dictation sees only the shell input, never
+scrollback or the prompt, and a heredoc body or a full-screen program gives it no edges at all.
 
 ## Where it runs
 
@@ -23,9 +34,8 @@ Two rules decide what runs where:
 1. **A destructive line is never offered, in any field.** `DestructiveCommand.matches` reads the
    same parsed commands as the terminal path check and is asked of every line, whatever its evidence.
    Unresolved shell syntax is refused in terminals; ordinary editor prose is not parsed as a terminal
-   command. The same test already keeps destructive lines out of the corpus
-   (`CaptureGate`), so this only closes the lines the model writes and those remembered before the
-   capture gate existed.
+   command. The same test keeps destructive lines out of the corpus (`CaptureGate`), so here it
+   closes the lines the model writes and any older line already in the corpus.
 2. **The path check runs only in a terminal**, meaning an application `TerminalApplications`
    names. An editor's document also has a directory for a scope, but its lines are prose, and a
    shell grammar would refuse all of them.
@@ -38,14 +48,14 @@ shell would still rewrite — a glob, any other variable, `~name` — is marked 
 with a subshell, a command or process substitution, a here-document or unbalanced quoting is
 refused whole, since only running it could say what it names.
 
-Then, per simple command, after leading assignments and wrappers (`sudo`, `env`, `nice`, `time`,
-`command`, …) are read past:
+Then, per simple command, after leading assignments and wrappers (`sudo`, `doas`, `env`, `nice`,
+`nohup`, `time`, `command`, `exec`, …) are read past:
 
 | What | Must be |
 |---|---|
 | the command word | a builtin, an alias from the shell's configuration, or an executable file on the search path; a word with a slash, an executable file at that path |
 | `cd`, `pushd` | one directory; with none, home; `cd -` and the directory stack are allowed but lose track of where the line is |
-| `cat`, `less`, `head`, `tail`, `bat`, `wc`, `source`, `.` | every operand a file |
+| `cat`, `less`, `more`, `head`, `tail`, `bat`, `wc`, `source`, `.` | every operand a file |
 | `ls`, `du`, `tree`, `stat`, `file`, `diff`, `open`, `rm`, `rmdir`, the editors | every operand a file or a directory |
 | `cp`, `mv` | every source; the destination may be new |
 | `chmod`, `chown`, `chgrp` | every operand after the mode |
@@ -65,11 +75,14 @@ relative path is refused while absolute and `~` paths are still checked. A `cd` 
 the directory for the commands after it when they surely follow it (`&&`, `;`); after `||`, `|` or
 `&` the directory is unknown. `..` is folded lexically, as `cd` does.
 
-**Branches.** `GitRepository` finds `.git` by walking up from the directory, follows a worktree's
-`gitdir:` and `commondir`, and looks a ref up as a loose file under `refs/` or a line of
-`packed-refs`. A repository whose refs live in a reftable, or whose `packed-refs` is over 8 MB, is
-not read, and its branch lines are refused. A commit hash is refused too, since telling one from a
-typo means reading the object store.
+**Branches.** `GitRepository` finds `.git` by walking up from the directory and follows a linked
+worktree's `gitdir:` and `commondir` only when the common `.git` directory contains its admin
+directory and the reciprocal `gitdir` points back to the worktree. It looks a ref up as a loose
+file under `refs/` or a line of `packed-refs`. Commit selectors may add reflog (`@{...}`), peel
+(`^{...}`), ancestry (`~n` or `^n`) or message (`:/...`) operators to a known ref or `HEAD`. A
+repository whose refs live in a reftable, or whose `packed-refs` is over 8 MB
+(`GitRepository.packedRefsLimit`), is not read, and its branch lines are refused. A commit hash is
+refused too, since telling one from a typo means reading the object store.
 
 ## A session on another machine
 
@@ -86,18 +99,19 @@ neither a path nor a host — rather than as a directory. Three things follow fr
 stand behind one; and what is typed there is remembered under the session rather than under the
 directory this Mac was left in. Nothing is stat'ed on the strength of a remote prompt.
 
-**How the session is recognised, and how reliable that is.** A title naming `ssh`, `mosh`,
-`mosh-client`, `autossh`, `docker exec`, `kubectl exec`, or `gcloud compute ssh` is scoped as
-remote. A `user@host` title is remote unless its host exactly matches this Mac's reported local
-host name (with an optional `.local` suffix). A path-like title such as `~/.ssh` is not a remote
-program name.
+**How the session is recognised, and how reliable that is.** `RemoteSession.scope(inWindowTitle:)`
+reads the window title. A title naming `ssh`, `mosh`, `mosh-client`, `autossh`, `docker exec`,
+`kubectl exec`, or `gcloud compute ssh` is scoped as remote (`RemoteSession.scope`). A `user@host`
+title is remote unless its host matches one of this Mac's own host names. A path-like title such as
+`~/.ssh` is not a remote program name, because a title's words keep path characters together.
 
-The title cannot prove locality in every terminal configuration. If it names neither a known
-remote command nor this Mac's exact host, it receives `RemoteSession.unknownScope`. That opaque
+The title cannot prove locality in every terminal configuration. A title that names neither a
+remote command nor `user@` this Mac, and a terminal with no title, receive
+`RemoteSession.unknownScope`. That opaque
 scope is also refused by the verifier, so an overwritten remote title, a shell inside tmux or
 screen, or an unfamiliar command cannot use this Mac's files, branches, programs, or remembered
-lines. This may withhold suggestions in a local terminal whose title does not name its host; that
-is the cost of not treating an uncertain machine as this one.
+lines. This withholds terminal suggestions in a local terminal whose title does not show
+`user@host` for this Mac; that is the cost of not treating an uncertain machine as this one.
 
 A process check is not used: the terminal process is the shell, not the program that shell runs,
 and inspecting its descendants would require access beyond the window title.
@@ -109,20 +123,21 @@ text area. The document directory exposed there belongs to the outer terminal pr
 identify the pane currently under the caret. Pane switches therefore cannot safely reuse that
 directory for path checks, branch lookups, machine candidates, or corpus identity.
 
-When the terminal title names `tmux` or `screen`, or provides no trustworthy machine identity,
-the field receives `RemoteSession.unknownScope`. The verifier refuses terminal lines, no local
+A title that names `tmux` or `screen` and not `user@` this Mac provides no trustworthy machine
+identity, so the field receives `RemoteSession.unknownScope`. The verifier refuses terminal lines, no local
 directory index is queried, and observations stay outside the outer directory's corpus. A pane's
 filesystem cannot be inferred from the outer terminal's Accessibility document.
 
 ## What it never does
 
 It never runs a program. Everything it knows comes through `FileSystemProbing`: a `stat`, an
-`access(X_OK)`, a bounded read and a bounded listing. The test double records every question, and
+`access(X_OK)`, a bounded read and a lazy directory walk that stops at its result limit or when the
+turn is cancelled. The test double records every question and visited name, and
 the tests hold that a line the check refuses reaches the machine index only for the shell's
 aliases, which are read from its configuration as text. The machine index's branch list is read
 from the same refs, so no `git` process is started for branches either. A line the check lets
 through still goes on to the verdicts in `Verifier`, whose verb lookups are the machine index's
-own (see `predict-agent.md`, A2).
+own ([predict-agent.md](predict-agent.md), "The tools").
 
 It never lists a directory to check a path; a path is one `stat`. The only listing is
 `refs/remotes`, which holds a handful of names.
@@ -140,9 +155,10 @@ Measured on an Apple silicon Mac under heavy load (load average above 20), on a 
 | for comparison, the machine index listing that directory's files | 29 ms |
 | and its directories, one `stat` per entry | 41 ms |
 
-`CachedFileSystem` believes a stat or a small read for two seconds. A path on `/Volumes`,
-`/Network` or `/net` is stat'ed on a queue of its own and waited for 20 ms; a volume that misses the
-deadline is answered `unknown`, which refuses the line, and is left alone for 30 seconds.
+`CachedFileSystem` believes a stat or a small read for `lifetimeInSeconds` (2 s). A path on
+`/Volumes`, `/Network` or `/net` is stat'ed on a queue of its own and waited for `remoteBudget`
+(20 ms); a volume that misses the deadline is answered `unknown`, which refuses the line, and is
+left alone for `slowVolumeLifetimeInSeconds` (30 s).
 
 ## Fixtures
 
@@ -151,21 +167,21 @@ deadline is answered `unknown`, which refuses the line, and is left alone for 30
 
 | | Hit | Precision (wrong shown) | Coverage | p50 |
 |---|---|---|---|---|
-| before the check | 247 | 96.77 % (8) | 96.88 % | 166 ms |
+| without the check | 247 | 96.77 % (8) | 96.88 % | 166 ms |
 | with the check | 239 | 97.07 % (7) | 93.36 % | 136 ms |
 
-Every one of the eight hits lost was a first line the check refuses because running it would fail
-or harm: `cat docs`, `tail logs`, `tail -f logs`, `cat ~/Desktop` and `node public` stop at a
+Every one of the eight hits the check costs is a first line it refuses because running it would
+fail or harm: `cat docs`, `tail logs`, `tail -f logs`, `cat ~/Desktop` and `node public` stop at a
 directory where a file is needed; `cd ~Projects` names a user's home that is not there;
 `cat projects/api/README.md` names a file the fixture's disk does not hold; and
 `kubectl delete api` is destructive. The catalogue counts a line ending on a whole word of the
-right answer as a hit, which is why they counted before.
+right answer as a hit, which is why they count without the check.
 
-## Limits, each a false negative or an open question
+## Limits, each a false negative
 
 - A shell function, a `CDPATH` entry, or a program installed somewhere the search path does not
   name (the launch `PATH`, `/etc/paths`, `/etc/paths.d` and the usual install directories) is
   refused.
 - A glob or a variable in a checked position refuses the line, even where it would match.
-- A remote session whose window title names no remote program is read as local, and a local
-  directory named `ssh` or `mosh` is read as a remote session and offered nothing.
+- A local terminal whose title does not show `user@` this Mac is offered nothing, and a title
+  whose words include `ssh` or `mosh` is read as a remote session.

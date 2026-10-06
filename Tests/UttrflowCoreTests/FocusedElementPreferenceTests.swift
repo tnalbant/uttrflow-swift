@@ -68,6 +68,16 @@ import Testing
         #expect(chosen == "requested application")
     }
 
+    /// A panel that takes keyboard focus without activating: its owner, not the application underneath, receives the text.
+    @Test func destinationFollowsTheFocusedElementsOwnerOverTheFrontmost() {
+        #expect(FocusedElementPreference.destination(focusOwner: 99, frontmost: 42) == 99)
+    }
+
+    @Test func destinationFallsBackToTheFrontmostWhenNoOwnerIsNamed() {
+        #expect(FocusedElementPreference.destination(focusOwner: nil, frontmost: 42) == 42)
+        #expect(FocusedElementPreference.destination(focusOwner: Int32?.none, frontmost: nil) == nil)
+    }
+
     @Test func isTextEntryAcceptsEveryRoleAPersonTypesInto() {
         for role in ["AXTextArea", "AXTextField", "AXComboBox", "AXSearchField"] {
             #expect(FocusedElementPreference.isTextEntry(role))

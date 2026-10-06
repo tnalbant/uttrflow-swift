@@ -24,8 +24,9 @@ public enum SettingsTidyingLevel: String, Sendable, Equatable, CaseIterable {
     public static let rowLabel = "How much Uttrflow tidies"
     /// What the row says underneath on both screens that draw it.
     public static let rowExplanation = """
-        Both levels remove filler words and stammers. Standard also rewrites grammar and \
-        word choice when an on-device model is available.
+        Both levels remove filler sounds and stammers and add punctuation. Standard also \
+        repairs grammar slips with an on-device model, which adds a moment to each dictation. \
+        Neither level changes, reorders or drops the words you meant.
         """
 }
 
@@ -42,40 +43,6 @@ extension SettingsTidyingLevel {
         switch self {
         case .light: SettingsEngines.normalised([])
         case .standard: SettingsEngines.normalised(TransformerKind.selectable)
-        }
-    }
-}
-
-// MARK: - Transcription
-
-/// The trade behind a speech engine: how long the user waits against how often they correct it.
-public enum SettingsTranscriptionQuality: String, Sendable, Equatable, CaseIterable {
-    /// The lowest latency the Mac can manage.
-    case faster
-    /// The fewest mistakes, at the cost of a second or two.
-    case mostAccurate
-
-    /// What the quality is called on screen.
-    public var title: String {
-        switch self {
-        case .faster: "Faster"
-        case .mostAccurate: "Most accurate"
-        }
-    }
-
-    /// Which implementation delivers it. Never shown to the user.
-    public var engine: SpeechEngineKind {
-        switch self {
-        case .faster: .appleSpeech
-        case .mostAccurate: .whisperKit
-        }
-    }
-
-    /// Reads the choice back out of a stored engine, exhaustively so a new engine must be named.
-    public init(engine: SpeechEngineKind) {
-        switch engine {
-        case .appleSpeech: self = .faster
-        case .whisperKit: self = .mostAccurate
         }
     }
 }

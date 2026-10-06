@@ -4,6 +4,7 @@ private import Foundation
 private import UttrflowAI
 private import UttrflowAudio
 private import UttrflowCore
+private import UttrflowDictionary
 private import UttrflowEval
 private import UttrflowSpeech
 
@@ -20,11 +21,18 @@ struct TranscribeCorpus: AsyncParsableCommand {
     @Option(name: .long, help: "Where results are kept between runs.")
     var resultsPath = ".uttrflow-eval"
 
-    @Option(name: .shortAndLong, help: "Recogniser to use: whisperKit or appleSpeech.")
-    var engine = SpeechEngineKind.whisperKit.rawValue
+    /// The recogniser's name, which keys the results directory and the run label.
+    private var engine: String { SpeechEngineKind.whisperKit.rawValue }
 
     @Option(name: .customLong("model"), help: "Model variant. Defaults to the shipping model.")
     var modelVariant: String?
+
+    /// Measures a variant the app does not install, so candidates are compared before one is pinned.
+    @Option(name: .long, help: "Load the model from this folder instead of the installed one.")
+    var modelFolder: String?
+
+    @Option(name: .long, help: "Where each model stage runs: shipping, gpu, neuralEngine, all or cpu.")
+    var compute = SpeechComputePlan.shipping.rawValue
 
     /// Off by default because the product detects the language rather than being told it.
     @Flag(name: .long, help: "Tell the engine each passage's language instead of letting it detect.")
@@ -62,9 +70,6 @@ struct TranscribeCorpus: AsyncParsableCommand {
     @Flag(name: .long, help: "Exit non-zero when any slice has got worse. For CI.")
     var failOnRegression = false
 
-    @Option(name: .long, help: "How many percentage points a rate may move before it counts.")
-    var tolerance = 0.5
-
     func validate() throws {
         if findings < 0 {
             throw ValidationError("--findings must be zero or greater.")
@@ -75,22 +80,23 @@ struct TranscribeCorpus: AsyncParsableCommand {
         if saveBaseline || failOnRegression, baseline == nil {
             throw ValidationError("--save-baseline and --fail-on-regression need --baseline <path>.")
         }
-        guard SpeechEngineKind(rawValue: engine) != nil else {
+        guard SpeechComputePlan(rawValue: compute) != nil else {
             throw ValidationError(
-                "Unknown engine '\(engine)'. Known: "
-                    + SpeechEngineKind.allCases.map(\.rawValue).joined(separator: ", "))
+                "Unknown compute plan '\(compute)'. Known: "
+                    + SpeechComputePlan.allCases.map(\.rawValue).joined(separator: ", "))
         }
     }
 
     func run() async throws {
-        guard let kind = SpeechEngineKind(rawValue: engine) else { return }
         let model = try resolveModel()
         let results = JSONRecordStore<PassageScore>(directory: URL(fileURLWithPath: resultsDirectory()))
 
         if summarise {
             // Stored results come back in file-system order, so they are put back into corpus order.
             let stored = TranscriptionCorpus.inCorpusOrder(try results.all())
-            try compare(reporting: TranscriptionReport(label: label(model), scores: stored))
+            try compare(
+                reporting: TranscriptionReport(
+                    label: label(model), recogniser: recogniser(model), scores: stored))
             return
         }
 
@@ -101,7 +107,7 @@ struct TranscribeCorpus: AsyncParsableCommand {
                 "Nothing to measure. Run: uttrflow-eval record   (or: uttrflow-eval pull --backend …)")
         }
 
-        let speech = try await prepared(kind: kind, model: model)
+        let speech = try await prepared(model: model)
         let router: (any TranscriptCleaning)? = shipping ? TextTransformers.router() : nil
         let metrics = CollectingMetricsRecorder()
         let clock = ContinuousClock()
@@ -109,6 +115,7 @@ struct TranscribeCorpus: AsyncParsableCommand {
         print("Measuring \(recordings.count) passages with \(label(model))…")
         let measured = await TranscriptionRunner().run(
             label: label(model),
+            recogniser: recogniser(model),
             over: recordings,
             onScore: { score in
                 Terminal.show(".")
@@ -213,13 +220,15 @@ struct TranscribeCorpus: AsyncParsableCommand {
         return .transcribed(transcription.text, stages: await metrics.drain())
     }
 
-    private func prepared(kind: SpeechEngineKind, model: SpeechModel) async throws -> any SpeechEngine {
+    private func prepared(model: SpeechModel) async throws -> any SpeechEngine {
         let store = FileSystemSpeechModelStore.whisperKit()
-        if kind == .whisperKit, !store.isInstalled(model) {
+        if modelFolder == nil, !store.isInstalled(model) {
             throw CleanExit.message("\(model.variant) is not installed. Run: uttrflow-dev models install")
         }
+        let folder = modelFolder.map { URL(fileURLWithPath: $0) } ?? store.location(of: model)
         let speech = SpeechEngineFactory.make(
-            kind: kind, model: model, modelFolder: store.location(of: model))
+            kind: .whisperKit, model: model, modelFolder: folder,
+            compute: SpeechComputePlan(rawValue: compute) ?? .shipping)
         let clock = ContinuousClock()
         let start = clock.now
         try await speech.prepare()
@@ -248,8 +257,7 @@ struct TranscribeCorpus: AsyncParsableCommand {
         }
 
         let stored = try AccuracyBaseline.read(from: url)
-        let comparison = stored.compare(
-            with: measured, tolerance: RegressionTolerance(percentagePoints: tolerance))
+        let comparison = stored.compare(with: measured)
         printComparison(comparison, against: stored)
 
         if failOnRegression, comparison.failsGate { throw ExitCode.failure }
@@ -285,23 +293,39 @@ struct TranscribeCorpus: AsyncParsableCommand {
         printMoved("worse", comparison.regressed)
         printMoved("better", comparison.improved)
 
-        print("\nverdict: \(comparison.verdict.rawValue)")
+        let overall = comparison.overall
+        print(
+            "\nverdict: \(comparison.verdict.rawValue)"
+                + (overall.interval.map { "; overall change \(span($0))" } ?? "")
+                + (overall.minimumDetectableChange.map {
+                    String(format: ", smallest detectable %.1f pp", $0 * 100)
+                }
+                    ?? ""))
     }
 
     private func printChanges(_ heading: String, _ changes: [BaselineComparison.Change]) {
         guard !changes.isEmpty else { return }
         print(
             "\n" + heading.padded(to: 22) + "was".padded(to: 9) + "now".padded(to: 9)
-                + "change".padded(to: 10) + "words")
+                + "change".padded(to: 10) + "95% interval".padded(to: 20) + "detectable".padded(to: 12)
+                + "words")
         for change in changes {
             let movement = change.delta.map { String(format: "%+.1f pp", $0 * 100) } ?? "n/a"
             print(
                 change.label.padded(to: 22) + percent(change.before).padded(to: 9)
                     + percent(change.after).padded(to: 9) + movement.padded(to: 10)
+                    + (change.interval.map(span) ?? "n/a").padded(to: 20)
+                    + (change.minimumDetectableChange.map { String(format: "%.1f pp", $0 * 100) } ?? "n/a")
+                    .padded(to: 12)
                     + "\(change.referenceWordCount)"
-                    + (change.isUnderpowered ? "  (too few words to judge)" : "")
+                    + (change.isUnderpowered ? "  (too few utterances to judge)" : "")
                     + (change.verdict == .worsened ? "  ← worse" : ""))
         }
+    }
+
+    /// A change interval in percentage points, the unit every delta is printed in.
+    private func span(_ interval: ClosedRange<Double>) -> String {
+        String(format: "%+.1f to %+.1f pp", interval.lowerBound * 100, interval.upperBound * 100)
     }
 
     /// Prints the individual samples that moved, capped, as evidence for the verdict.
@@ -327,6 +351,7 @@ struct TranscribeCorpus: AsyncParsableCommand {
         print("\n\(report.label) — \(report.scores.count) passages\n")
         printNormalisation(report)
         printRates(report)
+        printErrorClasses(report)
         printFindings(report)
         printLatency(report)
         printFailures(report)
@@ -386,6 +411,16 @@ struct TranscribeCorpus: AsyncParsableCommand {
             print(
                 slice.label.padded(to: width) + percent(slice.rate.rate).padded(to: 9)
                     + "\(slice.referenceWordCount)".padded(to: 8) + "\(slice.passages)")
+        }
+    }
+
+    /// Prints each error's linguistic class beside the rate, so effort follows the largest share.
+    private func printErrorClasses(_ report: TranscriptionReport) {
+        let rows = report.errorClasses(by: ErrorClassifier(sameSound: Homophones.share))
+        guard !rows.isEmpty else { return }
+        print("\nerror class".padded(to: 18) + "count".padded(to: 8) + "share")
+        for row in rows {
+            print(row.errorClass.rawValue.padded(to: 17) + "\(row.count)".padded(to: 8) + percent(row.share))
         }
     }
 
@@ -511,6 +546,7 @@ struct TranscribeCorpus: AsyncParsableCommand {
     // MARK: Names and numbers
 
     private func resolveModel() throws -> SpeechModel {
+        if let modelFolder { return .measured(folder: URL(fileURLWithPath: modelFolder)) }
         guard let modelVariant else { return .default }
         guard let model = SpeechModel.named(modelVariant) else {
             throw ValidationError(
@@ -523,11 +559,22 @@ struct TranscribeCorpus: AsyncParsableCommand {
     /// Keeps results per configuration, so a hinted run cannot overwrite a detected one.
     private func resultsDirectory() -> String {
         let model = (try? resolveModel())?.variant ?? "default"
-        return "\(resultsPath)/\(engine)-\(model)\(hintLanguage ? "-hinted" : "")"
+        return "\(resultsPath)/\(engine)-\(model)\(planSuffix("-"))\(hintLanguage ? "-hinted" : "")"
+    }
+
+    /// Empty for the shipping plan, so labels and baselines recorded before plans existed still match.
+    private func planSuffix(_ separator: String) -> String {
+        compute == SpeechComputePlan.shipping.rawValue ? "" : separator + compute
     }
 
     private func label(_ model: SpeechModel) -> String {
-        "\(engine) \(model.variant)\(hintLanguage ? ", language hinted" : ", language detected")"
+        "\(engine) \(model.variant)\(planSuffix(" on "))\(hintLanguage ? ", language hinted" : ", language detected")"
+    }
+
+    /// The pins a revision bump changes; a model read from an unpinned folder has none.
+    private func recogniser(_ model: SpeechModel) -> String? {
+        guard !model.weightsRevision.isEmpty else { return nil }
+        return "\(model.variant) weights \(model.weightsRevision) tokenizer \(model.tokenizerRevision)"
     }
 
     private func percent(_ value: Double?) -> String {
@@ -538,5 +585,15 @@ struct TranscribeCorpus: AsyncParsableCommand {
         String(
             format: "%.2f",
             duration.inSeconds)
+    }
+}
+
+extension SpeechModel {
+    /// A multilingual model read from a folder the installer never pinned; measured, never shipped.
+    fileprivate static func measured(folder: URL) -> SpeechModel {
+        SpeechModel(
+            variant: folder.lastPathComponent, downloadBytes: 0, isMultilingual: true,
+            weightsRepository: "", weightsRevision: "", weightFiles: [:],
+            tokenizerRepository: "", tokenizerRevision: "", tokenizerDigests: [:])
     }
 }

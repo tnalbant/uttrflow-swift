@@ -18,11 +18,14 @@ public struct WordShape: Equatable, Sendable {
 
     /// Lower-cased runs of letters and digits, which is the unit every word comparison counts in.
     public static func words(_ text: String) -> [String] {
-        text.lowercased().split(whereSeparator: isMark).map(String.init)
+        WordTokens.words(text.lowercased(), .comparison)
     }
 
     /// Whether the word closes a clause or a sentence.
     public var endsClause: Bool { suffix.contains(where: { ",.;:!?".contains($0) }) }
+
+    /// Whether the word is a spoken cut-off: letters left hanging on a bare hyphen.
+    public var isCutOff: Bool { suffix == "-" && !core.isEmpty }
 
     /// Whether the word closes a sentence.
     public var endsSentence: Bool { suffix.contains(where: { ".!?।॥".contains($0) }) }
@@ -44,7 +47,7 @@ public struct WordShape: Equatable, Sendable {
     /// Uppercases the first letter; a leading digit counts as the start and stays as it is.
     public static func capitalised(_ text: String) -> String {
         guard let start = text.firstIndex(where: { $0.isLetter || $0.isNumber }) else { return text }
-        guard !hasInternalCapital(text) else { return text }
+        guard !keepsWrittenCase(firstWord(of: text)) else { return text }
         return String(text[..<start]) + text[start].uppercased() + String(text[text.index(after: start)...])
     }
 
@@ -53,8 +56,18 @@ public struct WordShape: Equatable, Sendable {
         guard let start = text.firstIndex(where: { $0.isLetter || $0.isNumber }), text[start].isLetter else {
             return text
         }
-        guard !hasInternalCapital(text) else { return text }
+        guard !keepsWrittenCase(firstWord(of: text)) else { return text }
         return String(text[..<start]) + text[start].lowercased() + String(text[text.index(after: start)...])
+    }
+
+    /// The first whitespace-separated word, whose case alone decides how a sentence opens.
+    private static func firstWord(of text: String) -> String {
+        String(text.drop(while: \.isWhitespace).prefix(while: { !$0.isWhitespace }))
+    }
+
+    /// Whether a word is cased as written: an internal capital, or a technical token such as a path or URL.
+    public static func keepsWrittenCase(_ text: String) -> Bool {
+        hasInternalCapital(text) || TechnicalToken.classify(text) != nil
     }
 
     /// Whether a word carries an uppercase letter after its first letter.
@@ -63,10 +76,11 @@ public struct WordShape: Equatable, Sendable {
         return text[text.index(after: first)...].contains(where: { $0.isUppercase })
     }
 
-    /// Marks that end a text already: a clause mark, an ellipsis, or a bracket the words closed themselves.
-    static let finishers: Set<Character> = [
-        ",", ".", ";", ":", "!", "?", "\u{2026}", "।", "॥", ")", "]", "}",
-    ]
+    /// Marks that end a text already: a clause mark or an ellipsis; a closing bracket may stand before a stop and is not one.
+    static let finishers: Set<Character> = [",", ".", ";", ":", "!", "?", "\u{2026}", "।", "॥"]
+
+    /// Each closing bracket mapped to the bracket that opens it.
+    public static let bracketOpeners: [Character: Character] = [")": "(", "]": "[", "}": "{"]
 
     /// Quotes that open a quotation, read on the word's own prefix.
     public static let openingQuotes: Set<Character> = ["\"", "'", "\u{201C}", "\u{2018}", "\u{00AB}"]
@@ -74,23 +88,96 @@ public struct WordShape: Equatable, Sendable {
     /// Quotes a full stop belongs inside, which is where a spoken "close quote" leaves the end of a sentence.
     static let closingQuotes: Set<Character> = ["\"", "'", "\u{201D}", "\u{2019}", "\u{00BB}"]
 
-    /// The word with a full stop, or `mark`, where the sentence wants one: after a symbol like `%`, inside a closing quote.
-    public static func finished(_ text: String, with mark: String = ".") -> String {
+    /// The word with a full stop, or `mark`, where the sentence wants one; `preceding` is the text before it, read for an opening bracket.
+    public static func finished(
+        _ text: String, with mark: String = ".", after preceding: String = ""
+    ) -> String {
         let shape = WordShape(text)
         guard !shape.core.isEmpty, !shape.suffix.contains(where: finishers.contains) else { return text }
-        let quoted = trailingQuotes(of: text)
-        // A quotation opening and closing on one word is a quoted term rather than a sentence, so it takes none.
-        guard quoted.isEmpty || !shape.prefix.contains(where: openingQuotes.contains) else { return text }
+        let closers = String(
+            text.reversed().prefix { closingQuotes.contains($0) || bracketOpeners[$0] != nil }.reversed())
+        let body = String(text.dropLast(closers.count))
+        guard let bracket = closers.lastIndex(where: { bracketOpeners[$0] != nil }) else {
+            // A quotation opening and closing on one word is a quoted term rather than a sentence, so it takes none.
+            guard closers.isEmpty || !shape.prefix.contains(where: openingQuotes.contains) else {
+                return text
+            }
+            return quotationIsSpeech(preceding) ? body + mark + closers : text + mark
+        }
+        let enclosed = preceding + " " + body + closers[..<bracket]
+        if bracketFollowsOperator(enclosed, closedBy: closers[bracket]) { return text }
+        if bracketOpensSentence(enclosed, closedBy: closers[bracket]) { return body + mark + closers }
+        let quoted = trailingQuotes(of: closers)
         return String(text.dropLast(quoted.count)) + mark + quoted
+    }
+
+    /// Verbs of saying, which make the quotation after them reported speech rather than a quoted term.
+    static let speechVerbs: Set<String> = [
+        "say", "says", "said", "reply", "replies", "replied", "ask", "asks", "asked", "answer", "answers",
+        "answered", "tell", "tells", "told", "write", "writes", "wrote", "shout", "shouts", "shouted",
+    ]
+
+    /// Whether the quotation the last word closes is speech: it opens its sentence, follows a verb of saying, or opens on a subject.
+    private static func quotationIsSpeech(_ preceding: String) -> Bool {
+        let line = preceding.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).last ?? ""
+        let words = WordTokens.words(line, .display).map(WordShape.init)
+        guard let start = words.lastIndex(where: { $0.prefix.contains(where: openingQuotes.contains) }) else {
+            return true
+        }
+        guard start > 0, !words[start - 1].endsSentence, !speechVerbs.contains(words[start - 1].key) else {
+            return true
+        }
+        return QuestionShape.newSubjects.contains(words[start].key)
+    }
+
+    /// Whether the bracket that `closer` matches is the first thing in its sentence, so the whole sentence sits inside it.
+    private static func bracketOpensSentence(_ text: String, closedBy closer: Character) -> Bool {
+        guard let opener = bracketOpeners[closer] else { return false }
+        var depth = 0
+        for index in text.indices.reversed() {
+            let character = text[index]
+            if character == closer {
+                depth += 1
+            } else if character == opener {
+                guard depth == 0 else {
+                    depth -= 1
+                    continue
+                }
+                let before = text[..<index].reversed().drop {
+                    ($0.isWhitespace && !$0.isNewline) || openingQuotes.contains($0)
+                }
+                guard let last = before.first else { return true }
+                return SentenceMarks.ends.contains(last) || last.isNewline
+            }
+        }
+        return false
+    }
+
+    /// Whether the bracket that `closer` matches opens right after an operator, as in `x = [1, 2]`: a value, not prose.
+    private static func bracketFollowsOperator(_ text: String, closedBy closer: Character) -> Bool {
+        guard let opener = bracketOpeners[closer] else { return false }
+        var depth = 0
+        for index in text.indices.reversed() {
+            let character = text[index]
+            if character == closer {
+                depth += 1
+            } else if character == opener {
+                guard depth == 0 else {
+                    depth -= 1
+                    continue
+                }
+                let last = text[..<index].reversed().first { !$0.isWhitespace }
+                return last.map { "=<>+-*/%&|^".contains($0) } ?? false
+            }
+        }
+        return false
     }
 
     /// The word with `mark` on its end; a clause mark replaces one already there, a quote follows it.
     public static func marked(_ text: String, with mark: String) -> String {
         if mark == "\u{2014}" { return text + " " + mark }
         if let last = text.last, ",.;:!?".contains(last), ",.;:!?".contains(mark) {
-            if last == ".",
-                InsertionPoint.sentenceAbbreviations.contains(WordShape(text).core.lowercased())
-            {
+            if last == ".", Abbreviations.ownsStop(WordShape(text).core) {
                 return mark == "." ? text : text + mark
             }
             return String(text.dropLast()) + mark
@@ -143,5 +230,14 @@ extension Draft {
             return index + 1 == end
         }
         return end == position + count
+    }
+
+    /// Whether the live words from `position` are the phrase `words`, inside one sentence unless `acrossSentences`.
+    public func spells(
+        _ words: [String], at position: Int, in live: [Int], acrossSentences: Bool = false
+    ) -> Bool {
+        position + words.count <= live.count
+            && (acrossSentences || sentenceContains(words.count, from: position, in: live))
+            && zip(words, live[position..<position + words.count]).allSatisfy { $0 == shape(at: $1).key }
     }
 }

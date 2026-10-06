@@ -13,7 +13,7 @@ struct DockAccessibilityTests {
     nonisolated private static let everyRecovery: [RecoveryAction] = [
         .openSystemSettings(.accessibility), .retry, .downloadSpeechModel, .pasteManually,
         .copyTranscript,
-        .showRecentDictations, .retryFromRecording,
+        .showHistory, .retryFromRecording,
     ]
 
     /// Every state the button draws, so a new one cannot be added without something to say about it.
@@ -22,7 +22,7 @@ struct DockAccessibilityTests {
         .recording,
         .transcribing,
         .tidying,
-        .inserting,
+        .inserting(into: nil),
         .inserted(DictationOutcome(text: "see you at noon", method: .accessibility, cleanedBy: .rules)),
         .failed(DictationFailure(PermissionError.microphoneDenied)),
         .failed(.stillLoading),

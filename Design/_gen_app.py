@@ -6,6 +6,8 @@ tile would have needed a guess — "time saved", which needs an assumed typing
 speed — it is left out and said so on the artboard, the same rule Diagnostics
 already follows.
 """
+from datetime import date, timedelta
+
 from _gen_shell import *
 
 APP_CSS = """
@@ -57,16 +59,23 @@ APP_CSS = """
               border: 1px solid var(--accent-tint); }
     .prov { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px;
             border-radius: 6px; background: var(--fill); font-size: var(--t-callout); }
-    .bars { display: flex; align-items: flex-end; gap: 10px; height: 86px; }
-    .bars .b { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px;
-               justify-content: flex-end; height: 100%; }
-    .bars .b i { display: block; width: 100%; border-radius: 3px; background: var(--accent-light); }
-    .bars .b.today i { background: var(--accent); }
-    .bars .b.none i { background: var(--label-3); }
-    .bars .b span { font-size: 9px; color: var(--label-3); font-variant-numeric: tabular-nums; }
-    .legend { display: flex; gap: 13px; margin-top: 9px; font-size: var(--t-footnote);
-              color: var(--label-2); align-items: center; }
-    .swatch { width: 8px; height: 8px; border-radius: 3px; flex: none; }
+    /* Insights: the calendar card and the four figures beside it. */
+    .calendar { padding: 14px 16px; }
+    .calendar .cap { font-size: 10.5px; font-weight: 600; letter-spacing: 0.84px;
+                     text-transform: uppercase; color: var(--label-3); }
+    .calendar .heat { display: inline-flex; align-items: center; gap: 6px;
+                      font-size: var(--t-footnote); color: var(--label-3); }
+    .calendar .heat i { width: 12px; height: 12px; border-radius: 3px; }
+    .calendar .grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px;
+                      margin-top: 10px; }
+    .calendar .wk { font-size: 10px; font-weight: 600; color: var(--label-3); }
+    .calendar .tile { height: 26px; border-radius: 6px; display: flex; align-items: center;
+                      justify-content: center; font-size: 12px; font-weight: 600;
+                      font-variant-numeric: tabular-nums; }
+    .figure { padding: 12px 14px; }
+    .figure .v { font-size: var(--t-title1); font-weight: 600; letter-spacing: -0.4px;
+                 font-variant-numeric: tabular-nums; }
+    .figure .k { font-size: var(--t-subhead); color: var(--label-2); margin-top: 2px; }
     .track { height: 7px; border-radius: 4px; background: var(--fill-2); overflow: hidden; }
     .track > i { display: block; height: 100%; border-radius: 4px; background: var(--accent-light); }
     /* Home: the stage, the figures row, and today's list beside the clipboard demonstration. */
@@ -137,7 +146,7 @@ def home_rows():
 
 home = f"""<div class="card stage-card">
           <div class="status"><span class="dot"></span><span>Ready</span></div>
-          <div class="greet">Good afternoon, Naveen</div>
+          <div class="greet">Good afternoon, Avery</div>
           <div class="subtitle">3 dictations today, 90 words.</div>
           <div class="hint"><span class="key" style="height:20px; min-width:20px;
             padding:0 5px; font-size:10px">&#8997;</span><span class="key" style="height:20px;
@@ -270,7 +279,7 @@ COLS = [("Word", 116, "left"), ("Sounds like", 104, "left"), ("Where from", 106,
 
 WORDS = [
     ("Uttrflow", "utter-flow", "Added by you", "12 Aug", "34", "0", False, False),
-    ("Naveen Bhatt", "&mdash;", "Learned", "2 Aug", "118", "1", False, False),
+    ("Avery Stone", "&mdash;", "Learned", "2 Aug", "118", "1", False, False),
     ("pgvector", "pee-gee vector", "Seen on screen", "19 Aug", "9", "0", False, True),
     ("asyncpg", "a-sync-p-g", "Seen on screen", "20 Aug", "6", "0", False, False),
     ("Valkey", "val-key", "Learned", "14 Aug", "22", "2", False, False),
@@ -343,7 +352,7 @@ dictionary_empty = f"""<div class="empty">
 # =====================================================================
 CHANGES = [
     ("a sink p g", "asyncpg", "Seen on screen", "2:30 PM", "Code", None),
-    ("naveen bhat", "Naveen Bhatt", "You said it clearly elsewhere", "11:05 AM", "Mail", None),
+    ("avery ston", "Avery Stone", "You said it clearly elsewhere", "11:05 AM", "Mail", None),
     ("s q l", "SQL", "Heard as stray letters", "10:18 AM", "Code", None),
     ("data base", "database", "Heard as several words", "9:41 AM", "Slack", "undone"),
 ]
@@ -406,116 +415,110 @@ corrections_empty = f"""<div class="empty">
 # =====================================================================
 # Insights — only what the app already measures.
 # =====================================================================
-# One retention window feeds the scope label, the day count and the bars below,
-# so the fixture cannot claim one window and draw another.
-RETENTION_DAYS = 14
-SCOPE_TITLE = f"Last {RETENTION_DAYS} days"
-DAYS = [310, 640, 0, 520, 880, 960, 210, 705, 890, 1120, 0, 795, 1150, 1240]
-assert len(DAYS) == RETENTION_DAYS
-DATES = [str(d) for d in range(24 - RETENTION_DAYS, 24)]
-WPM = [118, 124, 121, 129, 133, 126, 130, 128, 135, 131, 134, 131]
-PEAK = max(DAYS)
-# The mean across the whole window, silent days included — same arithmetic as
-# InsightsPresenter.average, measured against the tallest bar.
-AVERAGE_WORDS = round(sum(DAYS) / len(DAYS))
-AVERAGE_FRACTION = AVERAGE_WORDS / PEAK
-# The bars are drawn at most 70px tall, with a 16px label row beneath them —
-# matching InsightsBars' `height` and `labelHeight`, so the line sits where the view puts it.
-BAR_HEIGHT = 70
-LABEL_HEIGHT = 16
+# Mirrors InsightsPresenter in Sources/UttrflowUX/InsightsPresentation.swift: a range switch,
+# a calendar shaded by each day's words, four dictation figures and suggestion counts.
+# Scripts/insights_contract_audit.py
+# reads both sides and fails when they part.
+RANGES = [7, 30, 90]
+RANGE_TITLES = [f"{days} days" for days in RANGES]
+SELECTED_RANGE = 30
+SELECTED_TITLE = f"{SELECTED_RANGE} days"
+FIRST_DAY = date(2026, 9, 4)
+DAYS = [310, 640, 0, 520, 880, 960, 210, 705, 890, 1120, 0, 795, 1150, 1240, 0,
+        430, 610, 0, 0, 980, 1310, 540, 760, 0, 1020, 870, 650, 0, 1180, 1240]
+assert len(DAYS) == SELECTED_RANGE
+WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"]
+# InsightsCalendar.legend, InsightsCalendarDay.inkCeiling and deepInkFloor.
+LEGEND = [0.15, 0.4, 0.72, 0.9]
+INK_CEILING = 0.5
+DEEP_INK_FLOOR = 0.72
+HEAT = "95,224,211"
+DEEP_INK = "#04332F"
+FIGURE_CAPTIONS = ["words", "a day", "words / min", "longest streak"]
+SUGGESTION_CAPTIONS = ["Stored lines", "Recorded uses", "Accepted", "Typed past", "Self-sourced"]
+SUGGESTION_VALUES = ["23", "41", "12", "9", "7"]
+EMPTY_TITLE = "Not enough to chart yet"
+DAYS_BEFORE_CHARTING = 7
 
 
-def day_bars():
-    out = ""
-    for i, (v, label) in enumerate(zip(DAYS, DATES)):
-        cls = "b today" if i == len(DAYS) - 1 else ("b none" if v == 0 else "b")
-        height = 4 if v == 0 else max(6, round(v / PEAK * BAR_HEIGHT))
-        out += (f'<div class="{cls}"><i style="height:{height}px"></i>'
-                f'<span>{label}</span></div>')
+def shade(words):
+    """The tile's teal opacity, stepped over the band no number ink clears 4.5:1 on."""
+    if words == 0:
+        return 0
+    smooth = 0.15 + 0.85 * words / max(DAYS)
+    if not INK_CEILING < smooth < DEEP_INK_FLOOR:
+        return smooth
+    return INK_CEILING if smooth < (INK_CEILING + DEEP_INK_FLOOR) / 2 else DEEP_INK_FLOOR
+
+
+def longest_streak():
+    longest = run = 0
+    for words in DAYS:
+        run = run + 1 if words else 0
+        longest = max(longest, run)
+    return longest
+
+
+def calendar_tiles():
+    # Sunday leads, so the blanks put the first day under its own weekday.
+    blanks = (FIRST_DAY.weekday() + 1) % 7
+    out = "".join(f'<div class="wk">{initial}</div>' for initial in WEEKDAYS)
+    out += '<div class="blank"></div>' * blanks
+    for offset, words in enumerate(DAYS):
+        day = FIRST_DAY + timedelta(days=offset)
+        level = shade(words)
+        fill = "var(--fill)" if words == 0 else f"rgba({HEAT},{level:.2f})"
+        ink = DEEP_INK if level >= DEEP_INK_FLOOR else "var(--label)"
+        out += f'<div class="tile" style="background:{fill}; color:{ink}">{day.day}</div>'
     return out
 
 
-def average_line():
-    """The dashed reference line over the bars, labelled at its right-hand end."""
-    bottom = LABEL_HEIGHT + round(AVERAGE_FRACTION * BAR_HEIGHT)
-    return (f'<div class="avgline" style="bottom:{bottom}px">'
-            f'<span>{AVERAGE_WORDS} a day</span></div>')
+LAST_DAY = FIRST_DAY + timedelta(days=SELECTED_RANGE - 1)
+TOTAL_WORDS = sum(DAYS)
+CHART_CAPTION = (f"{TOTAL_WORDS:,} words &middot; {FIRST_DAY.day} {FIRST_DAY:%B} &ndash; "
+                 f"{LAST_DAY.day} {LAST_DAY:%B}")
+FIGURES = [f"{TOTAL_WORDS:,}", f"{round(TOTAL_WORDS / SELECTED_RANGE):,}", "131",
+           f"{longest_streak()} days"]
+legend_swatches = "".join(
+    f'<i style="background:rgba({HEAT},{level})"></i>' for level in LEGEND)
+figure_tiles = "".join(
+    f'<div class="card figure"><div class="v">{value}</div><div class="k">{caption}</div></div>'
+    for value, caption in zip(FIGURES, FIGURE_CAPTIONS))
+suggestion_tiles = "".join(
+    f'<div class="card figure"><div class="v">{value}</div><div class="k">{caption}</div></div>'
+    for value, caption in zip(SUGGESTION_VALUES, SUGGESTION_CAPTIONS))
+suggestion_insights = f"""<div style="margin-top: 18px">
+          <div style="font-size: 12px; font-weight: 600">Suggestions</div>
+          <div style="font-size: 11px; color: var(--label-2); margin-top: 3px">
+            Stored corpus totals on this Mac.</div>
+          <div class="row" style="gap: 12px; margin-top: 10px">{suggestion_tiles}</div>
+        </div>"""
 
-
-def sparkline(values, w=150, h=30):
-    lo, hi = min(values), max(values)
-    span = (hi - lo) or 1
-    step = w / (len(values) - 1)
-    pts = " ".join(f"{i * step:.1f},{h - 2 - (v - lo) / span * (h - 5):.1f}"
-                   for i, v in enumerate(values))
-    return (f'<svg width="{w}" height="{h}" viewBox="0 0 {w} {h}" fill="none">'
-            f'<polyline points="{pts}" stroke="var(--accent-light)" stroke-width="1.6" '
-            'stroke-linecap="round" stroke-linejoin="round"/></svg>')
-
-
-# Word counts alongside each share, as InsightsPlace carries both.
-PLACES = [("Slack", 41, "3,201 words"), ("Code", 26, "2,032 words"),
-          ("Mail", 18, "1,406 words"), ("Notes", 15, "1,172 words")]
-
-place_rows = "".join(
-    f"""<div class="row" style="gap:8px; margin-top:{7 if i else 9}px;
-         font-size: var(--t-footnote)">
-      <span style="width:78px; flex:none; display:flex; align-items:center; gap:5px">
-        {appchip(n)}</span>
-      <div class="mini" style="flex:1"><i style="width:{p * 2.4:.0f}%"></i></div>
-      <span class="num" style="width:64px; flex:none; color: var(--label-3)">{w}</span>
-      <span class="num" style="width:30px; flex:none; color: var(--label-2)">{p}%</span>
-    </div>""" for i, (n, p, w) in enumerate(PLACES))
-
-insights = f"""<div class="card" style="padding: 12px 14px">
-          <div class="row" style="justify-content: space-between; align-items: baseline">
-            <span style="font-size: var(--t-title3); font-weight: 600">Words dictated</span>
-            <span class="muted" style="font-size: var(--t-footnote)">
-              {sum(DAYS):,} words &middot; {DATES[0]}&ndash;23 August</span>
-          </div>
-          <div class="chart-bars" style="margin-top: 10px">
-            <div class="bars">{day_bars()}</div>
-            {average_line()}
-          </div>
-        </div>
-        <div class="row" style="gap: 12px; margin-top: 12px; align-items: stretch">
-          <div class="card stat" style="flex: 1; padding: 11px 13px">
-            <div class="row" style="justify-content: space-between; align-items: flex-end">
-              <div><div class="v">131</div><div class="k">Words per minute</div></div>
-              {sparkline(WPM)}
+insights = f"""<div class="row" style="gap: 18px; align-items: flex-start">
+          <div class="card calendar" style="flex: 1">
+            <div class="row" style="justify-content: space-between; align-items: center">
+              <span class="cap">{CHART_CAPTION}</span>
+              <span class="heat">less {legend_swatches} more</span>
             </div>
-            <div class="c">Days you did not dictate are skipped.</div>
+            <div class="grid">{calendar_tiles()}</div>
           </div>
-          <div class="card stat" style="width: 214px; flex: none; padding: 11px 13px">
-            <div class="v">97.2%</div><div class="k">Left as dictated</div>
-            <div class="row" style="gap: 7px; margin-top: 9px; font-size: var(--t-footnote);
-                 color: var(--label-2)">
-              <span style="width: 46px">Now</span>
-              <div class="mini" style="flex:1"><i style="width: 97%"></i></div>
-            </div>
-            <div class="c">The share of your words the clean-up left exactly as you said
-              them. It does not say whether they were heard correctly.</div>
+          <div style="width: 220px; flex: none; display: flex; flex-direction: column; gap: 12px">
+            {figure_tiles}
           </div>
         </div>
-        <div class="card" style="margin-top: 12px; padding: 11px 13px">
-          <div style="font-size: var(--t-body); font-weight: 600">Where you dictate</div>
-          {place_rows}
-        </div>
-        <div class="foot">Measured on this Mac over the last {RETENTION_DAYS} days. Never sent
-          anywhere.<br>
-          There is no &ldquo;time saved&rdquo; figure: it would need a guess at how fast you
-          type, and Uttrflow has never watched you type.</div>"""
+        {suggestion_insights}"""
 
+SPOKEN_SO_FAR = 2
 insights_empty = f"""<div class="empty">
           <div class="ring">{icon(CHART, size=34, width=1.4)}</div>
-          <h3>Not enough to chart yet</h3>
-          <p>Insights compare this week against your own baseline, so they wait until there
-            are seven days to compare. Uttrflow has two.</p>
+          <h3>{EMPTY_TITLE}</h3>
+          <p>Dictate on {DAYS_BEFORE_CHARTING} different days and your charts appear.
+            {SPOKEN_SO_FAR} of {DAYS_BEFORE_CHARTING} days so far.</p>
           <div style="width: 280px; margin-top: 20px">
-            <div class="track"><i style="width: 28.5%"></i></div>
+            <div class="track"><i style="width: {SPOKEN_SO_FAR / DAYS_BEFORE_CHARTING * 100:.1f}%"></i></div>
             <div class="row" style="justify-content: space-between; margin-top: 8px;
                  font-size: var(--t-footnote); color: var(--label-2)">
-              <span>2 of 7 days</span><span>Charts appear on Tuesday</span>
+              <span>{SPOKEN_SO_FAR} of {DAYS_BEFORE_CHARTING} days</span><span>Charts appear on Tuesday</span>
             </div>
           </div>
           <div class="chips">
@@ -523,8 +526,7 @@ insights_empty = f"""<div class="empty">
             <div class="chip"><div class="cv">2,410</div><div class="ck">words so far</div></div>
           </div>
         </div>
-        <div class="foot" style="text-align: center">The two numbers Uttrflow can honestly
-          give on day two are given. The rest waits rather than guessing.</div>"""
+        {suggestion_insights}"""
 
 
 # =====================================================================
@@ -535,7 +537,7 @@ SNIPS = [
     ("standup update", "Yesterday: &hellip; &nbsp;Today: &hellip; &nbsp;Blockers: &hellip;",
      "31", "Today"),
     ("meeting link", "https://meet.google.com/qzt-hnrv-dka", "48", "Today"),
-    ("sign off", "Thanks, Naveen", "64", "Today"),
+    ("sign off", "Thanks, Avery", "64", "Today"),
 ]
 
 snip_rows = "".join(f"""<div class="tr">
@@ -681,9 +683,9 @@ style = f"""<p class="grp-title" style="margin-top: 0">Tidying up</p>
 # =====================================================================
 account = f"""<div class="card" style="padding: 14px 15px">
           <div class="row" style="gap: 13px">
-            <div class="avatar">NB</div>
+            <div class="avatar">AS</div>
             <div style="flex: 1; min-width: 0">
-              <div style="font-size: var(--t-title3); font-weight: 600">Naveen Bhatt</div>
+              <div style="font-size: var(--t-title3); font-weight: 600">Avery Stone</div>
               <div class="muted" style="font-size: var(--t-callout); margin-top: 2px">
                 nadia.d@example.com</div>
             </div>
@@ -740,11 +742,11 @@ SCREENS = [
      pop("All corrections"), searchbox("Search"), "", corrections, RECENT, TAILS),
     ("Main-Corrections-Empty", "Corrections", CORRECTIONS_CAPTION,
      "", "", "", corrections_empty, RECENT, None),
-    # Insights: a scope label always, never a choice; no search, no add.
+    # Insights: the range switch only once there is a calendar; no search, no add.
     ("Main-Insights", "Insights", INSIGHTS_CAPTION,
-     scopelabel(SCOPE_TITLE), "", "", insights, RECENT, TAILS),
+     seg(RANGE_TITLES, SELECTED_TITLE), "", "", insights, RECENT, TAILS),
     ("Main-Insights-Empty", "Insights", INSIGHTS_CAPTION,
-     scopelabel(SCOPE_TITLE), "", "", insights_empty, RECENT_NONE, None),
+     "", "", "", insights_empty, RECENT_NONE, None),
     # Snippets: search only when there are snippets; New Snippet always.
     ("Main-Snippets", "Snippets", SNIPPETS_CAPTION,
      "", searchbox("Search snippets"), addbtn("New Snippet"), snippets, RECENT, TAILS),
@@ -757,7 +759,12 @@ SCREENS = [
 
 written = []
 for stem, active, caption, scope_html, search_html, add_html, content, recent, tails in SCREENS:
-    written += write_pair(
+    writer = (
+        write_whitespace_clean_pair
+        if stem in ("Main-Home", "Main-Dictionary-Empty", "Main-Snippets-Empty")
+        else write_pair
+    )
+    written += writer(
         stem,
         lambda dark, a=active, cap=caption, sc=scope_html, se=search_html, ad=add_html,
         c=content, r=recent, x=tails:

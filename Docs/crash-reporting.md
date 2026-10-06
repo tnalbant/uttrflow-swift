@@ -1,15 +1,18 @@
 # Crash and hang reporting
 
-Opt-in. Off by default, switched on in Settings → Privacy → *Send crash reports*
-(`Settings.sendsCrashReports`). While it is off the crash reporter is not started, so
-nothing is collected or sent; switching it off calls `SentrySDK.close()`.
+Uttrflow can send a crash or hang report to Sentry, scrubbed of anything that names the user
+or the Mac. It is opt-in: off by default, switched on in Settings → Privacy → **Send crash
+reports** (`Settings.sendsCrashReports`). `AppDelegate` passes the switch to
+`CrashReporter.follow(isEnabled:)`; while it is off the SDK is not started, so nothing is
+collected or sent, and switching it off calls `SentrySDK.close()`. The code is
+`Sources/UttrflowDiagnostics/CrashReporter.swift` and `SentrySDK+Live.swift`.
 
 ## Where it lives
 
 The Sentry SDK (`sentry-cocoa`) is linked by one module, `UttrflowDiagnostics`, and only
 the app target depends on that module, so nothing on the dictation path can call it.
-`Scripts/offline_audit.sh` checks both. `CrashReporter` holds the rules;
-`LiveCrashReportingSDK` is the few lines that start and close the real SDK.
+`Scripts/offline_audit.sh` checks both (check 6b in [offline.md](offline.md)). `CrashReporter`
+holds the rules; `LiveCrashReportingSDK` is the few lines that start and close the real SDK.
 
 ## Which builds can report
 
@@ -48,15 +51,25 @@ that carries no exception, so text that could hold a transcript has no way in.
 - Every frame's `filename` and `package`, and every debug image's `code_file`, is cut to
   its last path component; a bare home folder becomes `~`. Source context lines and
   variables are removed.
-- An exception's value is kept only when the system wrote it (Mach exceptions, signals
-  and hangs), with every path in it cut the same way. The value of an `NSException` or a
-  Swift error can be built from app data, so it is removed.
+- An exception's value is kept only for a hang, whose text the SDK writes, with every path
+  in it cut the same way. Every other value is removed: an `NSException` or a Swift error
+  is built from app data, and for a Mach exception or a signal the SDK replaces the value
+  with the `crash_info_message` that `libswiftCore` recorded, which is the text of the
+  failed `precondition`, `fatalError` or duplicate-key trap and can hold a dictionary
+  word. The exception type and the mechanism's signal and Mach codes stay, which is what
+  grouping needs. Every mechanism's description and data are removed; the SDK attaches
+  the same trap text to the data of other kinds.
 
 `CrashReporterTests` salts an event with a home-folder path and a host name in every
-field Sentry has and fails if any of it survives serialisation.
+field Sentry has and fails if any of it survives serialisation, and feeds a Mach, signal
+and `NSException` event carrying a trap message with an invented word in the value and the
+mechanism data, the two places sentry-cocoa 9.29.2 writes it
+(`SentryCrashReportConverter.m`), and fails if the word survives.
 
 ## Symbols
 
 `bundle.sh` builds with `DEBUG_INFORMATION_FORMAT=dwarf-with-dsym`, and `release.yml`
 uploads the dSYMs with `sentry-cli debug-files upload` using the `SENTRY_AUTH_TOKEN`,
 `SENTRY_ORG` and `SENTRY_PROJECT` secrets. The step does nothing when the token is absent.
+
+Related: [offline.md](offline.md), [logging.md](logging.md), [releasing.md](releasing.md).

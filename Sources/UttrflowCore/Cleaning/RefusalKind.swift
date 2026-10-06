@@ -8,6 +8,10 @@ public enum RefusalKind: String, Sendable, Equatable, CaseIterable, Codable {
     case inventedWord
     /// The rewrite adds quotation marks the speaker did not say.
     case inventedQuotation
+    /// The rewrite ends a sentence with an exclamation mark the speaker did not say and the recogniser did not write.
+    case inventedExclamation
+    /// The rewrite holds a kind of symbol, such as an emoji or a dash, that the draft holds none of.
+    case inventedSymbol
     /// A word the speaker said appears somewhere else in the rewrite.
     case movedWord
     /// A word a pass took out is not put back, so the rewrite is missing it too.
@@ -44,6 +48,8 @@ public enum RefusalKind: String, Sendable, Equatable, CaseIterable, Codable {
     case translated
     /// The answer the model gave back was byte-identical to the input it was handed, so the rules engine should take over.
     case unchangedAnswer
+    /// The rewrite of a long text ends no sentence at all.
+    case unpunctuated
 
     /// What a pasted report calls this, which names the kind and never the words.
     public var summary: String {
@@ -51,6 +57,8 @@ public enum RefusalKind: String, Sendable, Equatable, CaseIterable, Codable {
         case .lostWord: "a word was lost or replaced"
         case .inventedWord: "a word was invented"
         case .inventedQuotation: "quotation marks were added"
+        case .inventedExclamation: "an exclamation mark was added"
+        case .inventedSymbol: "a symbol was added"
         case .movedWord: "a word was moved"
         case .removedWordNotRestored: "a word a step removed was not put back"
         case .unofferedReading: "a reading was used that was not offered"
@@ -69,6 +77,7 @@ public enum RefusalKind: String, Sendable, Equatable, CaseIterable, Codable {
         case .echoedExample: "the answer repeated a worked example"
         case .translated: "the answer was translated rather than romanised"
         case .unchangedAnswer: "the answer was identical to what was said"
+        case .unpunctuated: "the answer to a long text ended no sentence"
         }
     }
 }

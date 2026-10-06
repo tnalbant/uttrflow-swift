@@ -2,6 +2,7 @@
 
 import Foundation
 import Network
+import os
 import Synchronization
 import Testing
 import UttrflowCore
@@ -252,7 +253,8 @@ struct LoopbackListenerTests {
             }
             let connection = NWConnection(
                 host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port) ?? .any, using: .tcp)
-            let collected = Mutex(Data())
+            // A lock with reference semantics, since the Task below captures it beyond this scope.
+            let collected = OSAllocatedUnfairLock(initialState: Data())
             @Sendable func read() {
                 connection.receive(minimumIncompleteLength: 1, maximumLength: 65_536) {
                     data, _, isComplete, error in

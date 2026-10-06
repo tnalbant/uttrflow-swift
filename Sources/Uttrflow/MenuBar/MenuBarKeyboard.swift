@@ -4,8 +4,10 @@ import UttrflowUX
 
 /// The popover's controls in drawing order, so the arrows and Return reach each as a click would.
 struct MenuBarKeyboard: Equatable {
-    /// Every control the keyboard can reach: the header's action, the round buttons, then the rows.
+    /// Every control the keyboard can reach: the header's action, the learned words, the round buttons, then the rows.
     let commands: [MenuBarCommand]
+    /// The place of the first learned word's Undo.
+    let learnedStart: Int
     /// The place of the first round button.
     let buttonsStart: Int
     /// The place of the last dictation's row.
@@ -18,6 +20,8 @@ struct MenuBarKeyboard: Equatable {
         if case .status(let status) = presentation.header, let action = status.action {
             commands.append(action)
         }
+        learnedStart = commands.count
+        commands += presentation.learned.map(\.undo)
         buttonsStart = commands.count
         commands += presentation.buttons.map(\.command)
         lastDictationPlace = commands.count
@@ -30,6 +34,7 @@ struct MenuBarKeyboard: Equatable {
     /// A row of buttons alone, with no header action and no rows.
     init(commands: [MenuBarCommand]) {
         self.commands = commands
+        learnedStart = 0
         buttonsStart = 0
         lastDictationPlace = commands.count
         clipsStart = commands.count

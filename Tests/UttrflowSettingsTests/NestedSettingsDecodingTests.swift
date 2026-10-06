@@ -6,26 +6,20 @@ import UttrflowSettings
 
 @Suite("Nested settings preserve readable choices")
 struct NestedSettingsDecodingTests {
-    @Test("Unknown transformers cost only their own entries, preserving speech and preference order")
+    @Test("Unknown transformers cost only their own entries, preserving preference order")
     func engineElementsDecodeIndependently() throws {
         let settings = try decode(
             #"{"engines":{"speech":"appleSpeech","transformerPreference":["rules","future",{},"foundationModels",null]}}"#
         )
-        #expect(settings.engines.speech == .appleSpeech)
         #expect(settings.engines.transformerPreference == [.rules, .foundationModels])
     }
 
-    @Test("Invalid language, domain and vocabulary elements leave the rest of the profile intact")
+    @Test("Invalid language elements and retired profile fields leave the readable languages intact")
     func profileElementsDecodeIndependently() throws {
         let settings = try decode(
             #"{"profile":{"profession":"Engineer","preferredLanguages":["hi","123",null,"en"],"technicalDomains":["Swift",42,"SQL"],"preferredWritingStyle":"Brief","vocabulary":["Uttrflow",{},"Codable"]}}"#
         )
-        #expect(
-            settings.profile
-                == UserProfile(
-                    profession: "Engineer", preferredLanguages: [.hindi, .english],
-                    technicalDomains: ["Swift", "SQL"], preferredWritingStyle: "Brief",
-                    vocabulary: ["Uttrflow", "Codable"]))
+        #expect(settings.profile == UserProfile(preferredLanguages: [.hindi, .english]))
     }
 
     @Test("Unreadable accept keys and app entries preserve other overrides, quiet mode and pause")
@@ -46,9 +40,9 @@ struct NestedSettingsDecodingTests {
         let settings = try decode(
             #"{"engines":{"speech":"appleSpeech"},"profile":{"vocabulary":["Uttrflow"]},"suggestions":{"isEnabled":true,"turnedOff":["com.example.blocked"]}}"#
         )
-        #expect(settings.engines.speech == .appleSpeech)
+        #expect(settings.engines.speech == .whisperKit)
         #expect(settings.engines.transformerPreference == EngineConfiguration.default.transformerPreference)
-        #expect(settings.profile == UserProfile(vocabulary: ["Uttrflow"]))
+        #expect(settings.profile == .default)
         #expect(
             settings.suggestions == SuggestionPreferences(isEnabled: true, turnedOff: ["com.example.blocked"])
         )
@@ -60,7 +54,7 @@ struct NestedSettingsDecodingTests {
             #"{"engines":{"speech":7,"transformerPreference":["rules"]},"profile":{"profession":false,"preferredLanguages":42,"vocabulary":["Uttrflow"]},"suggestions":{"isEnabled":[],"isQuiet":true,"chosenAcceptKeys":[],"turnedOn":["com.example.enabled"],"pausedUntil":"later"}}"#
         )
         #expect(settings.engines == EngineConfiguration(speech: .whisperKit, transformerPreference: [.rules]))
-        #expect(settings.profile == UserProfile(vocabulary: ["Uttrflow"]))
+        #expect(settings.profile == .default)
         #expect(
             settings.suggestions == SuggestionPreferences(turnedOn: ["com.example.enabled"], isQuiet: true))
     }

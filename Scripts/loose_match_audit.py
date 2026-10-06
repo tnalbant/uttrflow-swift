@@ -2,11 +2,11 @@
 """Counts text comparisons that decide word identity by shape, and stops the count ever rising."""
 
 import argparse
-import json
 import os
 import re
-import subprocess
 import sys
+
+import ratchet
 
 ROOTS = ("Sources",)
 BASELINE = os.path.join("Scripts", "loose_match_baseline.json")
@@ -26,13 +26,19 @@ PREFIX_COMPARED = re.compile(
 # A fixed-width prefix kept as a String, which is a stem being named: `String(word.prefix(3))`.
 PREFIX_KEPT = re.compile(r"String\([^()]*\.prefix\(([0-9]+)\)\)")
 
-# A named width still bounds a word to a short stem: `prefix(openingLettersShared)`.
+# A named width bounding an operand of a text comparison: `word.prefix(openingLettersShared) == ...`.
 NAMED_PREFIX = re.compile(
-    r"\.(?:prefix|suffix)\(\s*([A-Za-z_$][\w$]*)\s*\)"
-    r"(?=.*(?:hasPrefix\(|hasSuffix\(|==|!=))"
-    r"|(?:hasPrefix\(|hasSuffix\(|==|!=).*\.(?:prefix|suffix)"
+    r"\.(?:prefix|suffix)\(\s*([A-Za-z_$][\w$]*)\s*\)\)*\s*(?:==|!=)"
+    r"|(?:==|!=|hasPrefix\(|hasSuffix\()\s*(?:String\()?[\w$.]*\.(?:prefix|suffix)"
     r"\(\s*([A-Za-z_$][\w$]*)\s*\)"
 )
+
+# A width declared as a literal integer, which is the only kind the audit can judge.
+WIDTH_DECLARATION = re.compile(r"\blet\s+([A-Za-z_$][\w$]*)\s*(?::\s*Int\s*)?=\s*([0-9]+)\b")
+
+
+class UnresolvedWidth(Exception):
+    """A named width bounds a comparison and no literal declaration says how wide it is."""
 
 # A suffix table is a set of endings, not a whole-word equality test.
 SUFFIX_TABLE = re.compile(r"(?:\w+Endings|endings)\.map\s*\{[^}]*\+\s*\$0")
@@ -63,10 +69,8 @@ def findings_in(path):
             if int(match.group(1)) <= STEM_WIDTH:
                 yield number, "a fixed-width prefix is kept as a word", line.strip()
         for match in NAMED_PREFIX.finditer(code):
-            widths = {candidate for candidate in match.groups() if candidate}
-            if any(
-                (declared_width(width) or STEM_WIDTH + 1) <= STEM_WIDTH for width in widths
-            ) and not ("limit" in widths and "Array(" in code and ".sorted()" in code):
+            name = match.group(1) or match.group(2)
+            if declared_width(name, f"{path}:{number}") <= STEM_WIDTH:
                 yield number, "a named short width bounds a text comparison", line.strip()
                 break
         if SUFFIX_TABLE.search(code):
@@ -80,19 +84,22 @@ def findings_in(path):
             yield number, "a word is matched by being swallowed by another", line.strip()
 
 
-def declared_width(name):
-    """Returns a named integer width declared in Sources, when it is statically known."""
-    try:
-        result = subprocess.run(
-            ["rg", "-n", rf"(?:static\s+)?let\s+{re.escape(name)}\s*=\s*([0-9]+)", *ROOTS],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except FileNotFoundError:
-        return None
-    match = re.search(r"(?:static\s+)?let\s+" + re.escape(name) + r"\s*=\s*([0-9]+)", result.stdout)
-    return int(match.group(1)) if match else None
+def declared_widths():
+    """Maps each literal integer declared under ROOTS to its smallest value, read in Python so no tool can be missing."""
+    widths = {}
+    for path in swift_files():
+        with open(path, errors="ignore") as source:
+            for name, value in WIDTH_DECLARATION.findall(source.read()):
+                widths[name] = min(int(value), widths.get(name, int(value)))
+    return widths
+
+
+def declared_width(name, where):
+    """Returns the declared width of `name`, and fails rather than guess when there is none."""
+    widths = declared_widths()
+    if name not in widths:
+        raise UnresolvedWidth(f"{where}: no `let {name} = <integer>` under {', '.join(ROOTS)}")
+    return widths[name]
 
 
 def swift_files():
@@ -117,16 +124,15 @@ def survey():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--update", action="store_true", help="record the current counts")
-    parser.add_argument(
-        "--after-merge",
-        action="store_true",
-        help="with --update, accept counts that rose because main moved underneath",
-    )
+    ratchet.add_arguments(parser)
     parser.add_argument("--report", action="store_true", help="list what is left, with the line")
     arguments = parser.parse_args()
 
-    counts, detail = survey()
+    try:
+        counts, detail = survey()
+    except UnresolvedWidth as unresolved:
+        print(f"Cannot judge a named width, so the audit fails rather than pass it: {unresolved}")
+        return 2
     total = sum(counts.values())
 
     if arguments.report:
@@ -135,37 +141,13 @@ def main():
         print(f"\n{total} loose word matches in {len(counts)} files")
         return 0
 
-    baseline = json.load(open(BASELINE)) if os.path.exists(BASELINE) else {}
+    baseline = ratchet.load(BASELINE)
 
     if arguments.update:
-        recorded = baseline.get("files", {})
-        # With a baseline, a file it does not list was clean, so any count there is a rise.
-        risen = {
-            path: (recorded.get(path, 0), count)
-            for path, count in counts.items()
-            if baseline and count > recorded.get(path, 0)
-        }
-        if risen and not arguments.after_merge:
-            print("Refusing to record a higher count. The baseline only goes down.")
-            for path, (was, now) in sorted(risen.items()):
-                print(f"  {path}: {was} -> {now}")
-            print("\nIf these arrived from main rather than from your own work, re-record")
-            print("with --after-merge. The rise then shows in the baseline's diff, where a")
-            print("reviewer can see it, rather than passing unremarked.")
-            return 1
-        if risen:
-            print("Absorbing counts that rose with main. Each is a match to tighten later:")
-            for path, (was, now) in sorted(risen.items()):
-                print(f"  {path}: {was} -> {now}")
-        json.dump(
-            {"total": total, "files": counts}, open(BASELINE, "w"), indent=2, sort_keys=True
-        )
-        print(f"Recorded {total} loose word matches across {len(counts)} files.")
-        return 0
+        return ratchet.update(BASELINE, counts, "loose word matches", "a match to tighten later", arguments.after_merge)
 
     if not baseline:
-        print(f"No baseline at {BASELINE}. Run: python3 {sys.argv[0]} --update")
-        return 1
+        return ratchet.missing(BASELINE, sys.argv[0])
 
     recorded = baseline.get("files", {})
     failures = [
@@ -179,9 +161,9 @@ def main():
         print("These files gained a text comparison that decides identity by shape:\n")
         for failure in failures:
             print(f"  {failure}")
-        print("\nAsk MeaningPreservationGuard.sameForm whether two spellings are one word,")
+        print("\nAsk WordForms.sameForm whether two spellings are one word,")
         print("spelledInto or isWritten whether it is written out, and WordErrorRate.measure")
-        print("whether it is still there in order. See issue #189 in PLAN.md.")
+        print("whether it is still there in order. See Docs/agents/code-quality.md, \"Spelling and meaning\".")
         return 1
 
     print(f"Word matches: {total} loose, none higher than the baseline.")

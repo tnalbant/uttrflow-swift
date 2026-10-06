@@ -16,19 +16,33 @@ public enum Romaniser {
                 output.append(digit)
                 index += 1
             } else if stops.contains(scalar) {
-                // A stop the recogniser also wrote in Latin is kept once.
-                let next = index + 1 < scalars.count ? scalars[index + 1] : nil
-                if !(next.map { ".!?".unicodeScalars.contains($0) } ?? false) { output.append(".") }
+                // A run of stops, or a stop after a Latin one, ends the sentence once.
+                var end = index
+                while end < scalars.count, stops.contains(scalars[end]) { end += 1 }
+                let next = end < scalars.count ? scalars[end] : nil
+                let written = output.last { !CharacterSet.whitespacesAndNewlines.contains($0) }
+                let ended = written.map { ".!?".unicodeScalars.contains($0) } ?? false
+                if !ended, !(next.map { ".!?".unicodeScalars.contains($0) } ?? false) {
+                    output.append(".")
+                    // A word right after the stop opens the next sentence, so it is spaced off.
+                    if let next, !CharacterSet.whitespacesAndNewlines.contains(next),
+                        !CharacterSet.punctuationCharacters.contains(next)
+                    {
+                        output.append(" ")
+                    }
+                }
                 outputEndsSentence = true
-                index += 1
+                index = end
             } else if isWordScalar(scalar) {
                 var end = index
                 while end < scalars.count, isWordScalar(scalars[end]) { end += 1 }
                 let spelled = word(Array(scalars[index..<end]))
                 let opens = capitalisingSentences && outputEndsSentence
+                if index > 0, isOtherScriptLetter(scalars[index - 1]) { output.append(" ") }
                 output.append(
                     contentsOf: (opens ? spelled.prefix(1).uppercased() + spelled.dropFirst() : spelled)
                         .unicodeScalars)
+                if end < scalars.count, isOtherScriptLetter(scalars[end]) { output.append(" ") }
                 outputEndsSentence = false
                 index = end
             } else {
@@ -73,6 +87,10 @@ public enum Romaniser {
         // A final "h" after a vowel is not said: "woh" is "wo", "yeh" is "ye".
         if key.count > 1, key.hasSuffix("h"), let before = key.dropLast().last, "aeiou".contains(before) {
             key.removeLast()
+        }
+        // A final "ay" after a consonant is typed "ai" as often: "chay" and "chai".
+        if key.count > 2, key.hasSuffix("ay"), let before = key.dropLast(2).last, !"aeiou".contains(before) {
+            key = String(key.dropLast()) + "i"
         }
         return key
     }
@@ -189,7 +207,9 @@ public enum Romaniser {
             let after = syllables[index + 1]
             // A conjunct after it keeps the vowel: "ananya", not "annya".
             guard !before.vowel.isEmpty, !before.isNasal, !after.vowel.isEmpty,
-                after.consonants.count == 1
+                after.consonants.count == 1,
+                // "p" then "h" would read "ph": दोपहर is "dopahar"
+                after.consonants != [Consonant(base: ha, hasNukta: false)]
             else { continue }
             syllables[index].vowel = ""
         }
@@ -278,6 +298,11 @@ public enum Romaniser {
     /// Whether a scalar is in the Devanagari block.
     static func isDevanagari(_ scalar: Unicode.Scalar) -> Bool {
         (0x0900...0x097F).contains(scalar.value)
+    }
+
+    /// Whether a scalar is a letter or digit of another script, so a change to or from Devanagari beside it is a word boundary.
+    private static func isOtherScriptLetter(_ scalar: Unicode.Scalar) -> Bool {
+        !isDevanagari(scalar) && CharacterSet.alphanumerics.contains(scalar)
     }
 
     /// Whether a scalar belongs inside a Devanagari word: a letter or sign, or a joiner between them.
@@ -404,5 +429,6 @@ public enum Romaniser {
         ("इंतजार", "intezaar"), ("संपादक", "sampadak"), ("रहा", "raha"), ("रही", "rahi"),
         ("रहे", "rahe"), ("था", "tha"), ("थी", "thi"), ("थे", "the"), ("अभी", "abhi"), ("कभी", "kabhi"),
         ("सभी", "sabhi"), ("कोई", "koi"), ("बात", "baat"), ("आज", "aaj"), ("कल", "kal"),
+        ("चाय", "chai"), ("जनवरी", "janvari"), ("फ़रवरी", "farvari"), ("फरवरी", "farvari"),
     ]
 }

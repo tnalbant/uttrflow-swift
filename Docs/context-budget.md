@@ -1,102 +1,140 @@
 # The context read's budget
 
-`MacContextEngine` describes what the user is looking at, and the one thing it may never do is
-make them wait for the answer. This page holds the numbers that decide how long it waits and how
-much it keeps, and the traps that come with them.
+`MacContextEngine` (`Sources/UttrflowContext/MacContextEngine.swift`) describes what the user is
+looking at, and the one thing it may never do is make them wait for the answer. This page holds the
+numbers that decide how long it waits and how much it keeps, and the traps that come with them.
+[context-accessibility.md](context-accessibility.md) covers what applications answer.
 
-## 100 ms, measured
+| Constant | Value | Meaning |
+|---|---|---|
+| `MacContextEngine.budget` | 100 ms | Longest one `currentContext()` call is waited for |
+| `MacContextEngine.budgetInSeconds` | 0.1 | The same budget as a `Float`, for `AXUIElementSetMessagingTimeout` |
+| `MacContextEngine.selectedTextLimit` | 512 characters | Longest selection kept; read by range over at most 2,052 UTF-16 units, so a longer one is cut and ends in `…` and a refused range read keeps none |
+| `StageTimeout.quick` | 15 s | The pipeline's own cap on a context read, for an injected engine that keeps no budget |
 
-`MacContextEngine.budget` is 100 ms.
+## 100 ms
 
-Against the application the user is actually typing in — the only one that matters here — a
-focused-window read came back in **0.08–0.12 ms** warm, and **35 ms** on the very first read of a
-session, when the connection to that application is set up.
+Against the application the user is typing in, a focused-window read takes a fraction of a
+millisecond warm and tens of milliseconds on the first read of a session, when the connection to
+that application is set up; `uttrflow-dev context` prints the time of one read as `read in`. The
+slow case is an application that has stopped pumping its run loop, which does not answer until the
+per-message timeout expires and then returns nothing. So 100 ms covers every realistic reading and
+truncates only the ones that were going to fail. It is also below the roughly 200 ms at which a
+person notices a delay.
 
-The slow case is an application that has stopped pumping its run loop. With a 100 ms
-Accessibility messaging timeout in place, seven background applications on the probe machine each
-blocked for the full **101–105 ms** and returned nothing.
+## When the screen is read
 
-So 100 ms buys every realistic reading a thousand times over, and truncates only the readings that
-were going to fail anyway.
+`DictationPipeline.beginWorkingAhead` starts a context read the moment recording begins, so it
+overlaps the speaking. That reading warms the tidier for where the words are heading, ranks the
+recogniser's vocabulary, and is carried into tidying as `earlyContext` rather than taken again. Its
+100 ms adds to the time between stopping speaking and seeing text only when a dictation is too
+short to cover it.
 
-It is also below the ~200 ms at which a person notices a delay, which is the ceiling that matters.
+Every piece is corrected against that same reading. One later read looks at the caret as it is
+then rather than as it was: insertion reads it once more immediately before writing
+(`insertionContextForWrite`), to pad the words against the text beside the caret and decide the
+first word's capital. That last reading is discarded if the application in front is no longer the
+one the dictation was read from.
 
-An ordinary dictation reads the screen once, at key-down: `DictationPipeline.beginWorkingAhead`
-starts this same context read the moment recording begins, to warm the tidier for where the words
-are heading and to rank the recogniser's vocabulary from it. That one reading is carried into
-tidying as `earlyContext` rather than taken again, so a dictation cut into five pieces pays for one
-reading, not five, and the words the recogniser listened for and the screen the tidier resolves
-against describe the same instant. Because the read overlaps the recording itself, its 100 ms is
-additive to the time between stopping speaking and seeing text only when a dictation is too short
-to cover it — the number this budget is defending.
+The pipeline reports each dictation's reads, and the milliseconds they took together, as one
+`ScreenReadCost` through `MetricsRecording.recordScreenReads`. It is kept apart from the stage
+timings, since the first read overlaps recording and would be counted twice in their sum.
 
 ## Three different waits
 
-"100 ms" names three different things in this file, and only one of them is `MacContextEngine.budget`:
+"100 ms" names three different things, and only one of them is `MacContextEngine.budget`:
 
-- **The whole-request deadline** — `MacContextEngine.budget` — bounds one `currentContext()` call:
-  identity, then the focused-window read, together. `Deadline` gives up waiting at 100 ms and hands
-  back whatever was gathered; it never extends the wait for a read still in flight.
-- **The per-message timeout** — `MacContextEngine.budgetInSeconds`, the same 100 ms expressed for
-  `AXUIElementSetMessagingTimeout` — bounds one Accessibility message to one element. A focused
-  window read sends several (title, focused field, selection, caret), so a napped application can
-  cost close to the whole-request deadline one message at a time even though no single message
-  waited longer than its own timeout.
-- **The lifetime of abandoned work** — unbounded in principle. See below.
+- **The whole-request deadline** (`MacContextEngine.budget`) bounds one `currentContext()` call:
+  identity, then the focused-window read, together. `withDeadline`
+  (`Sources/UttrflowCore/Support/StageTimeout.swift`) stops waiting at 100 ms and hands back
+  whatever was gathered; it never extends the wait for a read still in flight.
+- **The per-message timeout** (`MacContextEngine.timeLeft(since:)`) bounds one Accessibility
+  message to the part of the budget still left when it is sent, never the whole budget, so a
+  napped application cannot hold the read past its deadline one message at a time.
+- **The lifetime of abandoned work**, which is unbounded in principle; see below.
+
+## Messages per read
+
+`TreeWindowSource` (`Sources/UttrflowContext/FocusedWindowRead.swift`) asks each element once per
+batch with `AXUIElementCopyMultipleAttributeValues`. Counted with the fake tree in
+`WindowReadMessageCountTests`, for a native text view, a long browser text area and a terminal:
+
+| Message | One at a time | Batched |
+|---|---|---|
+| Focused window and focused field | 2 | 1 |
+| Window title | 1 | 1 |
+| Field names for the secure check | 6 | 1 |
+| Selection, length, line mode, marked run | 5 | 1 |
+| Value, or a range of it when long | 1 | 1 |
+| **Total** | **15** | **5** |
+
+The reading is identical either way. `_AXUIElementGetWindow` adds one message outside the tree in
+both. A selection adds one ranged read. Live time per family is not measured here.
 
 ## The seconds conversion is not cosmetic
 
-`AXUIElementSetMessagingTimeout` takes a `Float` of seconds and **reads zero as "use the global
-default"**. Reaching for `budget.components.seconds` alone would round a sub-second budget to zero
-and quietly leave the Accessibility calls with no timeout at all, which is why
-`MacContextEngine.budgetInSeconds` converts once, in one place, and a test asserts it is 0.1 and
-not 0.
+`AXUIElementSetMessagingTimeout` takes a `Float` of seconds and reads zero as "use the global
+default". Taking `budget.components.seconds` alone would round a sub-second budget to zero and
+leave the Accessibility calls with no timeout at all, which is why `budgetInSeconds` converts once,
+in one place, and `MacContextEngineTests` asserts it is 0.1 and not 0.
 
 ## What is abandoned rather than cancelled
 
-When the whole-request deadline runs out the reading is left behind, not stopped. By then it may be
-blocked inside a synchronous Accessibility call that will not notice a cancellation; the point is
-only that the dictation stops waiting, and the Accessibility layer's own per-message timeout is what
-eventually frees the thread — up to one messaging timeout past the deadline for whichever message
-was already in flight when it expired, and `read(_:while:)` also stops sending any *further*
-messages the moment its caller's deadline has passed, so an abandoned read degrades to at most one
-more message rather than working through the rest of its sequence. That loser turning up late must
-therefore be harmless: `Deadline` resumes the caller once, and `MacContextEngine` lets only the
-latest uncancelled read update the remembered application behind Uttrflow.
+When the deadline runs out, the reading is left behind, not stopped: it may be blocked inside a
+synchronous Accessibility call that will not notice a cancellation. The per-message timeout is what
+eventually frees the thread, up to one messaging timeout past the deadline for the message already
+in flight, and `read(_:while:)` sends no further message once its caller has stopped waiting, so an
+abandoned read costs at most one more message. A loser turning up late is harmless: `withDeadline`
+resumes the caller once, and `MacContextEngine` lets only the latest uncancelled read update the
+remembered application behind Uttrflow.
 
-That blocking read runs on a dispatch queue of its own rather than the cooperative pool, because a
-napped application measurably does not answer for a tenth of a second and holding a pool thread
-that long would stall unrelated work in the app. That queue is concurrent, not serial: an abandoned
-read has no bound on how long it keeps a thread, and a serial queue would make every read behind it
-wait out that same unbounded time before starting its own — spending a second read's whole
-allowance on nothing but queueing. Concurrent reads cost nothing apps do not already pay for
-elsewhere: each targets a different element with its own messaging timeout, so there is no shared
-state for two reads to race over.
+The blocking read runs on a dispatch queue of its own (`com.uttrflow.context`) rather than the
+cooperative pool, because holding a pool thread for a napped application's timeout would stall
+unrelated work in the app. The queue is concurrent, not serial: an abandoned read has no bound on
+how long it keeps a thread, and a serial queue would make every read behind it wait that time out
+before starting its own. Concurrent reads share no state, since each targets a different element
+with its own messaging timeout.
+
+## What each consumer needs
+
+`ContextNeed` (`Sources/UttrflowContext/ContextNeed.swift`) is the slice one consumer reads: which
+parts, and a UTF-16 cap before the caret, after the selection and on the selection.
+`FocusedFieldRead.text` takes the union of the needs it serves and asks the field for no more.
+`ContextNeed.turn` is the union of `ContextNeed.dictationConsumers`, so a turn reads no slice that no
+consumer names.
+
+| Consumer | `ContextNeed` | Cap |
+|---|---|---|
+| Leading and trailing space padding | `caretEdges` | 2 units each side |
+| Sentence state, list item, line suggestions | `caretLine` | `ValueWindow.unitsBefore`, `ValueWindow.unitsAfter` |
+| Recogniser prompt, correction evidence; `AppContext.recognitionContext` keeps the last `InsertionPoint.recognitionSentences` sentences, at most `InsertionPoint.recognitionLimit` units, none from a secure field | `insertionSides` | `InsertionPoint.precedingLimit`, `InsertionPoint.followingLimit` |
+| Selection kept in the turn's window | `selectionStart` | `ValueWindow.selectionLimit` |
+| Prompt describer | selection, cut after the read | 120 characters (`AppContextDescriber.selectionLimit`) |
+| `MacContextEngine` selection | selection, its own ranged read | 512 characters (`selectedTextLimit`) |
+
+`FocusedFieldReadTests.caretEdgesNeedCopiesNoMoreThanSixteenUnits` holds the caret-edges need to
+ranged reads of at most 16 units. A new consumer adds its row in the same pull request.
 
 ## 512 characters of selection
 
-`MacContextEngine.selectedTextLimit` is 512.
-
 The selection rides into the prompt beside the transcript, and "select all, then dictate the
 replacement" is an ordinary thing to do. Uncapped, that pastes a whole document into an on-device
-model with a few thousand tokens of room, and the transcript it is supposed to be helping gets
-crowded out.
+model with a few thousand tokens of room, and the transcript is crowded out.
 
 The selection is there to disambiguate, not to be read: the symbol under the cursor, the sentence
-being rewritten. The evaluation corpus's own case is `setUserPrefs`, twelve characters. 512 is
-roughly a long paragraph, ~128 tokens, and past that a selection stops adding meaning and starts
-costing context. What is cut keeps a `…` so a model reading it does not take the fragment for a
-finished sentence.
+being rewritten. The evaluation corpus's own case is `setUserPrefs`, twelve characters. 512
+characters is roughly a long paragraph, about 128 tokens; past that a selection stops adding
+meaning and starts costing context. What is cut ends in `…` (`MacContextEngine.truncationMarker`)
+so a model does not take the fragment for a finished sentence.
 
 ## Naming the frontmost application
 
-Identity is read from `NSWorkspace.shared.frontmostApplication` directly, off the main actor —
-the same rule `UttrflowInput` follows for `isSelfFrontmost()` and `frontmostApplication()`. The
-read used to hop to the main actor first, so any main-actor work at key-down (redrawing the
-menu bar for `.recording`, a window redraw) could spend the whole 100 ms budget before identity
-was even asked for, and the read returned empty.
+Identity is read from `NSWorkspace.shared.frontmostApplication` directly, off the main actor, the
+same rule `UttrflowInput` follows for `isSelfFrontmost()` and `frontmostApplication()`. Hopping to
+the main actor first would let any main-actor work at key-down, such as redrawing the menu bar for
+`.recording`, spend the whole budget before identity was asked for.
 
 If identity still misses the budget, the engine names the application from the
-`didActivateApplicationNotification` feed it already keeps (the app behind Uttrflow when
-Uttrflow itself activated last), and logs `Context identity timed out` under the `context`
-category so it can be seen in the field.
+`didActivateApplicationNotification` feed it already keeps (the application behind Uttrflow when
+Uttrflow itself activated last) and logs `Context identity timed out; named from the activation
+feed` under the `context` category.

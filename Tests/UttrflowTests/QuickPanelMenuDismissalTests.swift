@@ -1,5 +1,6 @@
 // Tests that scrolling or losing the key window dismisses the row menu without changing its actions.
 
+import Foundation
 import Testing
 import UttrflowUX
 

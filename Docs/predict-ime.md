@@ -1,20 +1,21 @@
 # Detecting a composing input method
 
-`Docs/predict-probe.md` left this open: nothing in the Accessibility API obviously reports
-that a Hindi, Chinese or Japanese input method is mid-composition in another application.
-This is what was measured, what works, and what it costs where it does not.
-
-Re-run any of it with `uttrflow-dev probe ime`.
+AI suggestions (tab-to-complete) must not draw a ghost over an input method's marked text: while a
+Hindi, Chinese, Japanese or Vietnamese input method is mid-composition, the line, Escape and the
+arrow keys belong to it. This page is how Uttrflow tells, from another process, that a field is
+composing. The field read is `Sources/UttrflowContext/CompositionProbe+System.swift`, the decision
+`Sources/UttrflowPredict/Composition.swift`, and the gate `Quieting.reason`
+([predict.md](predict.md)). Re-run the measurements with `uttrflow-dev probe ime`.
 
 Which application publishes what is collected in [compatibility.md](compatibility.md); this page
 feeds its `Marked text` column, and the table under "How far it travels" stays here because the
 reach of one attribute is this page's whole subject.
 
 **Summary.** A real state signal exists and is public — `AXTextInputMarkedRange` — but it
-only reaches AppKit multi-line text views. Everywhere else the answer is a capability
-guess from the selected input source, which is a stopgap and is stated as one below.
+only reaches AppKit multi-line text views. Everywhere else the only answer is a capability
+guess from the selected input source, and that guess does not gate.
 
-**What the signal does today: the field's own answer gates, and the guess does not.**
+**What the signal does: the field's own answer gates, and the guess does not.**
 `Composition.isComposing` combines the field's marked range with the input source's kind,
 `FocusedFieldReader` writes the answer into `FocusedFieldSnapshot.isComposing`, and the
 coordinator copies it into `PredictionContext.isComposing`, where nothing gates on it. The
@@ -22,14 +23,19 @@ field's own answer travels beside it as `FocusedFieldSnapshot.markedText` and
 `PredictionContext.markedText`, and `Quieting.reason` returns `composing` when that is
 `present`: nothing is drawn and no key is claimed, so Escape and the arrow keys reach the
 input method, which uses them to cancel a conversion and walk its candidates. `absent` and
-`unanswered` gate nothing, so the fallback below still withholds nothing — the bill below
-is what a gate on the fallback cost, and it is why that gate stays off.
+`unanswered` gate nothing, so the fallback below withholds nothing — the bill below is what a
+gate on the fallback costs, and it is why that gate is off.
 
 **A Return while composing confirms a conversion, not the line.** A Japanese or Chinese
 input method uses Return to confirm the current conversion mid-sentence. When the last
 field read reported `present`, the coordinator hands that Return to capture as a
 keystroke (`SuggestionCoordinator.endsLine`), so the half-typed line is neither learned
 nor reset; the Return that sends the line, with no marked text before it, commits as usual.
+
+**The dictation read leaves the marked run out of the caret sides.** `MacContextEngine` reads
+the same attribute through `CompositionProbe.markedRange`, widens the selection to cover the
+marked run before `CaretText.around` cuts the value, and reports `FocusedWindow.isComposing`. So
+text that is still provisional never pads or cases a dictation. Nothing waits on that flag yet.
 
 ## What works: `AXTextInputMarkedRange`
 
@@ -90,13 +96,12 @@ So the signal covers AppKit multi-line text views and nothing else. It notably d
 cover single-line fields, which is where a completion is worth most, nor any browser, nor
 any Electron application.
 
-`WKWebView` is unmeasured rather than negative, and two attempts failed to reach it: the
-focused Accessibility element would not resolve for a web view, and walking the web view's
-subtree from the application element found no text element at all. WebKit's Accessibility
-appears not to come up for an unbundled harness. So WebKit — and therefore Safari — is not
-settled either way, and Chromium's result does not speak for it.
+`WKWebView` is unmeasured rather than negative: from an unbundled harness the focused
+Accessibility element does not resolve for a web view, and walking its subtree from the
+application element finds no text element. So WebKit — and therefore Safari — is not settled
+either way, and Chromium's result does not speak for it.
 
-## What does not work, checked rather than assumed
+## What does not work
 
 **Nine other attribute names return nothing.** Probed by hand on a text view holding live
 marked text: `AXMarkedTextRange`, `AXMarkedRange`, `AXHasMarkedText`, `AXTextMarkedRange`,
@@ -124,19 +129,18 @@ text, so it cannot be used to infer composition.
 **`NSTextInputClient` is not reachable.** It is implemented by the application being typed
 into. Uttrflow is not that application, so the protocol is out of reach by construction.
 
-## The fallback, which is a stopgap
+## The fallback: the input source's kind
 
 Where the field will not answer, all that is left is whether the selected input source
-*could* be composing. `TISCopyCurrentKeyboardInputSource` with
+*could* be composing (`InputSourceKind`). `TISCopyCurrentKeyboardInputSource` with
 `kTISPropertyInputSourceType` gives four keyboard types: `TISTypeKeyboardLayout`, a static
 key map that cannot compose, against `TISTypeKeyboardInputMethodWithoutModes`,
 `TISTypeKeyboardInputMethodModeEnabled` and `TISTypeKeyboardInputMode`, which can. Of the
-311 keyboard input sources installed on this Mac, 251 are layouts and 59 are input methods
-or their modes.
+311 keyboard input sources installed on the measuring Mac, 251 are layouts and 59 are input
+methods or their modes.
 
-**Use the source's type, not whether it is Roman.** The obvious stopgap — suppress when
-the current input source is not Roman — is not merely blunt, it is wrong in both
-directions, and Hindi is the case that shows it:
+**The source's type is used, not whether it is Roman.** Suppressing when the current input
+source is not Roman is wrong in both directions, and Hindi is the case that shows it:
 
 - `com.apple.keylayout.Devanagari` and `com.apple.keylayout.Devanagari-QWERTY` are plain
   layouts. They are not ASCII-capable and they never compose. The Roman test turns the
@@ -151,19 +155,18 @@ So the fallback computes: the current source is not a plain keyboard layout, the
 composition is possible. It is right where the Roman test is wrong in both of the cases
 above.
 
-**It is still a stopgap, and here is the bill.** It is a capability, not a state: it says
-composition is *possible*, never that it is *happening*. Used as a gate, which it no longer
-is, it cost this:
+**Why the fallback does not gate.** It is a capability, not a state: it says composition is
+*possible*, never that it is *happening*. Used as a gate it costs this:
 
 - A user of any Chinese, Japanese, Korean, Vietnamese or Hindi-transliteration input
-  method got no suggestions at all in any field that does not publish a marked range —
+  method gets no suggestions at all in any field that does not publish a marked range —
   which, per the table above, is Chrome, every Electron application, Terminal, and every
   single-line field. That is most of the surface the feature exists for.
 - `com.apple.inputmethod.Kotoeri.RomajiTyping.Roman` — the ASCII mode a Japanese user
-  switches to in order to type English — is an input *mode*, so it was suppressed even
+  switches to in order to type English — is an input *mode*, so it is suppressed even
   though it can never compose. Refining with `kTISPropertyInputSourceIsASCIICapable` would
-  rescue exactly that case and would re-break Vietnamese Telex and Kotoeri's parent mode,
-  both ASCII-capable and both composing.
+  rescue exactly that case and re-break Vietnamese Telex and Kotoeri's parent mode, both
+  ASCII-capable and both composing.
 
 The field's own answer always wins in the computed value where there is one, so an AppKit
 text view under a Japanese input method that is *not* composing reads as not composing.
@@ -174,14 +177,14 @@ measured state, not a guess, and fields that never answer keep their suggestions
 
 `TISCopyCurrentKeyboardInputSource` and `TSMGetInputSourceProperty` go through HIToolbox's
 `islGetInputSourceListWithAdditions`, which calls `dispatch_assert_queue` on the main queue.
-Called from anywhere else the process is killed outright with `EXC_BREAKPOINT` —
-reproduced three times, on the first keystroke after tab-to-complete was armed, because
-`FocusedFieldReader` deliberately reads on a private queue so an Accessibility read can
-never block the keystroke path.
+Called from anywhere else the process is killed outright with `EXC_BREAKPOINT`, and
+`FocusedFieldReader` reads on a private queue so an Accessibility read can never block the
+keystroke path.
 
 Hopping to the main queue and waiting would put exactly that block back, on exactly the
 path the private queue exists to keep clear. So the input source is not read on the read
-path at all. It is read once on the main queue when the loop starts, re-read on the main
+path at all. `CompositionProbe.startObservingInputSource` reads it once on the main queue when
+the loop starts, re-reads it on the main
 queue whenever `kTISNotifySelectedKeyboardInputSourceChanged` arrives through
 `DistributedNotificationCenter`, and kept in a `Mutex` that any thread may read with no
 system call in it. The input source changes when a person presses a key combination to
@@ -193,9 +196,9 @@ the window before start-up completes the computed value reads as composing. With
 off nothing is withheld by it; were the gate on, that window would be silent rather than
 risk a ghost over live marked text.
 
-`NSScreen` is main-thread-only for the same reason and was being read on the same private
-queue, for the primary screen's top edge that flips Accessibility coordinates into AppKit
-ones. It is cached the same way, refreshed on `NSApplication.didChangeScreenParametersNotification`.
+`NSScreen` is main-thread-only too, and the read path needs the primary screen's top edge to
+flip Accessibility coordinates into AppKit ones (`SuggestionGeometry.fromAccessibility`). It is
+read on the main actor and cached the same way.
 
 The frontmost application's identity is read on the main actor first. `FocusedFieldReader.read`
 and `.surroundings` both call `frontmostApp()`, a `@MainActor` function that asks
@@ -205,9 +208,9 @@ the queue never touches `NSWorkspace`. The name is stripped of control and direc
 on the way, since some applications pad theirs and the model would otherwise read them
 verbatim.
 
-## Residual risk
+## Limits
 
-1. **WebKit is unmeasured.** Safari is the single most valuable unknown in the table.
+1. **WebKit is unmeasured.** Safari is the most valuable unknown in the table.
 2. **Dead keys compose on a plain layout.** `com.apple.keylayout.USExtended` holds marked
    text for one keystroke after `⌥e`, and `.layout` claims that cannot happen. Where the
    field answers, the field is right and this costs nothing; where it does not, there is a
@@ -215,20 +218,11 @@ verbatim.
 3. **A third-party input method could classify itself as a layout.** Not observed among
    the 311 installed sources, but nothing enforces the classification.
 4. **Presence was measured per application, not per field.** An application could publish
-   the attribute on one field and not another. The application sweep in
-   `Docs/predict-probe.md` is what would settle it.
-5. **Composition was driven in-process rather than by a live input method.** No non-Roman
-   input source is enabled on this Mac, and enabling one changes the operator's system
-   settings. `setMarkedText` is the same call an input method makes through the same
-   AppKit path, so the field's state is genuinely identical — but it has not been watched
-   with a real Japanese IME in front of it, and item 4 above cannot be closed until it has.
+   the attribute on one field and not another.
+5. **Composition was driven in-process rather than by a live input method.** `setMarkedText`
+   is the same call an input method makes through the same AppKit path, so the field's state
+   is identical, but the table has not been checked with a real Japanese input method in front
+   of it.
 
-## An aside that unblocks the pending sweeps
-
-`Docs/predict-probe.md` records the application sweep and the event-tap probe as blocked
-because "Accessibility is granted per binary, and `uttrflow-dev` does not have it". That
-is not true when the binary is launched from a terminal that already has the grant: every
-cross-process Accessibility read in this document was made from an unsigned scratch binary
-run that way, and `AXIsProcessTrusted()` returned true. Accessibility is attributed to the
-responsible process, which is the terminal. The sweeps still need somebody to click into a
-text field in each application, but they no longer need a password.
+Every cross-process read on this page was made from an unsigned binary launched from a terminal
+that holds the Accessibility grant, which the binary inherits ([predict-probe.md](predict-probe.md)).

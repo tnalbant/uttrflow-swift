@@ -47,6 +47,13 @@ struct PanelThumbnailsTests {
     /// What one of those weighs, asked of the cache's own function so the two cannot disagree.
     static let thumbnailBytes = PanelThumbnails.bytes(of: bitmap())
 
+    private static func oversizedPNG() throws -> Data {
+        let encoded =
+            "iVBORw0KGgoAAAANSUhEUgAA//8AAP//AQMAAACMy0sTAAAACVBMVEUA"
+            + "AAD///+AgIBEyIOaAAAABklEQVR4nGMAAADq4gSQAAAAAElFTkSuQmCC"
+        return try #require(Data(base64Encoded: encoded))
+    }
+
     private func thumbnails(
         _ answers: [URL: NSImage] = [:], budget: Int? = nil, retryAfter: Duration = .seconds(2)
     ) -> (PanelThumbnails, Counter) {
@@ -77,6 +84,35 @@ struct PanelThumbnailsTests {
         for _ in 0..<20 { _ = thumbnails.thumbnail(for: file) }
 
         #expect(counter.files == [file])
+    }
+
+    @Test("rejects a tiny PNG with an oversized header before decoding and keeps the placeholder")
+    func oversizedHeaderDoesNotDecode() async throws {
+        let file = FileManager.default.temporaryDirectory
+            .appending(path: "uttrflow-oversized-thumbnail-\(UUID().uuidString).png")
+        defer { try? FileManager.default.removeItem(at: file) }
+        let png = try Self.oversizedPNG()
+        #expect(png.count == 84)
+        try png.write(to: file)
+        let header = try #require(CGImageSourceCreateWithURL(file as CFURL, nil))
+        let properties = try #require(CGImageSourceCopyPropertiesAtIndex(header, 0, nil) as? [CFString: Any])
+        #expect(properties[kCGImagePropertyPixelWidth] as? Int == 65_535)
+        #expect(properties[kCGImagePropertyPixelHeight] as? Int == 65_535)
+        let counter = Counter()
+        let source = PanelThumbnailSource { file, maxPixel in
+            PanelThumbnailSource.load(file, maxPixel: maxPixel) { source, options in
+                counter.count()
+                return CGImageSourceCreateThumbnailAtIndex(source, 0, options)
+            }
+        }
+        let thumbnails = PanelThumbnails(source: source)
+
+        thumbnails.prepare(file)
+        await thumbnails.waitForIdle(file: file)
+
+        #expect(counter.calls == 0)
+        #expect(thumbnails.known.keys.contains(file))
+        #expect(thumbnails.thumbnail(for: file) == nil)
     }
 
     @Test("a view starts from the cached picture and a miss is awaited, not polled")
@@ -159,6 +195,7 @@ struct PanelThumbnailsTests {
         present.count()
 
         #expect(thumbnails.thumbnail(for: file) == nil)
+        thumbnails.prepare(file)
         await thumbnails.waitForIdle(file: file)
         #expect(thumbnails.thumbnail(for: file) === restored)
         #expect(counter.calls == 2)
@@ -295,6 +332,7 @@ struct PanelThumbnailsTests {
         }
         let thumbnails = PanelThumbnails(source: source, budget: 1)
 
+        thumbnails.prepare(file)
         let result = thumbnails.thumbnail(for: file)
         let decodeStillHeld = !decoding.hasEnded
         decoding.release()
@@ -307,35 +345,26 @@ struct PanelThumbnailsTests {
         #expect(thumbnails.thumbnail(for: file) != nil)
     }
 
+    /// Each row awaits its own file's decode, so only the row showing that picture is woken when it lands.
     @Test("a decode redraws only the row showing that picture")
     func decodeInvalidatesOneFile() async {
-        final class Flag: @unchecked Sendable { var changed = false }
+        let picture = NSImage(size: NSSize(width: 4, height: 4))
         let other = URL(fileURLWithPath: "/tmp/uttrflow-other.png")
-        let (thumbnails, _) = thumbnails([file: NSImage(size: NSSize(width: 4, height: 4))])
-        let flag = Flag()
-        withObservationTracking {
-            _ = thumbnails.thumbnail(for: file)
-        } onChange: {
-            flag.changed = true
-        }
-        await thumbnails.waitForIdle(file: file)
-        thumbnails.prepare(other)
-        await thumbnails.waitForIdle(file: other)
-        #expect(flag.changed, "the row showing the decoded file is told")
+        let (thumbnails, _) = thumbnails([file: picture])
 
-        let untouched = Flag()
-        withObservationTracking {
-            _ = thumbnails.thumbnail(for: file)
-        } onChange: {
-            untouched.changed = true
-        }
+        thumbnails.prepare(file)
+        await thumbnails.waitForIdle(file: file)
+        #expect(thumbnails.cached(file) === picture, "the row showing the decoded file is given it")
+
+        thumbnails.prepare(other)
         let third = URL(fileURLWithPath: "/tmp/uttrflow-third.png")
         for index in 0..<50 {
             let next = third.appendingPathExtension("\(index)")
             thumbnails.prepare(next)
             await thumbnails.waitForIdle(file: next)
         }
-        #expect(!untouched.changed, "fifty other decodes leave this row alone")
+        await thumbnails.waitForIdle(file: other)
+        #expect(thumbnails.cached(file) === picture, "fifty other decodes leave this row alone")
     }
 
     /// Calling prepare twice for the same file does not run the source twice; the in-flight tracker deduplicates.
@@ -388,9 +417,9 @@ struct PanelThumbnailsCapacityTests {
         await thumbnails.waitForIdle(file: file(2))
         thumbnails.prepare(file(3))  // pushes 1 out
         await thumbnails.waitForIdle(file: file(3))
-        _ = thumbnails.thumbnail(for: file(2))  // still remembered
-        // 1 was forgotten by 3, so reading it kicks off a fresh off-main decode.
-        _ = thumbnails.thumbnail(for: file(1))
+        thumbnails.prepare(file(2))  // still remembered
+        // 1 was forgotten by 3, so asking for it again kicks off a fresh off-main decode.
+        thumbnails.prepare(file(1))
         await thumbnails.waitForIdle(file: file(1))
 
         #expect(counter.files == [file(1), file(2), file(3), file(1)])

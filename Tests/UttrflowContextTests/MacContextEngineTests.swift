@@ -54,6 +54,7 @@ private let uttrflow = FrontmostApplication(
 /// An engine on a gated clock, so nothing here depends on how long anything actually takes.
 private func makeEngine(
     frontmost: @escaping @Sendable () async -> FrontmostApplication?,
+    focusOwner: @escaping @Sendable (FrontmostApplication) async -> FrontmostApplication? = { _ in nil },
     window: @escaping @Sendable (FrontmostApplication) async -> FocusedWindow? = { _ in nil },
     ownBundleIdentifier: String? = uttrflowBundle,
     ownProcessIdentifier: Int32 = uttrflowProcess,
@@ -62,7 +63,10 @@ private func makeEngine(
 ) -> MacContextEngine {
     MacContextEngine(
         readFrontmostApplication: frontmost,
-        readFocusedWindow: window,
+        readFocusOwner: focusOwner,
+        readFocusedWindow: { application, sink in
+            if let banked = await window(application) { sink.bank(banked) }
+        },
         ownBundleIdentifier: ownBundleIdentifier,
         ownProcessIdentifier: ownProcessIdentifier,
         clock: clock,
@@ -92,6 +96,56 @@ struct MacContextEngineTests {
 
         #expect(context.applicationName == "Slack")
         #expect(context.bundleIdentifier == "com.tinyspeck.slackmacgap")
+    }
+
+    @Test("carries the focused field's identity, secure or not, so a write can refuse another field")
+    func carriesTheFieldIdentity() async {
+        let field = FieldIdentity(processIdentifier: 42, windowNumber: 5, element: 9)
+        let plain = await makeEngine(frontmost: slack, window: FocusedWindow(title: "general", field: field))
+            .currentContext()
+        let secure = await makeEngine(
+            frontmost: slack, window: FocusedWindow(title: "login", isSecure: true, field: field)
+        ).currentContext()
+
+        #expect(plain.field == field)
+        #expect(secure.field == field)
+    }
+
+    @Test("names the owner of a focused panel that never activated, not the application underneath")
+    func followsTheFocusedElementsOwner() async {
+        let launcher = FrontmostApplication(
+            name: "Launcher", bundleIdentifier: "com.example.launcher", processIdentifier: 4_321)
+        let windowsRead = Mutex<[Int32]>([])
+        let context = await makeEngine(
+            frontmost: { slack },
+            focusOwner: { _ in launcher },
+            window: { application in
+                windowsRead.withLock { $0.append(application.processIdentifier) }
+                return FocusedWindow(title: "Search")
+            }
+        ).currentContext()
+
+        #expect(context.applicationName == "Launcher")
+        #expect(context.bundleIdentifier == "com.example.launcher")
+        #expect(context.documentName == "Search")
+        #expect(windowsRead.withLock { $0 } == [launcher.processIdentifier])
+    }
+
+    @Test("treats Uttrflow's own focused panel as Uttrflow in front, reading no window")
+    func ownPanelOverAnotherApplicationIsUttrflowInFront() async {
+        let windowsRead = Mutex(0)
+        let context = await makeEngine(
+            frontmost: { slack },
+            focusOwner: { _ in uttrflow },
+            window: { _ in
+                windowsRead.withLock { $0 += 1 }
+                return FocusedWindow(title: "Uttrflow panel")
+            }
+        ).currentContext()
+
+        #expect(context.applicationName == "Slack")
+        #expect(context.documentName == nil)
+        #expect(windowsRead.withLock { $0 } == 0)
     }
 
     @Test("takes the document name from the focused window's title")
@@ -254,6 +308,30 @@ struct MacContextEngineTests {
         #expect(context.bundleIdentifier == "com.tinyspeck.slackmacgap")
         #expect(context.documentName == nil, "a hung read must not be waited for")
         #expect(context.selectedText == nil)
+    }
+
+    @Test("keeps the window title a read banked before it hung")
+    func keepsWhatTheWindowReadBankedBeforeHanging() async {
+        let clock = GatedClock()
+        let banked = Gate()
+        let hung = Gate()
+        let engine = MacContextEngine(
+            readFrontmostApplication: { slack },
+            readFocusedWindow: { _, sink in
+                sink.bank(FocusedWindow(title: "Budget.numbers"))
+                await banked.open()
+                await hung.wait()
+            },
+            ownBundleIdentifier: uttrflowBundle, ownProcessIdentifier: uttrflowProcess, clock: clock)
+
+        async let reading = engine.currentContext()
+        await banked.wait()
+        await clock.gate.open()
+        let context = await reading
+
+        #expect(context.applicationName == "Slack")
+        #expect(context.documentName == "Budget.numbers")
+        #expect(context.precedingText == nil)
     }
 
     @Test("returns nothing rather than waiting when even the identity read hangs")

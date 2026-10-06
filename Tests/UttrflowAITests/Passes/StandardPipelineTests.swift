@@ -9,8 +9,10 @@ struct StandardPipelineTests {
     func order() {
         #expect(
             CleaningPipeline.standard.ids == [
-                "fillers", "repeatedPhrase", "stammers", "selfCorrection", "spokenPunctuation", "layoutWords",
-                "numberForms", "contractions", "spelledInitialism", "spacing", "firstWord", "terminalStop",
+                "fillers", "repeatedPhrase", "stammers", "selfCorrection", "spokenPunctuation",
+                "spokenCasing",
+                "layoutWords", "numberForms", "contractions", "spacing", "pauseStop", "spelledInitialism",
+                "acronymCasing", "sentenceBoundary", "firstWord", "commentMarker", "terminalStop",
             ])
     }
 
@@ -18,13 +20,17 @@ struct StandardPipelineTests {
     func beforeModel() {
         #expect(
             CleaningPipeline.beforeModel(for: .standard(for: .plain), situation: .unknown).ids
-                == Array(CleaningPipeline.standard.ids.dropLast(2)))
+                == Array(CleaningPipeline.standard.ids.dropLast(5)))
     }
 
     @Test("joins spoken initialisms after the whole message is assembled")
     func wholeTextInitialisms() {
-        let pipeline = CleaningPipeline.wholeText(for: .standard(for: .plain), situation: .unknown)
-        #expect(pipeline.ids == [.spelledInitialism, .firstWord, .terminalStop])
+        let pipeline = CleaningPipeline.message(for: .standard(for: .plain), situation: .unknown)
+        #expect(
+            pipeline.ids == [
+                .spelledInitialism, .acronymCasing, SentenceBoundaryPass.id, .firstWord, CommentMarkerPass.id,
+                .terminalStop,
+            ])
         #expect(pipeline.run(Draft(text: "the a p i is down")).text == "The API is down.")
     }
 
@@ -35,7 +41,7 @@ struct StandardPipelineTests {
             for: spreadsheet, situation: .unknown)
         #expect(
             spreadsheetPipeline.run(Draft(text: "number one buy milk number two walk the dog")).text
-                == "number 1 buy milk number 2 walk the dog")
+                == "buy milk, walk the dog")
 
         let document = DestinationFormatter.standard(for: .document)
         let documentPipeline = CleaningPipeline.beforeModel(for: document, situation: .unknown)
@@ -136,7 +142,11 @@ struct StandardPipelineTests {
     func afterModel() {
         let cell = CleaningPipeline.afterModel(
             for: .standard(for: .spreadsheet), situation: .unknown, heard: "uh total revenue")
-        #expect(cell.ids == ["spokenPunctuation", "caretEcho", "firstWord", "terminalStop"])
+        #expect(
+            cell.ids == [
+                "spokenPunctuation", "caretEcho", "caretCloser", "digitGrouping", "spelledInitialism",
+                "acronymCasing", "sentenceBoundary", "firstWord", "commentMarker", "terminalStop",
+            ])
         #expect(cell.run(Draft(text: "Total revenue.")).text == "total revenue")
 
         let app = AppContext(documentName: "Chat with John", precedingText: "because ")
@@ -153,7 +163,7 @@ struct StandardPipelineTests {
                 "um so uh basically the the thing is we need more time",
                 "So basically the thing is we need more time."
             ),
-            ("let's meet at four no sorry at five on tuesday", "Let's meet at five on tuesday."),
+            ("let's meet at four no sorry at five on tuesday", "Let's meet at five on Tuesday."),
             ("we still need milk comma eggs comma and bread", "We still need milk, eggs, and bread."),
             ("we're on postgres sixteen point two right now", "We're on postgres 16.2 right now."),
             ("first line new line second line", "First line\nSecond line."),
@@ -188,6 +198,21 @@ struct StandardPipelineTests {
     }
 
     @Test(
+        "keeps the modal question when only the pronoun after it is stammered",
+        arguments: [
+            ("can you you help me with this", "Can you help me with this?"),
+            ("could you you send me the file", "Could you send me the file?"),
+            ("can i i borrow your pen", "Can I borrow your pen?"),
+            ("can you you please check", "Can you please check?"),
+            ("would we we need a visa", "Would we need a visa?"),
+            ("could they they join us", "Could they join us?"),
+        ]
+    )
+    func stammeredPronounAfterModal(input: String, expected: String) {
+        #expect(CleaningPipeline.standard.run(Draft(text: input)).text == expected)
+    }
+
+    @Test(
         "keeps complete clauses that can resemble an abandoned start",
         arguments: [
             ("I said I'd go", "I said I'd go."),
@@ -201,12 +226,12 @@ struct StandardPipelineTests {
         #expect(CleaningPipeline.standard.run(Draft(text: input)).text == expected)
     }
 
-    @Test("splits fillers glued to their neighbours by pause ellipses")
-    func splitsGluedFillers() {
+    @Test("removes fillers glued to their neighbours by pause ellipses, keeping the ellipses between words")
+    func removesGluedFillers() {
         #expect(
             CleaningPipeline.standard.run(
                 Draft(text: "Ah...the...um...the invoice is...ah...overdue")
-            ).text == "The invoice is overdue."
+            ).text == "The...the invoice is...overdue."
         )
     }
 

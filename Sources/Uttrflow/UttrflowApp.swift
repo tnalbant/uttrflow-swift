@@ -46,8 +46,10 @@ enum UttrflowApp {
         guard let instance = claimTheOnlyInstance(in: container) else { exit(0) }
         let (reloads, reported) = AsyncStream<IdleReload>.makeStream()
         // One model both validates a remembered suggestion and invents one where there is none; its weights are fetched when the feature is first built, never at launch.
+        let local = MLXCandidateScorer(
+            model: .configured(UserDefaults.standard.string(forKey: LocalModel.configurationKey)))
         let model = IdleReleasingModel(
-            model: MLXCandidateScorer(model: .gemma3),
+            model: local,
             idleAfter: IdleRelease.window(physicalMemory: ProcessInfo.processInfo.physicalMemory),
             onReload: { reported.yield($0) })
         // Every use is discretionary: utility priority, and no pass in Low Power Mode, under thermal pressure or while dictating.
@@ -70,7 +72,8 @@ enum UttrflowApp {
             scoring: scoring, generating: generating,
             prepareModel: { onProgress in try await scoring.prepare(onProgress: onProgress) },
             releaseModel: { await scoring.release() },
-            allowModelReload: { await model.allowReloadAfterRelease() }, encryptedStore: EncryptedStore())
+            allowModelReload: { await scoring.allowReloadAfterRelease() }, encryptedStore: EncryptedStore(),
+            localTidier: local)
         application.delegate = delegate
         // A reload after an idle release is shown where the user is looking, not only in Settings.
         Task { @MainActor in
@@ -144,10 +147,15 @@ enum UttrflowApp {
             switch SingleInstanceLock.acquire(at: otherStoreFile) {
             case .acquired(let lock):
                 guards.append(lock)
+                // A free lock proves nothing about a build that predates it, so judge the peer by whether it stays running.
+                if let peer = runningPeer(otherIdentifier, excluding: me),
+                    LocklessPeer.outlasts(isRunning: { !peer.isTerminated })
+                {
+                    explainConflict(with: peer)
+                    return nil
+                }
             case .heldElsewhere:
-                if let running = NSWorkspace.shared.runningApplications.first(where: {
-                    $0.processIdentifier != me && $0.bundleIdentifier == otherIdentifier && !$0.isTerminated
-                }) {
+                if let running = runningPeer(otherIdentifier, excluding: me) {
                     explainConflict(with: running)
                 } else {
                     explainLockFailure()
@@ -159,6 +167,14 @@ enum UttrflowApp {
             }
         }
         return guards
+    }
+
+    /// A live process of `identifier` other than `me`.
+    @MainActor
+    private static func runningPeer(_ identifier: String, excluding me: pid_t) -> NSRunningApplication? {
+        NSWorkspace.shared.runningApplications.first {
+            $0.processIdentifier != me && $0.bundleIdentifier == identifier && !$0.isTerminated
+        }
     }
 
     @MainActor

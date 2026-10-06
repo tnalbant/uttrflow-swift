@@ -22,6 +22,21 @@ struct OrbitPaletteTests {
         return resolved.map { ($0 * 255).rounded() / 255 }
     }
 
+    /// A fixed colour's components, rounded to the 8-bit value drawn.
+    private func components(_ colour: NSColor) -> [CGFloat] {
+        components(colour, in: .aqua)
+    }
+
+    /// Resolved components as an sRGB hex, alpha left out.
+    private func hex(_ components: [CGFloat]) -> UInt32 {
+        components.prefix(3).reduce(0) { $0 << 8 | UInt32(($1 * 255).rounded()) }
+    }
+
+    /// A colour as it lands on `ground`, blended over it at its own alpha.
+    private func composited(_ colour: [CGFloat], over ground: [CGFloat]) -> UInt32 {
+        blend(hex(colour), over: hex(ground), share: Double(colour[3]))
+    }
+
     @Test("unpacks a hex into red, green and blue in that order")
     func hexChannels() {
         let colour = NSColor(rgb: 0x0B_0C10).usingColorSpace(.sRGB)
@@ -72,30 +87,35 @@ struct OrbitPaletteTests {
             (.accessibilityHighContrastDarkAqua, true),
         ] {
             let ordinary = dark ? NSAppearance.Name.darkAqua : .aqua
-            let separator = components(.orbit(BrandPalette.Line.separator), in: appearance)
-            let ordinarySeparator = components(.orbit(BrandPalette.Line.separator), in: ordinary)
-            let dim = components(.orbit(BrandPalette.Text.dim), in: appearance)
-            let ordinaryDim = components(.orbit(BrandPalette.Text.dim), in: ordinary)
-            let muted = components(.orbit(BrandPalette.Text.muted), in: appearance)
-            let ordinaryMuted = components(.orbit(BrandPalette.Text.muted), in: ordinary)
+            let separator = components(.orbit(BrandPalette.Line.separator, in: appearance))
+            let ordinarySeparator = components(.orbit(BrandPalette.Line.separator, in: ordinary))
+            let dim = components(.orbit(BrandPalette.Text.dim, in: appearance))
+            let ordinaryDim = components(.orbit(BrandPalette.Text.dim, in: ordinary))
+            let muted = components(.orbit(BrandPalette.Text.muted, in: appearance))
+            let ordinaryMuted = components(.orbit(BrandPalette.Text.muted, in: ordinary))
             let wash = components(
-                .orbitAlpha(BrandPalette.Surface.wash, alpha: 0.07, highContrastAlpha: 0.18), in: appearance)
+                .orbitAlpha(BrandPalette.Surface.wash, alpha: 0.07, highContrastAlpha: 0.18, in: appearance))
             let ordinaryWash = components(
-                .orbitAlpha(BrandPalette.Surface.wash, alpha: 0.07, highContrastAlpha: 0.18), in: ordinary)
+                .orbitAlpha(BrandPalette.Surface.wash, alpha: 0.07, highContrastAlpha: 0.18, in: ordinary))
             let cardHex = dark ? BrandPalette.Surface.card.dark : BrandPalette.Surface.card.light
-            let card = components(NSColor(rgb: cardHex), in: appearance)
-            let control = components(.orbit(BrandPalette.Redesign.controlEdge), in: appearance)
-            let ordinaryControl = components(.orbit(BrandPalette.Redesign.controlEdge), in: ordinary)
+            let card = components(NSColor(rgb: cardHex))
+            let control = components(.orbit(BrandPalette.Redesign.controlEdge, in: appearance))
+            let ordinaryControl = components(.orbit(BrandPalette.Redesign.controlEdge, in: ordinary))
 
             #expect(separator != ordinarySeparator)
             #expect(dim != ordinaryDim)
             #expect(muted != ordinaryMuted)
             #expect(wash != ordinaryWash)
             #expect(control != ordinaryControl)
-            #expect(contrastRatio(separator[0], card[0]) >= 3)
-            #expect(contrastRatio(control[0], card[0]) >= 3)
-            #expect(contrastRatio(dim[0], card[0]) > contrastRatio(ordinaryDim[0], card[0]))
-            #expect(contrastRatio(muted[0], card[0]) > contrastRatio(ordinaryMuted[0], card[0]))
+            let ground = hex(card)
+            #expect(contrastRatio(composited(separator, over: card), ground) >= 3)
+            #expect(contrastRatio(composited(control, over: card), ground) >= 3)
+            #expect(
+                contrastRatio(composited(dim, over: card), ground)
+                    > contrastRatio(composited(ordinaryDim, over: card), ground))
+            #expect(
+                contrastRatio(composited(muted, over: card), ground)
+                    > contrastRatio(composited(ordinaryMuted, over: card), ground))
         }
     }
 
@@ -113,9 +133,9 @@ struct OrbitPaletteTests {
     @Test("counts the accessibility dark appearances as dark")
     func accessibilityDarkIsDark() {
         #expect(NSAppearance(named: .darkAqua)?.isDark == true)
-        #expect(NSAppearance(named: .accessibilityHighContrastDarkAqua)?.isDark == true)
         #expect(NSAppearance(named: .aqua)?.isDark == false)
-        #expect(NSAppearance(named: .accessibilityHighContrastAqua)?.isDark == false)
+        #expect(NSAppearance.Name.accessibilityHighContrastDarkAqua.isDarkVariant)
+        #expect(!NSAppearance.Name.accessibilityHighContrastAqua.isDarkVariant)
     }
 
     /// The three greys are within a few points, and a swapped pair would look like a rendering bug.

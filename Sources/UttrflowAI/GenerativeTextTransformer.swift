@@ -60,33 +60,41 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
     ) async throws(TransformationError) -> TransformationResult {
         let formatter = DestinationFormatter.standard(for: request.situation)
         let pipeline = CleaningPipeline.beforeModel(
-            for: formatter, situation: request.situation, steps: steps)
+            for: formatter, situation: request.situation, steps: steps,
+            pauses: request.profile.pauses)
         // The passes go first, so fillers and self-corrections are gone before the model can rewrite them.
         let draft = pipeline.run(Draft(transcription: request.transcription))
         let spoken = draft.text
         // The sources answer in milliseconds and run beside each other, so the readings cost the call nothing.
         let readings = await doubtful.spans(in: draft, for: request.situation)
+        // A run the recogniser scored low with a reading offered is the model's to choose, which the rules cannot do.
+        if !readings.contains(where: { $0.reason == .lowScore }),
+            let floor = try await Self.floorSettles(request, draft: draft, formatter: formatter, steps: steps)
+        {
+            return floor
+        }
         let rewritten = try await model.rewrite(
             prompts.userPrompt(
                 for: request, spoken: spoken, doubtful: readings,
                 preserving: steps.switchedOff),
-            instructions: prompts.instructions(for: request.situation.destination), kind: kind
+            prompt: prompts.conversation(for: request.situation.destination), kind: kind
         )
 
         // Models echo the shape of the worked examples, so the answer is unwrapped before it is judged.
         let unwrapped = ResponseUnwrapper.unwrap(rewritten, spoken: spoken)
-        // A model that hands the input back unchanged did no work and leaves the rules engine to format it.
-        if Self.isUnchangedAnswer(unwrapped, spoken: spoken) {
+        // An unchanged answer did no work only when the destination still owes the text formatting.
+        if Self.isUnchangedAnswer(unwrapped, spoken: spoken, formatter: formatter) {
             throw .outputRejected(
                 reason: "the model returned the input unchanged", kind: .unchangedAnswer)
         }
         let finishing =
             request.scope == .piece
             ? CleaningPipeline.afterModelPiece(
-                situation: request.situation, heard: request.transcription.text, spoken: spoken)
+                digits: request.situation.digits(for: formatter), situation: request.situation,
+                heard: request.transcription.text, spoken: spoken)
             : CleaningPipeline.afterModel(
                 for: formatter, situation: request.situation, heard: request.transcription.text,
-                spoken: spoken)
+                spoken: spoken, steps: steps, vocabulary: request.vocabulary)
         let polished = finishing.run(Draft(keepingLineBreaks: TextTidy.collapseSpacing(unwrapped)))
         let finished = polished.text
 
@@ -105,10 +113,43 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
 
         // Only a taught reading has an entry to count; the screen's and the vocabulary's have none.
         let taken = meaningGuard.readingsTaken(draft: draft, rewritten: finished, offering: readings)
+        // The guard judges words, so a mark added where the clause runs on is taken out here, alone.
+        let marked = AddedMarkCheck.checked(finished, against: spoken).text
         return TransformationResult(
-            text: finished, producedBy: kind,
-            cleaning: CleaningRecord(draft: draft, ran: pipeline.ids),
+            text: marked, producedBy: kind,
+            cleaning: Self.record(
+                before: draft, after: polished, ran: pipeline.ids + finishing.ids, modelAnswer: rewritten),
             entriesTaken: taken.compactMap(\.entryID))
+    }
+
+    /// The rules' result when an English draft owes only its capital and stop and the rules settle its ending, so the model has nothing to add.
+    private static func floorSettles(
+        _ request: TransformationRequest, draft: Draft, formatter: DestinationFormatter, steps: CleaningSteps
+    ) async throws(TransformationError) -> TransformationResult? {
+        guard request.effectiveLanguage == .english,
+            formatter.owesFormatting(TextTidy.collapseSpacing(draft.text))
+        else { return nil }
+        let tokens = MeaningPreservationGuard.grammarTokens(draft.text)
+        // Romanised Hindi reads as English to the recogniser, so the words are checked as well as the tag.
+        guard !MeaningPreservationGuard.hasRomanisedHindiContext(tokens),
+            // A mark's name the rules kept as a word is one they could not settle: "note colon kal".
+            !tokens.contains(where: { SpokenPunctuationPass.ordinaryNames.contains([$0.matching]) }),
+            !QuestionShape.opensQuestionLater(draft.presentIndices.map(draft.shape(at:)))
+        else { return nil }
+        let floor = try await RuleBasedTransformer(steps: steps).transform(request)
+        let unchanged =
+            MeaningPreservationGuard.grammarTokens(floor.text).map(\.matching) == tokens.map(\.matching)
+        return unchanged ? floor : nil
+    }
+
+    /// One account of the passes on both sides of the model, a step that ran on both sides counted once.
+    private static func record(
+        before: Draft, after: Draft, ran: [PassID], modelAnswer: String
+    ) -> CleaningRecord {
+        CleaningRecord.merging([
+            CleaningRecord(draft: before, ran: ran),
+            CleaningRecord(draft: after, ran: ran, modelAnswers: [modelAnswer]),
+        ])
     }
 
     /// The caret's echo the finishing pipeline took back, which the model did answer with and the guard must see.
@@ -117,17 +158,14 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
             .joined(separator: " ")
     }
 
-    /// Whether the model's answer, once unwrapped, is byte-identical to what the speaker said and the input still needs formatting.
-    private static func isUnchangedAnswer(_ rewritten: String, spoken: String) -> Bool {
-        let collapsed = TextTidy.collapseSpacing(rewritten)
+    /// Whether the model's answer is what the speaker said while the destination still owes it formatting.
+    private static func isUnchangedAnswer(
+        _ rewritten: String, spoken: String, formatter: DestinationFormatter
+    ) -> Bool {
         let spokenCollapsed = TextTidy.collapseSpacing(spoken)
-        guard collapsed == spokenCollapsed else { return false }
-        // A short reply or one that already carries a capital and a mark needs no rule formatting on top.
-        let wordCount = spokenCollapsed.split(whereSeparator: \.isWhitespace).count
-        guard wordCount > 3 else { return false }
-        let first = spokenCollapsed.first.map(String.init) ?? ""
-        let startsCapital = first != first.lowercased() && first == first.uppercased()
-        let hasMark = spokenCollapsed.contains(where: { ".!?;,".contains($0) })
-        return !startsCapital && !hasMark
+        guard TextTidy.collapseSpacing(rewritten) == spokenCollapsed else { return false }
+        // A short reply is accepted as it stands; a fragment is too little to judge.
+        guard spokenCollapsed.split(whereSeparator: \.isWhitespace).count > 3 else { return false }
+        return formatter.owesFormatting(spokenCollapsed)
     }
 }

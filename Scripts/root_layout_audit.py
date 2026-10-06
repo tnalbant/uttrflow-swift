@@ -20,7 +20,7 @@ ROOT_ENTRIES = {
     ".claude", ".coderabbit.yaml", ".cursor", ".githooks", ".github", ".gitignore",
     ".gitleaks.toml", ".swift-format", "AGENTS.md", "CHANGELOG.md", "CLAUDE.md",
     "CODE_OF_CONDUCT.md", "CONTRIBUTING.md", "Design", "Docs", "LICENSE", "Makefile",
-    "PLAN.md", "Package.resolved", "Package.swift", "README.md", "RELEASING.md",
+    "Package.resolved", "Package.swift", "README.md", "RELEASING.md",
     "Resources", "SECURITY.md", "Scripts", "Sources", "TRADEMARK.md", "Tests", "UITests",
     "_typos.toml", "graphflow.yaml", "lychee.toml", "osv-scanner.toml",
 }

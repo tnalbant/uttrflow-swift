@@ -2,13 +2,15 @@ public import UttrflowCore
 
 /// Builds the model's instructions and user prompt from three layers: the contract, the destination's block and the situation. See `Docs/cleanup.md`.
 public struct PromptBuilder: Sendable, Equatable {
-    /// Bumped whenever any wording changes, so a measured result can be tied to the prompt that produced it.
-    public static let version = 11
-
     /// The label the text before a mid-sentence caret sits behind; the contract teaches the model to read it.
     public static let caretLabel = "Text before the caret:"
+    /// The label the end of the previous piece of the same dictation sits behind.
+    public static let precedingLabel = "Said just before:"
     /// The label the half-heard runs and their readings sit behind.
     public static let doubtfulLabel = "Doubtful words:"
+    /// The label the cleanup steps the user switched off sit behind.
+    static let preservedLabel =
+        "Cleanup steps switched off by the user; preserve these words, even when examples suggest otherwise:"
     /// The most characters of preceding text quoted to the model.
     public static let caretLimit = 120
 
@@ -39,9 +41,15 @@ public struct PromptBuilder: Sendable, Equatable {
 
     /// The contract, the destination's style rules, then the shared and the destination's examples.
     public func instructions(for destination: Destination) -> String {
+        conversation(for: destination).instructions
+    }
+
+    /// The same contract, rules and examples, with the examples kept apart so a chat model can be shown them as turns.
+    public func conversation(for destination: Destination) -> ModelPrompt {
         let block = block(for: destination)
-        let examples = (contractExamples + block.examples).map(\.rendered).joined(separator: "\n\n")
-        return [contract, block.rules, "Examples:\n\(examples)"].joined(separator: "\n\n")
+        return ModelPrompt(
+            rules: [contract, block.rules].joined(separator: "\n\n"),
+            examples: contractExamples + block.examples)
     }
 
     /// Every sentence the model is shown for a destination, so a test can prove the corpus reuses none of them.
@@ -65,16 +73,22 @@ public struct PromptBuilder: Sendable, Equatable {
         for request: TransformationRequest, spoken: String? = nil, doubtful: [DoubtfulSpan] = [],
         preserving switchedOff: Set<PassID> = []
     ) -> String {
-        let spoken = "Spoken: \"\(Self.unquoted(spoken ?? request.transcription.text))\""
+        let spoken = "Spoken: \"\(PromptText.spoken(spoken ?? request.transcription.text))\""
         let preservedSteps = CleaningSteps.offered.map(\.id).filter(switchedOff.contains)
         let preferences =
             preservedSteps.isEmpty
             ? []
             : [
-                "Cleanup steps switched off by the user; preserve these words, even when examples suggest otherwise: "
+                "\(Self.preservedLabel) "
                     + preservedSteps.map { CleaningSteps.name(of: $0) }.joined(separator: ", ")
             ]
-        return (situationBlock(for: request.situation, doubtful: doubtful) + preferences + [spoken])
+        let preceding =
+            request.scope == .piece
+            ? Self.finalSentence(of: request.precedingPiece).map { ["\(Self.precedingLabel) \"\($0)\""] }
+                ?? []
+            : []
+        return
+            (situationBlock(for: request.situation, doubtful: doubtful) + preceding + preferences + [spoken])
             .joined(separator: "\n")
     }
 
@@ -92,15 +106,18 @@ public struct PromptBuilder: Sendable, Equatable {
         guard !spans.isEmpty else { return nil }
         return spans.prefix(DoubtfulWords.maximumSpans)
             .map {
-                "\"\(unquoted($0.heard))\" (heard at \(hundredths($0.confidence))) — could be: "
-                    + $0.candidates.map { unquoted($0.spelling) }.joined(separator: ", ")
+                "\"\(PromptText.quoted($0.heard))\" \(doubtNote($0)) — could be: "
+                    + $0.candidates.map { PromptText.quoted($0.spelling) }.joined(separator: ", ")
             }
             .joined(separator: "; ")
     }
 
-    /// The text with double quotes made single, so quoted words cannot forge a prompt line.
-    static func unquoted(_ text: String) -> String {
-        text.replacingOccurrences(of: "\"", with: "'")
+    /// The measured score, and for a homophone heard surely the reason it is doubted all the same.
+    static func doubtNote(_ span: DoubtfulSpan) -> String {
+        switch span.reason {
+        case .lowScore: "(heard at \(hundredths(span.confidence)))"
+        case .homophoneClass: "(heard at \(hundredths(span.confidence)), sounds like another word)"
+        }
     }
 
     /// A confidence as two decimal places, without a number formatter for one number.
@@ -109,12 +126,30 @@ public struct PromptBuilder: Sendable, Equatable {
         return "\(scaled / 100).\(scaled % 100 < 10 ? "0" : "")\(scaled % 100)"
     }
 
-    /// The tail of the text before a mid-sentence caret, cut at a word boundary, or `nil` anywhere else.
+    /// The tail of the text before a mid-sentence caret, secrets dropped and cut at a word boundary, or `nil` anywhere else.
     static func caretText(_ insertion: InsertionPoint, limit: Int = caretLimit) -> String? {
-        guard insertion.sentenceState == .midSentence, let preceding = insertion.precedingText else {
+        guard insertion.sentenceState == .midSentence,
+            let preceding = insertion.vocabulary.precedingText
+        else {
             return nil
         }
-        let flattened = TextTidy.collapseWhitespace(preceding).replacingOccurrences(of: "\"", with: "'")
+        return tail(of: PromptText.quoted(preceding), limit: limit)
+    }
+
+    /// The last sentence of the previous piece, cut at a word boundary, or `nil` when it said nothing.
+    static func finalSentence(of piece: String?, limit: Int = caretLimit) -> String? {
+        guard var body = piece.map({ Substring(PromptText.quoted($0)) }) else { return nil }
+        let ends: (Character) -> Bool = { $0.isWhitespace || ".?!".contains($0) }
+        while let last = body.last, ends(last) { body.removeLast() }
+        let start =
+            body.lastIndex(where: { ".?!".contains($0) }).map { body.index(after: $0) } ?? body.startIndex
+        let sentence = String(body[start...].drop(while: \.isWhitespace))
+        guard !sentence.isEmpty else { return nil }
+        return tail(of: sentence, limit: limit)
+    }
+
+    /// The text whole when it fits the budget, else its tail from the first word boundary inside it.
+    private static func tail(of flattened: String, limit: Int) -> String {
         guard flattened.count > limit else { return flattened }
         let tail = flattened.suffix(limit)
         // A single word longer than the whole budget keeps the hard cut rather than vanishing.

@@ -70,12 +70,6 @@ private final class WatchingCleaner: TranscriptCleaning, Sendable {
     var destinations: [UttrflowCore.Destination] { seen.withLock { $0 } }
 }
 
-private struct SilentInserter: TextInserting {
-    func insert(_ text: String) async throws(TextInsertionError) -> InsertionAttempt {
-        InsertionAttempt(.accessibility)
-    }
-}
-
 @Suite("The pipeline hands on what the clean-up steps did")
 struct DictationCleaningRecordTests {
     private static let audio = AudioSamples.canonical(
@@ -92,7 +86,7 @@ struct DictationCleaningRecordTests {
             speech: FixedSpeechEngine(heard: "um we ship"),
             cleaner: cleaner,
             context: FakeContextEngine(context: context),
-            inserter: SilentInserter(),
+            inserter: FakeTextInserter(),
             cleaningRecorder: recorder,
             destinationOverrides: overrides)
     }
@@ -145,8 +139,8 @@ struct DictationCleaningRecordTests {
         #expect(await recorder.records.isEmpty)
     }
 
-    /// A dictation that heard nothing must not replace the last one's account with an empty one.
-    @Test("a tidier that refuses reports nothing rather than an empty account")
+    /// The words pass through untidied, and the account says the tidying gave up rather than standing empty.
+    @Test("a tidier that refuses reports the tidying skipped rather than an empty account")
     func refusedTidying() async {
         let recorder = CollectingCleaningRecorder()
         let pipeline = pipeline(cleaner: RefusingCleaner(), recorder: recorder)
@@ -154,7 +148,7 @@ struct DictationCleaningRecordTests {
         await pipeline.startRecording()
         await pipeline.finishRecording()
 
-        #expect(await recorder.records.isEmpty)
+        #expect(await recorder.records == [.skipped(.tidy, .error)])
     }
 
     @Test("the app the user overrode is tidied for the place they said it was")

@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 import UttrflowAccount
 import UttrflowCore
@@ -10,7 +11,7 @@ import UttrflowSettings
 @Suite("Nothing without a session")
 struct SessionGateTests {
     /// Every place a request can name, so a new page cannot slip past the gate unlisted.
-    static let everyDestination: [UttrflowUX.Destination] =
+    static let everyDestination: [UttrflowUX.AppLocation] =
         [.onboarding] + SettingsTab.allCases.map { .settings($0) } + MainTab.allCases.map { .main($0) }
 
     @Test("only being signed out is not a session; an aged-out entitlement still is")
@@ -21,20 +22,20 @@ struct SessionGateTests {
     }
 
     @Test("signed out, every destination opens sign-in instead", arguments: everyDestination)
-    func signedOutRoutesToSignIn(destination: UttrflowUX.Destination) {
+    func signedOutRoutesToSignIn(destination: UttrflowUX.AppLocation) {
         #expect(SessionGate.route(destination, isSignedIn: false) == .onboarding)
     }
 
     @Test("signed in, every destination opens where it asked", arguments: everyDestination)
-    func signedInRoutesThrough(destination: UttrflowUX.Destination) {
+    func signedInRoutesThrough(destination: UttrflowUX.AppLocation) {
         #expect(SessionGate.route(destination, isSignedIn: true) == destination)
     }
 
     @Test("signed out, the menu runs Quit and nothing else")
     func signedOutMenuRunsOnlyQuit() {
         let intents: [MenuBarIntent] = [
-            .startDictation, .stopDictation, .recover(.retry), .insertRecent(index: 0),
-            .copyRecent(index: 0), .insertClip(index: 0), .copyClip(index: 0),
+            .startDictation, .stopDictation, .recover(.retry), .insertRecent(id: UUID()),
+            .copyRecent(id: UUID()), .insertClip(id: UUID()), .copyClip(id: UUID()),
             .open(.main(.home)), .open(.settings(.general)), .open(.onboarding), .openClipboard,
             .setFeature(.dictation, isOn: false),
         ]

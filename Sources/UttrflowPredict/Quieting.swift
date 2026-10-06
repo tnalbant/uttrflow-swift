@@ -16,12 +16,15 @@ public enum Quieting {
         if !context.isEnabledHere { return .turnedOffHere }
         if context.isSecure { return .secureField }
         if context.markedText == .present { return .composing }
-        if !context.writingDirectionKnown { return .unknownWritingDirection }
         if !context.canDraw { return .nowhereToDraw }
         if context.hasSelection { return .textSelected }
         if !context.caretAtLineEnd { return .caretInsideText }
+        // Direction only places a ghost at the line's end, so it is asked after the caret's questions.
+        if !context.writingDirectionKnown { return .unknownWritingDirection }
         if context.showsOwnList { return .applicationPicker }
-        if !context.isCommandLine, AppPicker.isOpen(after: context.typed) { return .applicationPicker }
+        if context.applicationSupportsPickers, AppPicker.isOpen(after: context.typed) {
+            return .applicationPicker
+        }
         if context.rejectionsThisSession >= rejectionsBeforeSilence { return .rejectedTooOften }
         if context.isProse, context.millisecondsSinceKeystroke < proseHesitationInMilliseconds {
             return .writingFluently
@@ -69,7 +72,7 @@ public enum Quieting {
         case notOnThisMachine
         /// The leader has less evidence than `PredictionEngine.supportFloor`.
         case evidenceTooThin
-        /// The model's own line scored under the floor it needed, or could not be scored at all. See `Docs/predict-precision.md`, P6.
+        /// The model's own line scored under the floor it needed, or could not be scored at all. See `Docs/predict-precision.md`.
         case modelUnsure
         /// The leader, or every close rival to it, cannot be undone, so nothing is offered.
         case irreversibleNotCertain

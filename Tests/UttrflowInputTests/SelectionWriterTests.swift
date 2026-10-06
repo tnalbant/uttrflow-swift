@@ -2,6 +2,7 @@ import ApplicationServices
 import Foundation
 import Synchronization
 import Testing
+import UttrflowTestSupport
 
 @testable import UttrflowCore
 @testable import UttrflowInput
@@ -29,10 +30,15 @@ final class FakeSelectionField: SelectionAttributes, Sendable {
         var reportsValue = true
         var reportsSelection = true
         var readsByRange = true
+        var reportedLength: Int?
         var wholeReads = 0
         var unitsRead = 0
         var refusesText = false
+        /// How long the field takes to answer a text write, spent on `clock`.
+        var answersAfter: Duration = .zero
+        var clock: ManualClock?
         var ignoresText = false
+        var movesCaretOnly = false
         var refusesSelection = false
         var textWrites: [String] = []
         var selectionWrites: [Range<Int>] = []
@@ -60,7 +66,10 @@ final class FakeSelectionField: SelectionAttributes, Sendable {
     }
 
     func length() -> Int? {
-        state.withLock { $0.reportsValue && $0.readsByRange ? $0.text.utf16.count : nil }
+        state.withLock {
+            guard $0.reportsValue, $0.readsByRange else { return nil }
+            return $0.reportedLength ?? $0.text.utf16.count
+        }
     }
 
     func text(in range: Range<Int>) -> String? {
@@ -79,9 +88,15 @@ final class FakeSelectionField: SelectionAttributes, Sendable {
 
     func setSelectedText(_ text: String) -> AXError {
         state.withLock { state in
+            state.clock?.advance(by: state.answersAfter)
             state.textWrites.append(text)
             guard !state.refusesText else { return .cannotComplete }
             guard !state.ignoresText else { return .success }
+            if state.movesCaretOnly {
+                state.location += text.utf16.count
+                state.length = 0
+                return .success
+            }
             if let concurrentText = state.concurrentTextBeforeWrite {
                 let concurrentRange = NSRange(location: state.location, length: state.length)
                 state.text = (state.text as NSString).replacingCharacters(
@@ -125,11 +140,78 @@ private func isRejection(_ error: TextInsertionError?) -> Bool {
 
 @Suite("Writing into a field through its Accessibility attributes")
 struct SelectionWriterTests {
+    @Test("A hostile starting caret cannot overflow while confirming a write.")
+    func hostileStartingCaretDoesNotOverflow() {
+        for location in [NSNotFound, Int.max, Int.max - 1, Int.min, -1, 5, 6] {
+            for length in [0, 1, Int.max, -1] {
+                let field = FakeSelectionField("hello", caret: location, length: length) {
+                    $0.ignoresText = true
+                }
+                #expect(throws: TextInsertionError.self) {
+                    try SelectionWriter(field: field, settle: { _ in }).replaceSelection(with: "x")
+                }
+            }
+        }
+    }
+
+    @Test("A hostile selection cannot overflow the comparison window.")
+    func hostileSelectionDoesNotOverflowWindow() throws {
+        let field = FakeSelectionField("hello", caret: .max, length: .max) {
+            $0.reportedLength = .max
+            $0.ignoresText = true
+        }
+        try SelectionWriter(field: field).replaceSelection(with: "")
+    }
+
     @Test func rejectsReadableSelectionOnANonSettableElement() {
         let element = MockFocusedAccessibilityElement(
             role: "AXTextField", selectedTextIsReadable: true, selectedTextIsSettable: false)
 
         #expect(!element.isEligibleForTextInsertion())
+    }
+
+    @Test("A write answering cannot-complete after the timeout is unconfirmed and stops the fallback")
+    func lateAnswerIsUnconfirmed() {
+        let clock = ManualClock()
+        let field = FakeSelectionField("Hello ") {
+            $0.refusesText = true
+            $0.clock = clock
+            $0.answersAfter = SelectionWriter<FakeSelectionField>.messagingTimeout
+        }
+        let error = #expect(throws: TextInsertionError.self) {
+            try SelectionWriter(field: field, clock: ElapsedClock(clock)).replaceSelection(with: "world")
+        }
+        #expect(error == .insertionUnconfirmed)
+        #expect(error?.stopsFallback == true, "the typed route must not write the words a second time")
+    }
+
+    @Test("A write refused inside the messaging timeout is a refusal the next route may retry")
+    func promptRefusalFallsThrough() {
+        let clock = ManualClock()
+        let field = FakeSelectionField("Hello ") {
+            $0.refusesText = true
+            $0.clock = clock
+            $0.answersAfter = .milliseconds(1_999)
+        }
+        let error = #expect(throws: TextInsertionError.self) {
+            try SelectionWriter(field: field, clock: ElapsedClock(clock)).replaceSelection(with: "world")
+        }
+        #expect(isRejection(error))
+        #expect(error?.stopsFallback == false)
+    }
+
+    @Test("Only a cannot-complete answer at or past the timeout is unconfirmed")
+    func writeFailureMapping() {
+        let limit = SelectionWriter<FakeSelectionField>.messagingTimeout
+        let cases: [(AXError, Duration, Bool)] = [
+            (.cannotComplete, limit, true), (.cannotComplete, limit * 3, true),
+            (.cannotComplete, .zero, false), (.attributeUnsupported, limit, false),
+            (.illegalArgument, limit * 2, false), (.failure, limit, false),
+        ]
+        for (result, elapsed, unconfirmed) in cases {
+            let error = SelectionWriter<FakeSelectionField>.writeFailure(result, after: elapsed)
+            #expect((error == .insertionUnconfirmed) == unconfirmed, "\(result.rawValue) after \(elapsed)")
+        }
     }
 
     @Test("replaces the selection with the text")
@@ -149,13 +231,44 @@ struct SelectionWriterTests {
         #expect(field.textWrites == ["same"], "no fallback should have written a second time")
     }
 
-    @Test("does not claim a write landed when the field still reports its old value")
+    @Test("rejects a write that moves the caret over a different selection and leaves the text as it was")
+    func caretMovedButDifferentSelectionUnchangedIsRejected() {
+        let field = FakeSelectionField("other", caret: 0, length: 5) { $0.movesCaretOnly = true }
+        let error = #expect(throws: TextInsertionError.self) {
+            try SelectionWriter(field: field).replaceSelection(with: "words")
+        }
+        #expect(error == .insertionRejected(description: "the field accepted the text and did not change"))
+    }
+
+    @Test("leaves a write unconfirmed when selection and text are unchanged after the settle delay")
     func acceptedButUnchangedIsAFailure() {
         let field = FakeSelectionField("Hello") { $0.ignoresText = true }
+        let waits = Mutex<[Duration]>([])
+        let writer = SelectionWriter(field: field, settle: { delay in waits.withLock { $0.append(delay) } })
         let error = #expect(throws: TextInsertionError.self) {
-            try SelectionWriter(field: field).replaceSelection(with: " world")
+            try writer.replaceSelection(with: " world")
         }
         #expect(error == .insertionUnconfirmed)
+        #expect(error?.stopsFallback == true, "the typed route must not write the words a second time")
+        #expect(waits.withLock { $0 } == [SelectionWriter<FakeSelectionField>.settleDelay])
+    }
+
+    @Test("leaves a write unconfirmed when it lands during the settle delay, so it is never written twice")
+    func lateWriteStaysUnconfirmed() {
+        let field = FakeSelectionField("Hello") { $0.ignoresText = true }
+        let writer = SelectionWriter(
+            field: field,
+            settle: { _ in
+                field.state.withLock {
+                    $0.text += " world"
+                    $0.location += 6
+                }
+            })
+        let error = #expect(throws: TextInsertionError.self) {
+            try writer.replaceSelection(with: " world")
+        }
+        #expect(error == .insertionUnconfirmed)
+        #expect(field.textWrites == [" world"])
     }
 
     @Test("marks a successful write ambiguous when the resulting selection is unavailable")

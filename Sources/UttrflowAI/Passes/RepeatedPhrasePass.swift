@@ -1,11 +1,12 @@
 public import UttrflowCore
 
 /// Removes a run of two to four words said twice in a row, keeping the second: "so I was I was thinking".
-public struct RepeatedPhrasePass: CleaningPass {
+public struct RepeatedPhrasePass: PieceCleaningPass {
     public static let id: PassID = .repeatedPhrase
     public static let removes: RemovalGrant = .repetition
 
     static let lengths = 2...4
+    /// Chains said on purpose, matched at every alignment since a repeated chain also repeats each rotation.
     private static let deliberateChains = [
         ["on", "and"], ["again", "and"], ["more", "and"], ["and", "so", "on"],
     ]
@@ -51,10 +52,15 @@ public struct RepeatedPhrasePass: CleaningPass {
         return nil
     }
 
-    /// Whether the run is said twice on purpose rather than restarted: one word, a name, or a familiar chain.
+    /// Whether the run is said twice on purpose: one word, a name, a spelled code, or a familiar chain.
     private static func isDeliberate(_ keys: [String]) -> Bool {
-        Set(keys).count == 1 || keys.allSatisfy(FunctionWords.isContent)
-            || deliberateChains.contains(keys)
+        Set(keys).count == 1 || keys.allSatisfy(FunctionWords.isContent) || keys.allSatisfy(isCodeSymbol)
+            || keys.indices.contains { deliberateChains.contains(Array(keys[$0...] + keys[..<$0])) }
+    }
+
+    /// A single letter or a number, the symbols a spelled code repeats by design: "one a one a".
+    private static func isCodeSymbol(_ key: String) -> Bool {
+        key.count == 1 && SpelledInitialismPass.letterNames[key] != nil || NumberWords.isNumber(key)
     }
 }
 
@@ -64,6 +70,12 @@ enum FalseStartRestart {
         "i", "i'd", "i'll", "i'm", "i've", "we", "we'd", "we'll", "we're", "we've",
         "you", "you'd", "you'll", "you're", "you've", "he", "he'd", "he'll", "he's",
         "she", "she'd", "she'll", "she's", "they", "they'd", "they'll", "they're", "they've",
+    ]
+
+    /// Finite forms that cannot complete a modal, so a modal before them was abandoned rather than stammered.
+    private static let finiteAfterModal: Set<String> = [
+        "can", "could", "will", "would", "shall", "should", "may", "might", "must",
+        "am", "is", "are", "was", "were", "has", "does", "did",
     ]
 
     /// The incomplete prefix length when a restart follows at a clause boundary.
@@ -80,7 +92,7 @@ enum FalseStartRestart {
             return 4
         }
         if remaining >= 4, ["can", "could", "would", "should"].contains(key(0)),
-            isSubject(key(1)), key(2) == key(1), isRestartVerb(key(3)),
+            isSubject(key(1)), key(2) == key(1), finiteAfterModal.contains(key(3)),
             isUnbroken(0..<2, at: position, in: live, of: draft)
         {
             return 2

@@ -12,6 +12,8 @@ struct SelfCorrectionPassTests {
         arguments: [
             ("th- the build passed", "the build passed"),
             ("w- we are late", "we are late"),
+            ("I- I think so", "I think so"),
+            ("s- we are late", "s- we are late"),
             ("I was go- I went to the store", "I was I went to the store"),
             ("a well-known bug", "a well-known bug"),
             ("send an e-mail and re-run it", "send an e-mail and re-run it"),
@@ -70,6 +72,33 @@ struct SelfCorrectionPassTests {
     )
     func keepsOrdinaryActuallyAndNo(input: String) {
         #expect(cleaned(input, by: sut) == input)
+    }
+
+    @Test(
+        "keeps both halves when the word after a trigger cannot take the place of the word before it",
+        arguments: [
+            "it works i mean sometimes",
+            "he is a nice guy i mean really nice",
+            "she is on leave i mean please call me back",
+            "the budget is approved i mean please call me back",
+            "i will send the draft today i mean thanks",
+        ]
+    )
+    func keepsQualifyingTrigger(input: String) {
+        #expect(cleaned(input, by: sut) == input)
+    }
+
+    @Test(
+        "replaces one word with a word of the same class after a trigger",
+        arguments: [
+            ("send it today i mean tomorrow", "send it tomorrow"),
+            ("the app crashed i mean froze", "the app froze"),
+            ("she is on leave i mean holiday", "she is on holiday"),
+            ("it is red i mean blue", "it is blue"),
+        ]
+    )
+    func replacesSameClassWord(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
     }
 
     @Test("does not treat ordinary Hindi negation as a correction")

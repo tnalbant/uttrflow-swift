@@ -23,6 +23,44 @@ struct StammersPassTests {
     }
 
     @Test(
+        "keeps a doubled negation, which is emphasis rather than a false start",
+        arguments: [
+            "kya aap thak gaye ho nahi nahi main bilkul theek hoon",
+            "nahi nahi mujhe nahi chahiye",
+            "never never again",
+        ]
+    )
+    func keepsDoubledNegation(input: String) {
+        #expect(cleaned(input, by: sut) == input)
+    }
+
+    @Test(
+        "keeps a doubled letter name inside a spelled run",
+        arguments: [
+            ("a a one two three", "a a one two three"),
+            ("b a a four", "b a a four"),
+            ("i i t", "i i t"),
+            ("code is x a a nine", "code is x a a nine"),
+        ]
+    )
+    func keepsSpelledDouble(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
+        "still removes a doubled a or I in prose",
+        arguments: [
+            ("I I think so", "I think so"),
+            ("a a lot", "a lot"),
+            ("it was a a thing", "it was a thing"),
+            ("I I was there", "I was there"),
+        ]
+    )
+    func removesProseDouble(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
         "removes a doubled Hindi or Hinglish grammar word",
         arguments: [
             ("ki ki baat", "ki baat"),
@@ -165,5 +203,18 @@ struct StammersPassTests {
     )
     func keepsDoubledNumberAfterPoint(input: String) {
         #expect(cleaned(input, by: sut) == input)
+    }
+
+    /// A word spoken in Devanagari is Hindi, so the English function-word list never reads its romanised spelling.
+    @Test(
+        "keeps a doubled word that was spoken in Devanagari",
+        arguments: [
+            ("वो दो दो", "wo do do"), ("मैं मैं", "main main"), ("तो तो चलो", "to to chalo"),
+            ("वो थे थे", "wo the the"),
+        ]
+    )
+    func keepsDevanagariDoubles(spoken: String, romanised: String) {
+        let draft = sut.apply(Draft(romanising: Transcription(text: spoken)))
+        #expect(draft.text == romanised)
     }
 }

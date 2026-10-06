@@ -2,13 +2,16 @@
 public enum QuestionShape {
     /// Whether the words of one sentence ask a direct question.
     public static func asks(_ sentence: [WordShape]) -> Bool {
-        let shapes = sentence.filter { !$0.key.isEmpty }
+        let spoken = sentence.filter { !$0.key.isEmpty }
+        // A label set off by a colon heads the clause after it, which asks or not on its own.
+        let shapes = spoken.lastIndex { $0.suffix.contains(":") }.map { Array(spoken[($0 + 1)...]) } ?? spoken
         let words = shapes.map { $0.key.replacingOccurrences(of: "\u{2019}", with: "'") }
         guard !words.isEmpty else { return false }
         if endsOnATag(words) || trailingRightTagStart(in: shapes) != nil { return true }
         // The last clause is where "I sent it, did you see it" asks.
         let openingClause = clauseAfterOpeners(words)
         if opensAQuestion(openingClause) {
+            if isConditionalInversion(openingClause) { return false }
             return !runsOn(openingClause) || questionWords.contains(openingClause[0])
                 || hasInvertedQuestionAfterOpening(openingClause)
         }
@@ -69,6 +72,13 @@ public enum QuestionShape {
         return spoken.last
     }
 
+    /// Whether an inverted question opens after the first word, where word order alone cannot place its mark.
+    public static func opensQuestionLater(_ sentence: [WordShape]) -> Bool {
+        let words = sentence.filter { !$0.key.isEmpty }
+            .map { $0.key.replacingOccurrences(of: "\u{2019}", with: "'") }
+        return hasInvertedQuestionAfterOpening(words)
+    }
+
     /// Whether a clause-starting subject has a predicate and a plausible complement before "right".
     private static func hasClauseBeforeRight(_ words: [String]) -> Bool {
         let clause = Array(words.drop(while: openers.contains))
@@ -124,10 +134,11 @@ public enum QuestionShape {
         else { return false }
         let question = Array(clause.dropFirst())
         guard let verb = question.first, let subject = question.dropFirst().first else { return false }
-        if pronounVerbs.contains(verb) { return subjects.contains(subject) && !runsOn(question) }
+        if let allowed = narrowInversions[verb] { return allowed.contains(subject) && !runsOn(question) }
         guard verbsBeforeSubject.contains(verb) else { return false }
         if subjects.contains(subject) { return !runsOn(question) }
-        // A determiner needs a predicate after its noun, so "papa did the shopping" stays a statement.
+        // A verb that can take a noun phrase reads as the name's own verb, so "ravi is the owner" stays a statement.
+        guard !nounPhraseVerbs.contains(verb) else { return false }
         return determiners.contains(subject) && question.count >= 4 && !runsOn(question)
     }
 
@@ -147,23 +158,53 @@ public enum QuestionShape {
             // "what we need is…" names a thing; "what time is it" asks, so a subject before the verb says no.
             for (offset, word) in clause.dropFirst().prefix(3).enumerated() {
                 // A subject before the auxiliary names a thing; one after it completes the inversion.
-                if subjects.contains(word) { return offset > 0 }
+                if subjects.contains(word) { return offset > 0 && !opensExclamation(clause) }
+                // An adverb's question word takes no noun, so a determiner after it opens the clause's subject.
+                if offset == 0, adverbialQuestionWords.contains(first), determiners.contains(word) { return false }
                 if verbsBeforeSubject.contains(word) || pronounVerbs.contains(word) {
                     return true
                 }
+                let verbIndex = offset + 1
+                let following = clause.dropFirst(verbIndex + 1).first
                 if lexicalQuestionVerbs.contains(word) {
-                    let following = clause.dropFirst().drop(while: { $0 != word }).dropFirst().first
-                    return following.map { !subjects.contains($0) && !determiners.contains($0) } ?? true
+                    guard following.map({ !subjects.contains($0) && !determiners.contains($0) }) ?? true
+                    else { return false }
+                    return !isFreeRelativeSubject(clause, verbIndex: verbIndex)
+                }
+                // A word straight after the question word that takes an object is its verb: "who owns the service".
+                if offset == 0, let following, determiners.contains(following) {
+                    return !isFreeRelativeSubject(clause, verbIndex: verbIndex)
                 }
             }
             return false
         }
+        if let allowed = narrowInversions[first] { return allowed.contains(second) }
         if verbsBeforeSubject.contains(first) {
             return subjects.contains(second) || determiners.contains(second)
         }
-        // "Do the dishes" and "have a seat" tell rather than ask, so these ask only before a pronoun.
-        if pronounVerbs.contains(first) { return subjects.contains(second) }
         return hindiQuestionWords.contains(first) || (first == "kya" && hindiSubjects.contains(second))
+    }
+
+    /// Whether "what a" or "how" with a modifier heads an exclamation, which keeps its subject before its verb: "how nice it is".
+    private static func opensExclamation(_ clause: [String]) -> Bool {
+        let second = clause.dropFirst().first ?? ""
+        if clause.first == "what" { return ["a", "an"].contains(second) }
+        return clause.first == "how" && !howQuestionHeads.contains(second)
+    }
+
+    /// Words after "how" that still ask with the subject straight after them: "how many of you", "how about you".
+    private static let howQuestionHeads: Set<String> = ["many", "much", "about"]
+
+    /// Whether the question word clause is the subject of a later main verb, as in "what works for you is fine".
+    private static func isFreeRelativeSubject(_ clause: [String], verbIndex: Int) -> Bool {
+        for index in clause.indices.dropFirst(verbIndex + 1) {
+            let word = clause[index]
+            if subordinateWords.contains(word) || questionWords.contains(word) { return false }
+            guard verbsBeforeSubject.contains(word) else { continue }
+            // A subject after the later verb inverts a second question rather than closing a statement.
+            return !subjects.contains(clause.dropFirst(index + 1).first ?? "")
+        }
+        return false
     }
 
     /// Whether an unembedded Hindi question word appears in the clause.
@@ -221,9 +262,25 @@ public enum QuestionShape {
             guard index + 1 < clause.count,
                 verbsBeforeSubject.contains(clause[index]) || pronounVerbs.contains(clause[index])
             else { return false }
-            return subjects.contains(clause[index + 1])
+            return narrowInversions[clause[index]]?.contains(clause[index + 1])
+                ?? subjects.contains(clause[index + 1])
         }
     }
+
+    /// Whether an inverted "had" or "were" is the condition of a later counterfactual: "had I known I would have come".
+    private static func isConditionalInversion(_ clause: [String]) -> Bool {
+        guard let first = clause.first, conditionalInverters.contains(first) else { return false }
+        return clause.indices.dropFirst(2).contains { index in
+            index + 1 < clause.count && newSubjects.contains(clause[index])
+                && counterfactualModals.contains(clause[index + 1])
+        }
+    }
+
+    /// Verbs whose inversion can also open a counterfactual condition.
+    private static let conditionalInverters: Set<String> = ["had", "were"]
+
+    /// Modals that close a counterfactual main clause after its inverted condition.
+    private static let counterfactualModals: Set<String> = ["would", "could", "might"]
 
     /// Whether the sentence closes on a question tag: "isn't it", "don't you", or Hindi "… hai kya".
     private static func endsOnATag(_ words: [String]) -> Bool {
@@ -246,15 +303,18 @@ public enum QuestionShape {
     /// Multiword lead-ins that introduce the question which follows them.
     private static let questionLeadIns = ["quick", "question"]
 
-    /// Subject pronouns and demonstratives cannot be vocative names before an inverted clause.
-    private static let addressSubjectWords: Set<String> = [
-        "it", "that", "this", "these", "those", "i", "we", "he", "she", "they",
-    ]
+    /// Pronouns, demonstratives and deictic openers cannot be vocative names before an inverted clause.
+    private static let addressSubjectWords = subjects.union([
+        "here", "that", "this", "these", "those", "nothing", "nobody", "none",
+    ])
 
     /// English question words.
     static let questionWords: Set<String> = [
         "what", "where", "when", "why", "who", "whom", "whose", "which", "how",
     ]
+
+    /// Question words that ask about a circumstance and never take a noun, unlike "which car" or "what time".
+    private static let adverbialQuestionWords: Set<String> = ["when", "where", "why"]
 
     /// A question word contracted onto "is", which asks whatever follows.
     static let contractedQuestionWords: Set<String> = [
@@ -270,6 +330,12 @@ public enum QuestionShape {
         "can't", "couldn't", "won't", "wouldn't", "shouldn't",
     ]
 
+    /// Inverting verbs that also head a statement before a noun phrase, unlike a modal, which needs a verb.
+    private static let nounPhraseVerbs: Set<String> = verbsBeforeSubject.subtracting([
+        "can", "could", "will", "would", "should", "shall", "may", "might",
+        "can't", "couldn't", "won't", "wouldn't", "shouldn't",
+    ])
+
     /// Modals that commonly start a request after a spoken statement.
     private static let requestModals: Set<String> = ["can", "could"]
 
@@ -278,6 +344,14 @@ public enum QuestionShape {
 
     /// Verbs that also start a command, so they ask only before a pronoun: "do you", not "do the dishes".
     static let pronounVerbs: Set<String> = ["do", "have", "don't", "haven't"]
+
+    /// Subjects that agree with "do" and "have"; "do it now" and "have it ready" are commands.
+    private static let nonThirdPersonSubjects: Set<String> = ["i", "you", "we", "they"]
+
+    /// Verbs that invert only around these subjects: agreement for "do"/"have", first person for a permission "may".
+    private static let narrowInversions: [String: Set<String>] =
+        Dictionary(uniqueKeysWithValues: pronounVerbs.map { ($0, nonThirdPersonSubjects) })
+        .merging(["may": ["i", "we"]]) { $1 }
 
     /// Common present and past lexical verbs that can follow a question word directly.
     private static let lexicalQuestionVerbs: Set<String> = [
@@ -324,7 +398,7 @@ public enum QuestionShape {
     ]
 
     /// Pronouns that can only be a subject, so one past a question's opening starts a second clause.
-    static let newSubjects: Set<String> = ["i", "we", "he", "she", "they"]
+    public static let newSubjects: Set<String> = ["i", "we", "he", "she", "they"]
 
     /// Verbs that can introduce reported content in an inverted question.
     private static let reportedVerbs: Set<String> = [
@@ -337,10 +411,9 @@ public enum QuestionShape {
         newSubjects.flatMap { subject in ["'m", "'s", "'re", "'ll", "'ve", "'d"].map { subject + $0 } })
 
     /// Words that open a noun phrase a question can invert around: "is the build", "can your team".
-    static let determiners: Set<String> = [
-        "the", "a", "an", "my", "your", "our", "his", "her", "their", "its", "this", "that", "these", "those",
-        "any",
-        "some",
+    public static let determiners: Set<String> = [
+        "the", "a", "an", "my", "your", "our", "his", "her", "their", "its", "whose", "which", "this", "that",
+        "these", "those", "any", "some", "both", "all", "every", "each", "either", "neither",
     ]
 
     /// Romanised Hindi question words that ask from anywhere in the main clause.
@@ -368,7 +441,11 @@ public enum QuestionShape {
     ])
 
     /// Romanised Hindi words that introduce embedded question content.
-    private static let hindiEmbeddingWords: Set<String> = ["ki", "pata", "kaha", "bola", "pucha", "poocha"]
+    private static let hindiEmbeddingWords: Set<String> = [
+        "ki", "pata", "kaha", "bola", "pucha", "poocha", "bataya", "batayi", "bataye", "batao", "yaad",
+        "dekh",
+        "dekha", "dekho", "maloom", "malum", "samajh", "samjha", "samjho", "suna", "socha",
+    ]
 
     /// Copulas that can follow a subject or noun before an interrogative "kya".
     private static let hindiCopulas: Set<String> = ["hai", "hain", "ho", "hoga"]

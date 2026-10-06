@@ -5,14 +5,14 @@ public import struct Foundation.UUID
 
 public import struct Foundation.Data
 public import class Foundation.FileManager
-public import class Foundation.JSONDecoder
 public import class Foundation.JSONEncoder
-public import struct Foundation.CocoaError
 
 /// The words this user says that a general model would not expect. See `Docs/app-dictionary-store.md`.
 public actor PersonalDictionaryStore {
     /// The maximum number of inferred entries retained alongside user and shipped words.
     public static let maximumInferredEntries = 256
+    /// The most deleted spellings refused at once; past it the oldest refusal lapses.
+    public static let maximumRefusedWords = SightingLedger.maximumRefused
     /// The file, injected so a test writes into a temporary directory rather than a real dictionary.
     private let file: URL
     private let encryptedStore: EncryptedStore?
@@ -23,12 +23,18 @@ public actor PersonalDictionaryStore {
     /// The dictionary arranged by sound, and the cache generation it was built from.
     private var cachedIndex: (generation: Int, index: PhoneticIndex)?
 
-    /// Terms seen and said but not yet often enough to keep, and the words deleted; read from disk on first use.
+    /// Terms seen and said but not yet on enough days to keep, and the words deleted; read from disk on first use.
     private var ledger: SightingLedger?
+    /// Where pending sightings outlive a quit; without it they are counted in memory only.
+    private let sightings: SightingMemory?
 
-    public init(file: URL = PersonalDictionaryStore.defaultFile(), encryptedStore: EncryptedStore? = nil) {
+    public init(
+        file: URL = PersonalDictionaryStore.defaultFile(), encryptedStore: EncryptedStore? = nil,
+        sightings: SightingMemory? = nil
+    ) {
         self.file = file
         self.encryptedStore = encryptedStore
+        self.sightings = sightings
         self.cache = CachedStoredList(file: file) { url in
             encryptedStore.map { LocalStore.read([DictionaryEntry].self, from: url, encryptedBy: $0) }
                 ?? LocalStore.read([DictionaryEntry].self, from: url)
@@ -37,7 +43,7 @@ public actor PersonalDictionaryStore {
 
     /// Where the dictionary lives by default; versioned in the name so a new shape can sit beside it.
     public static func defaultFile(in directory: URL = .applicationSupportDirectory) -> URL {
-        LocalStore.file("dictionary.v1.json", in: directory)
+        LocalStoreEntry.personalDictionary.location(in: directory)
     }
 
     /// Which shipped words this dictionary has been given, named after it so two never share one record.
@@ -75,25 +81,29 @@ public actor PersonalDictionaryStore {
     /// Teaches the dictionary a word, replacing any entry that spells it the same way.
     @discardableResult
     public func add(_ entry: DictionaryEntry) throws(DictionaryStoreError) -> [DictionaryEntry] {
-        guard PhoneticIndex.supports(word: entry.word, pronunciation: entry.pronunciation) else {
-            throw .entryHasTooManyWords(maximum: PhoneticIndex.maximumWordsPerEntry)
+        let entry = entry.inLatinScript
+        if let refusal = PhoneticIndex.refusal(word: entry.word, pronunciation: entry.pronunciation) {
+            throw refusal
         }
-        let spelling = entry.word.lowercased()
-        let kept =
-            load().filter { $0.id != entry.id && $0.word.lowercased() != spelling } + [entry]
-        try persist(kept)
-        return kept
+        let spelling = entry.spellingKey
+        return try persist(load().filter { $0.id != entry.id && $0.spellingKey != spelling } + [entry])
     }
 
-    /// Replaces the stored snapshot after an archive has been fully validated and merged.
-    public func replaceAll(_ entries: [DictionaryEntry]) throws(DictionaryStoreError) {
+    /// Replaces the list with what `merge` derives from it in one actor step, returning what the bound kept.
+    @discardableResult
+    public func replaceAll<Outcome: Sendable>(
+        _ merge: @Sendable ([DictionaryEntry]) -> (entries: [DictionaryEntry], outcome: Outcome)
+    ) throws(DictionaryStoreError) -> (kept: [DictionaryEntry], outcome: Outcome) {
+        let derived = merge(load())
+        let entries = derived.entries.map(\.inLatinScript)
         for entry in entries {
-            guard PhoneticIndex.supports(word: entry.word, pronunciation: entry.pronunciation) else {
-                throw .entryHasTooManyWords(maximum: PhoneticIndex.maximumWordsPerEntry)
+            if let refusal = PhoneticIndex.refusal(word: entry.word, pronunciation: entry.pronunciation) {
+                throw refusal
             }
         }
-        try persist(Self.boundedEntries(entries))
+        let kept = try persist(entries)
         cachedIndex = nil
+        return (kept, derived.outcome)
     }
 
     /// Writes what the user typed in as a word of their own. See `Docs/app-dictionary-store.md`.
@@ -101,19 +111,53 @@ public actor PersonalDictionaryStore {
     public func add(
         word: String, pronunciation: String, at moment: Date
     ) throws(DictionaryStoreError) -> [DictionaryEntry] {
-        let spelling = word.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !spelling.isEmpty else { throw .wordIsEmpty }
+        let typed = word.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !typed.isEmpty else { throw .wordIsEmpty }
+        let spelling = Romaniser.romanised(typed)
         let sound = pronunciation.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard PhoneticIndex.supports(word: spelling, pronunciation: sound) else {
-            throw .entryHasTooManyWords(maximum: PhoneticIndex.maximumWordsPerEntry)
-        }
-        guard !load().contains(where: { $0.word.lowercased() == spelling.lowercased() }) else {
+        if let refusal = PhoneticIndex.refusal(word: spelling, pronunciation: sound) { throw refusal }
+        let key = DictionaryEntry.spellingKey(for: spelling)
+        guard !load().contains(where: { $0.spellingKey == key }) else {
             throw .wordAlreadyKnown
         }
         return try add(
             DictionaryEntry(
-                word: spelling, pronunciation: sound.isEmpty ? nil : sound, origin: .added,
+                word: typed, pronunciation: sound.isEmpty ? nil : sound, origin: .added,
                 firstSeen: moment))
+    }
+
+    /// Respells an entry as the user typed it, keeping its identity and counters, and drops any other entry of that spelling.
+    @discardableResult
+    public func replace(
+        _ id: UUID, word: String, pronunciation: String
+    ) throws(DictionaryStoreError) -> [DictionaryEntry] {
+        let typed = word.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !typed.isEmpty else { throw .wordIsEmpty }
+        guard let existing = load().first(where: { $0.id == id }) else { return load() }
+        let sound = pronunciation.trimmingCharacters(in: .whitespacesAndNewlines)
+        return try add(
+            DictionaryEntry(
+                id: id, word: typed, pronunciation: sound.isEmpty ? nil : sound, origin: .added,
+                firstSeen: existing.firstSeen, timesUsed: existing.timesUsed,
+                timesReverted: existing.timesReverted))
+    }
+
+    /// Folds one spelling of a word into another: the kept entry takes both counters and the other goes.
+    @discardableResult
+    public func merge(
+        keeping kept: UUID, absorbing absorbed: UUID
+    ) throws(DictionaryStoreError) -> DictionaryEntry? {
+        let entries = load()
+        guard kept != absorbed,
+            var keeper = entries.first(where: { $0.id == kept }),
+            let other = entries.first(where: { $0.id == absorbed }),
+            keeper.spellingKey == other.spellingKey
+        else { return nil }
+        keeper.timesUsed = DictionaryEntry.clamped(keeper.timesUsed + other.timesUsed)
+        keeper.timesReverted = DictionaryEntry.clamped(keeper.timesReverted + other.timesReverted)
+        let merged = keeper
+        try persist(entries.compactMap { $0.id == absorbed ? nil : $0.id == kept ? merged : $0 })
+        return merged
     }
 
     /// Offers shipped words once until a full reset; individual deletions stay deleted.
@@ -137,24 +181,22 @@ public actor PersonalDictionaryStore {
     }
 
     /// The seed record: the list version last applied, and every shipped spelling ever offered.
-    private struct SeedRecord: Codable {
+    private struct SeedRecord: Codable, Sendable {
         let version: Int
         let offered: [String]?
     }
 
-    /// A missing record is new; an unreadable one is not evidence that a deleted word may return.
+    /// A missing record is new; an unreadable one, or one set aside as unreadable, is not evidence that a deleted word may return.
     private func offeredSpellings() throws(DictionaryStoreError) -> Set<String> {
-        let data: Data
-        do {
-            data = try Data(contentsOf: seedRecord)
-        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+        let record: SeedRecord
+        switch readRecord(SeedRecord.self, from: seedRecord) {
+        case .missing:
+            guard !LocalStore.hasSetAside(seedRecord) else { throw .couldNotReadSeedRecord }
             return []
-        } catch {
-            throw .couldNotReadSeedRecord
+        case .unreadable: throw .couldNotReadSeedRecord
+        case .read(let read): record = read
         }
-        guard let record = try? JSONDecoder().decode(SeedRecord.self, from: data),
-            record.version >= 0
-        else { throw .couldNotReadSeedRecord }
+        guard record.version >= 0 else { throw .couldNotReadSeedRecord }
         if let offered = record.offered { return Set(offered.map { $0.lowercased() }) }
         // A record written before spellings were listed names only a version, and version 1 was this list.
         return record.version >= 1 ? ShippedWords.versionOneSpellings : []
@@ -164,7 +206,7 @@ public actor PersonalDictionaryStore {
     private func recordOffered(_ offered: Set<String>) throws(DictionaryStoreError) {
         let record = SeedRecord(version: ShippedWords.version, offered: offered.sorted())
         do {
-            try PrivateFile.write(JSONEncoder().encode(record), to: seedRecord)
+            try writeRecord(record, to: seedRecord)
         } catch {
             throw .couldNotWrite
         }
@@ -172,23 +214,32 @@ public actor PersonalDictionaryStore {
 
     /// Forgets one word; an identifier that is not there is not an error.
     @discardableResult
-    public func remove(_ id: UUID) throws(DictionaryStoreError) -> [DictionaryEntry] {
+    public func remove(_ id: UUID) async throws(DictionaryStoreError) -> [DictionaryEntry] {
+        try await remove(Set([id]))
+    }
+
+    /// Forgets every named word and refuses each one, with one write of each record.
+    @discardableResult
+    public func remove(_ ids: Set<UUID>) async throws(DictionaryStoreError) -> [DictionaryEntry] {
         let existing = load()
-        let kept = existing.filter { $0.id != id }
+        let gone = existing.filter { ids.contains($0.id) }
+        let kept = existing.filter { !ids.contains($0.id) }
         // A deleted word must not simply be counted up again, whoever first put it there.
-        if let gone = existing.first(where: { $0.id == id }) {
-            var sightings = sightingLedger()
-            sightings.refuse(gone.word)
-            ledger = sightings
-            try recordRefusals(sightings.refusals)
+        var cancelled: [EvidenceRow] = []
+        if !gone.isEmpty {
+            var tally = await sightingLedger()
+            for entry in gone { cancelled += tally.refuse(entry.word) }
+            ledger = tally
+            try recordRefusals(tally.refusals)
         }
         try persist(kept)
+        try await remember(cancelled)
         return kept
     }
 
     /// Forgets every word, the user's own included; ``removeLearned()`` is almost always the one meant.
-    public func removeEverything() throws(DictionaryStoreError) {
-        try forgetEverything()
+    public func removeEverything() async throws(DictionaryStoreError) {
+        try await forgetEverything()
         try persist([])
         do {
             if FileManager.default.fileExists(atPath: seedRecord.path(percentEncoded: false)) {
@@ -200,46 +251,60 @@ public actor PersonalDictionaryStore {
         }
     }
 
-    /// Clears pending sightings, keeps refusals, and retains user-added and shipped words.
+    /// The spellings deleted words are refused under, newest first, as the Dictionary page lists them.
+    public func refusedWords() async -> [String] {
+        await sightingLedger().refusals.reversed()
+    }
+
+    /// Lets a refused spelling be learned again, removing it from the ledger and the record.
+    public func allowAgain(_ word: String) async throws(DictionaryStoreError) {
+        var tally = await sightingLedger()
+        guard tally.allow(word) else { return }
+        try recordRefusals(tally.refusals)
+        ledger = tally
+    }
+
+    /// Removes every inferred word through the batch `remove`, so each is refused, and clears pending sightings.
     @discardableResult
-    public func removeLearned() throws(DictionaryStoreError) -> [DictionaryEntry] {
-        // Pending evidence goes with inferred entries, while refusals remain in force.
-        clearPendingSightings()
+    public func removeLearned() async throws(DictionaryStoreError) -> [DictionaryEntry] {
+        var tally = await sightingLedger()
+        let cancelled = tally.clearPending()
+        ledger = tally
+        try await remember(cancelled)
         // A shipped word was inferred from nothing, so there is nothing about it to forget.
-        let kept = load().filter { $0.origin == .added || $0.origin == .shipped }
-        try persist(kept)
-        return kept
+        let inferred = load().filter { $0.origin != .added && $0.origin != .shipped }
+        return try await remove(Set(inferred.map(\.id)))
     }
 
     /// Learns from a landed dictation; `heard` is the raw transcript. See `Docs/app-dictionary-store.md`.
     @discardableResult
     public func learn(
         heard: String, wrote: String, seeing context: AppContext, at moment: Date
-    ) throws(DictionaryStoreError) -> [DictionaryEntry] {
+    ) async throws(DictionaryStoreError) -> [DictionaryEntry] {
+        var tally = await sightingLedger()
         let existing = load()
         // What is already held, so neither path adds a second row or reaches the replacing `add`.
-        var known = Set(existing.map { $0.word.lowercased() })
+        var known = Set(existing.map(\.spellingKey))
         var learnt: [DictionaryEntry] = []
-        var sightings = sightingLedger()
 
         if let corrected = LearnableWords.corrected(over: context.selectedText, wrote: wrote),
-            !sightings.isRefused(corrected),
-            known.insert(corrected.lowercased()).inserted
+            !tally.isRefused(corrected),
+            known.insert(DictionaryEntry.spellingKey(for: corrected)).inserted
         {
             learnt.append(DictionaryEntry(word: corrected, origin: .learned, firstSeen: moment))
         }
 
         // Filtered before the tally, so a word already held stops being counted rather than counted on.
         let seen = LearnableWords.seenAndSaid(heard: heard, seeing: context)
-            .filter { !known.contains($0.lowercased()) }
-        learnt += sightings.record(seen).map {
-            DictionaryEntry(word: $0, origin: .observed, firstSeen: moment)
-        }
-        ledger = sightings
+            .filter { !known.contains(DictionaryEntry.spellingKey(for: $0)) }
+        let counted = tally.record(seen, on: EvidenceRow.day(of: moment))
+        learnt += counted.learnt.map { DictionaryEntry(word: $0, origin: .observed, firstSeen: moment) }
+        ledger = tally
+        try await remember(counted.rows, at: moment)
 
+        learnt = learnt.map(\.inLatinScript)
         guard !learnt.isEmpty else { return [] }
-        let bounded = Self.boundedEntries(existing + learnt)
-        try persist(bounded)
+        let bounded = try persist(existing + learnt)
         return learnt.filter { entry in bounded.contains(where: { $0.id == entry.id }) }
     }
 
@@ -268,6 +333,18 @@ public actor PersonalDictionaryStore {
         try update(id) { $0.timesReverted = 0 }
     }
 
+    /// Respells every stored Devanagari word in Latin letters once, answering each change as before and after.
+    @discardableResult
+    public func respellInLatinScript()
+        throws(DictionaryStoreError) -> [(before: DictionaryEntry, after: DictionaryEntry)]
+    {
+        let entries = load()
+        let changes = entries.map { ($0, $0.inLatinScript) }.filter { $0.0 != $0.1 }
+        guard !changes.isEmpty else { return [] }
+        try persist(entries.map(\.inLatinScript))
+        return changes.map { (before: $0.0, after: $0.1) }
+    }
+
     /// The one place an entry is found, changed and written back, so the counters cannot disagree.
     private func update(
         _ id: UUID, _ change: (inout DictionaryEntry) -> Void
@@ -290,42 +367,51 @@ public actor PersonalDictionaryStore {
 
     // MARK: - Refusals
 
-    /// The ledger, starting from the refusals on disk the first time it is needed.
-    private func sightingLedger() -> SightingLedger {
+    /// The ledger, starting from the refusals and pending sightings on disk the first time it is needed.
+    private func sightingLedger() async -> SightingLedger {
         if let ledger { return ledger }
-        let loaded = SightingLedger(refusing: storedRefusals())
+        var rows: [EvidenceRow] = []
+        var digest: @Sendable (String) -> String? = { $0 }
+        if let sightings {
+            rows = await sightings.rows(at: Date())
+            digest = sightings.digest
+        }
+        // Another call may have loaded it while this one waited.
+        if let ledger { return ledger }
+        let loaded = SightingLedger(refusing: storedRefusals(), remembering: rows, digest: digest)
         ledger = loaded
         return loaded
     }
 
+    /// Appends sighting rows to the evidence ledger; an unreadable ledger refuses rather than overwrite it.
+    private func remember(_ rows: [EvidenceRow], at moment: Date = Date()) async throws(DictionaryStoreError)
+    {
+        guard let sightings, !rows.isEmpty else { return }
+        do { try await sightings.append(rows, at: moment) } catch { throw .couldNotWrite }
+    }
+
     /// The refusals a previous run wrote down; a missing or unreadable record refuses nothing.
     private func storedRefusals() -> [String] {
-        guard let data = try? Data(contentsOf: refusalRecord),
-            let words = try? JSONDecoder().decode([String].self, from: data)
-        else { return [] }
-        return words
+        readRecord([String].self, from: refusalRecord).value ?? []
     }
 
     /// Writes the refusals down, or removes the record when none is left.
     private func recordRefusals(_ words: [String]) throws(DictionaryStoreError) {
         do {
             guard !words.isEmpty else { return try removeRefusalRecord() }
-            try PrivateFile.write(JSONEncoder().encode(words), to: refusalRecord)
+            try writeRecord(words, to: refusalRecord)
         } catch {
             throw .couldNotWrite
         }
     }
 
-    /// Clears pending counts while keeping refusals in memory.
-    private func clearPendingSightings() {
-        let refusals = sightingLedger().refusals
-        ledger = SightingLedger(refusing: refusals)
-    }
-
     /// Throws away pending counts and every refusal, in memory and on disk.
-    private func forgetEverything() throws(DictionaryStoreError) {
-        ledger = SightingLedger()
+    private func forgetEverything() async throws(DictionaryStoreError) {
+        var tally = await sightingLedger()
+        let cancelled = tally.forgetEverything()
+        ledger = tally
         do { try removeRefusalRecord() } catch { throw .couldNotWrite }
+        try await remember(cancelled)
     }
 
     /// Deletes the refusal record if it is there.
@@ -337,19 +423,35 @@ public actor PersonalDictionaryStore {
 
     // MARK: - The file
 
+    /// Reads a sidecar record the way the list is read, so a sealed list never sits beside a plaintext record.
+    private func readRecord<Value: Codable & Sendable>(
+        _ type: Value.Type, from url: URL
+    ) -> StoredList<Value> {
+        encryptedStore.map { LocalStore.read(type, from: url, encryptedBy: $0) }
+            ?? LocalStore.read(type, from: url)
+    }
+
+    /// Writes a sidecar record sealed whenever the list is; every caller has read it first, which migrates plaintext.
+    private func writeRecord<Value: Codable & Sendable>(_ value: Value, to url: URL) throws {
+        guard let encryptedStore else { return try PrivateFile.write(JSONEncoder().encode(value), to: url) }
+        try encryptedStore.write(value, to: url)
+    }
+
     /// Reads the file, setting an unreadable one aside so the next write cannot replace the only copy.
     private func load() -> [DictionaryEntry] {
         cache.load() ?? []
     }
 
-    /// Writes the whole list atomically, or removes the file when nothing is left to keep.
-    private func persist(_ entries: [DictionaryEntry]) throws(DictionaryStoreError) {
+    /// Writes the list within the inferred bound atomically, or removes the file when nothing is left; returns what it kept.
+    @discardableResult
+    private func persist(_ unbounded: [DictionaryEntry]) throws(DictionaryStoreError) -> [DictionaryEntry] {
         guard !cache.isUnreadable else { throw .couldNotWrite }
+        let entries = Self.boundedEntries(unbounded)
         do {
             guard !entries.isEmpty else {
                 try removeFile()
                 cache.remember(nil)
-                return
+                return entries
             }
             if let encryptedStore {
                 try encryptedStore.write(entries, to: file)
@@ -361,6 +463,7 @@ public actor PersonalDictionaryStore {
             cache.forget()
             throw .couldNotWrite
         }
+        return entries
     }
 
     /// Keeps all trusted origins and the strongest, most recent inferred entries within the bound.

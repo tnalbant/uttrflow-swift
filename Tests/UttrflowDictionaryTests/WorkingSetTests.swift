@@ -8,6 +8,9 @@ import Testing
 
 @Suite("What to condition the recogniser with")
 struct WorkingSetTests {
+    /// A code with no sound, for scoring with nothing on screen.
+    private static let silent = PhoneticCode(primary: "", alternate: "")
+
     private let xcode = AppContext(
         applicationName: "Xcode", bundleIdentifier: "com.apple.dt.Xcode",
         documentName: "PaymentSheet.swift")
@@ -22,10 +25,19 @@ struct WorkingSetTests {
     /// The prompt shares a few hundred tokens with everything else that conditions the decoder.
     @Test("never returns more than the budget allows")
     func respectsTheBudget() {
-        let entries = (0..<200).map { word("Word\($0)", used: $0) }
+        let entries = (0..<200).map { word(Self.distinctlySounding($0), used: $0) }
         #expect(WorkingSet.words(from: entries, limit: 5, now: epoch).count == 5)
         #expect(WorkingSet.words(from: entries, now: epoch).count == WorkingSet.defaultLimit)
         #expect(WorkingSet.words(from: entries, limit: 0, now: epoch).isEmpty)
+    }
+
+    /// An invented word whose sound no other index shares, since one sound holds one slot.
+    private static func distinctlySounding(_ index: Int) -> String {
+        let consonants = Array("bdfglmnrsj")
+        let first = consonants[index / 100 % 10]
+        let second = consonants[index / 10 % 10]
+        let third = consonants[index % 10]
+        return "Ta\(first)a\(second)o\(third)a"
     }
 
     /// Frequency counts the uses that stuck.
@@ -42,8 +54,8 @@ struct WorkingSetTests {
         let stale = word("Stale", from: .added, daysAgo: 400)
         #expect(WorkingSet.words(from: [stale, fresh], now: epoch) == ["Fresh", "Stale"])
         #expect(
-            WorkingSet.value(of: fresh, now: epoch, wanted: [])
-                > WorkingSet.value(of: stale, now: epoch, wanted: []))
+            WorkingSet.value(of: fresh, sounding: Self.silent, now: epoch, wanted: [])
+                > WorkingSet.value(of: stale, sounding: Self.silent, now: epoch, wanted: []))
     }
 
     @Test("puts a word added this week ahead of older words used often")
@@ -61,15 +73,15 @@ struct WorkingSetTests {
     func halfLife() {
         let new = word("New", from: .added)
         let month = word("Month", from: .added, daysAgo: WorkingSet.recencyHalfLifeInDays)
-        #expect(WorkingSet.value(of: new, now: epoch, wanted: []) == 1)
-        #expect(WorkingSet.value(of: month, now: epoch, wanted: []) == 0.5)
+        #expect(WorkingSet.value(of: new, sounding: Self.silent, now: epoch, wanted: []) == 1)
+        #expect(WorkingSet.value(of: month, sounding: Self.silent, now: epoch, wanted: []) == 0.5)
     }
 
     /// A clock that slipped backwards must not make the dictionary infinitely valuable.
     @Test("treats a word stamped in the future as merely new")
     func futureDates() {
         let future = word("Future", from: .added, daysAgo: -400)
-        #expect(WorkingSet.value(of: future, now: epoch, wanted: []) == 1)
+        #expect(WorkingSet.value(of: future, sounding: Self.silent, now: epoch, wanted: []) == 1)
     }
 
     /// Dictating into `PaymentSheet.swift` pulls `PaymentSheet` up, through the same phonetics as speech.
@@ -100,7 +112,8 @@ struct WorkingSetTests {
         let selection = AppContext(selectedText: "cube cattle")
         #expect(
             WorkingSet.value(
-                of: word("kubectl"), now: epoch, wanted: WorkingSet.soundsOnScreen(in: selection))
+                of: word("kubectl"), sounding: DoubleMetaphone.code(for: "kubectl"), now: epoch,
+                wanted: WorkingSet.soundsOnScreen(in: selection))
                 > WorkingSet.affinityWeight)
     }
 
@@ -127,5 +140,66 @@ struct WorkingSetTests {
         let heavilyUsed = word("HeavilyUsed", from: .added, used: .max, reverted: 0)
         let words = WorkingSet.words(from: [untouched, heavilyUsed], now: epoch)
         #expect(words == ["HeavilyUsed", "Untouched"])
+    }
+
+    @Test(
+        "explains every standing an entry can have",
+        arguments: [
+            ("In", WorkingSet.Standing.inPrompt(rank: 1)),
+            ("Past", .belowLimit(rank: 3, limit: 2)),
+            ("Nicole", .sharesSound(with: "Nikhil")),
+            ("Wrong", .retired),
+            ("Stale", .unusedInferred),
+            ("Huge", .tooLong(rank: 2)),
+        ])
+    func explainsEachStanding(spelling: String, expected: WorkingSet.Standing) {
+        let entries = [
+            word("In", from: .added, used: 9),
+            word("Huge", from: .added, used: 8),
+            word("Past", from: .added, used: 1, daysAgo: 20),
+            word("Nikhil", from: .added, used: 5, daysAgo: 400),
+            word("Nicole", from: .added, used: 1, daysAgo: 400),
+            word("Wrong", from: .learned, used: 20, reverted: 19),
+            word("Stale", from: .observed, daysAgo: 45),
+        ]
+        let standings = WorkingSet.explain(entries: entries, limit: 2, now: epoch, packed: ["In"])
+        let entry = entries.first { $0.word == spelling }
+        #expect(entry.flatMap { standings[$0.id] } == expected)
+    }
+
+    @Test("marks in the prompt exactly the words it offers, for any dictionary")
+    func explainAgreesWithWords() {
+        var generator = SystemRandomNumberGenerator()
+        let origins = WordOrigin.allCases
+        for _ in 0..<200 {
+            let entries = (0..<Int.random(in: 0...60, using: &generator)).map { index in
+                word(
+                    "Word\(index)x\(Int.random(in: 0...9, using: &generator))",
+                    from: origins.randomElement(using: &generator) ?? .added,
+                    used: Int.random(in: 0...12, using: &generator),
+                    reverted: Int.random(in: 0...6, using: &generator),
+                    daysAgo: Double.random(in: 0...90, using: &generator))
+            }
+            let limit = Int.random(in: 0...30, using: &generator)
+            let standings = WorkingSet.explain(entries: entries, limit: limit, now: epoch)
+            let offered = entries.filter { standings[$0.id]?.isOffered == true }.map(\.word)
+            let words = WorkingSet.words(from: entries, limit: limit, now: epoch)
+            #expect(Set(offered) == Set(words))
+            #expect(offered.count == words.count)
+            #expect(standings.count == entries.count)
+        }
+    }
+
+    @Test("ranking an unchanged dictionary against its index encodes only what is on screen")
+    func indexedRankingEncodesOnlyTheScreen() {
+        let entries = (0..<1_000).map { word("Word\($0)", used: $0 % 7) }
+        let index = PhoneticIndex(entries: entries)
+        let onScreen = AppContext(applicationName: "Notes", documentName: "Plan")
+        let tally = EncodingTally()
+        let words = DoubleMetaphone.$tally.withValue(tally) {
+            WorkingSet.words(from: entries, coded: index, now: epoch, favouring: onScreen)
+        }
+        #expect(words == WorkingSet.words(from: entries, now: epoch, favouring: onScreen))
+        #expect(tally.count < 10)
     }
 }

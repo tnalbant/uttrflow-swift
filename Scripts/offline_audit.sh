@@ -64,8 +64,7 @@ note() { printf '  · %s\n' "$1"; }
 # network once the model is on disk, and the clipboard, history, dictionary and snippets
 # never leave the Mac. Both reduce to one claim a tree can be checked against — network
 # capability lives in a handful of named files and no other module has any — which is
-# also what AGENTS.md means by "UttrflowAccount is deliberately the only module that can
-# reach a server": one place to look.
+# also the network list in Docs/agents/product.md: one place to look.
 #
 # So this is default-deny over every module under Sources/, discovered at run time. The
 # earlier version named the seven modules to check, and a module nobody added to that
@@ -76,28 +75,24 @@ ALLOWED_NETWORK_MODULE='UttrflowAccount'
 
 # The files outside that module which may name a networking type, and why each may.
 #
-#   the cloud island   — all of it inside `#if UTTRFLOW_CLOUD`, which no shipping build
-#                        defines. Checks 2 and 7 prove that separately.
 #   the tokenizer      — fetched beside the weights at install time so that loading never
 #                        has to. Check 4 proves loading cannot reach it.
-#   the Apple backend  — not sanctioned. Listed in KNOWN_GAP_FILES below, and reported on
-#                        every run, because it downloads on a path the promise covers.
 #   onboarding         — first-run sign-in, and the reachability banner that says why it
 #                        failed. Signing in is the one thing the product says needs a
 #                        connection, and it happens before any dictation.
 #   the developer CLIs — `uttrflow-dev sign-in` and the evaluation harness. Neither is in
 #                        a shipped product; `Scripts/bundle.sh` is what proves that.
-CLOUD_ISLAND='Sources/UttrflowAI/HTTPCleanupModel.swift'
+#   the corpus         — addresses a speaker dictates, written in expected transcripts.
+#                        The evaluation harness ships in nothing either.
 DOWNLOAD_ISLAND='Sources/UttrflowSpeech/TokenizerDownload.swift'
 ALLOWED_NETWORK_FILES=(
-    "$CLOUD_ISLAND"
     "$DOWNLOAD_ISLAND"
-    'Sources/UttrflowSpeech/AppleSpeechBackend.swift'
     'Sources/Uttrflow/Onboarding/NetworkReachability+System.swift'
     'Sources/Uttrflow/Onboarding/OnboardingAccountLayer.swift'
     'Sources/Uttrflow/Onboarding/OnboardingWindowController.swift'
     'Sources/uttrflow-dev/SignIn.swift'
     'Sources/uttrflow-eval/CorpusConnection.swift'
+    'Sources/UttrflowEval/EvaluationCorpus.swift'
 )
 
 # Files that may construct the model hub's client, which is a URLSession underneath. Two
@@ -112,23 +107,13 @@ SNAPSHOT_FILE='Sources/UttrflowLocalModel/CachedSnapshot.swift'
 HUB_CLIENT_FILES=(
     "$SNAPSHOT_FILE"
     'Sources/UttrflowLocalModel/MLXCandidateScorer.swift'
-    'Sources/UttrflowLocalModel/MLXCleanupModel.swift'
     'Sources/UttrflowLocalModel/AnonymousHub.swift'
 )
 
 # Allowed above only so that the rest of the tree can be checked at all, and named on
 # every run because each is a live defect rather than a design. Taking a file out of here
 # is how its fix gets recorded; deleting the note is not.
-#
-#   AppleSpeechBackend.load() installs the system locale asset, and transcribe() calls
-#   load(), so choosing the built-in recogniser and speaking downloads on a Mac that has
-#   not installed that locale. WhisperKitBackend has `download: false` for exactly this;
-#   the Apple asset API offers no equivalent, so the fix is a product decision about what
-#   the user is told, not a flag. Docs/offline.md § What this does not prove has the
-#   detail; this list is what keeps it from being forgotten.
-KNOWN_GAP_FILES=(
-    'Sources/UttrflowSpeech/AppleSpeechBackend.swift'
-)
+KNOWN_GAP_FILES=()
 
 # Every way to reach the network that leaves a name in Swift source: Foundation's stack,
 # Network.framework in both its Swift and its C spelling, CFNetwork, the BSD calls those
@@ -180,8 +165,8 @@ if [[ -n "${offenders//[[:space:]]/}" ]]; then
         "Dictation must not be able to reach the network, and the clipboard, history," \
         "dictionary and snippets must not be able to leave the Mac. Every module under" \
         "Sources/ is covered by that unless it is named above. Move the call into" \
-        "$ALLOWED_NETWORK_MODULE, behind an explicit user-initiated action, or behind" \
-        "UTTRFLOW_CLOUD — or add the file above with the reason it is safe." \
+        "$ALLOWED_NETWORK_MODULE, behind an explicit user-initiated action, or add the" \
+        "file above with the reason it is safe." \
         "" $'\n'"$offenders"
 else
     pass "no network call site in $modules modules outside $ALLOWED_NETWORK_MODULE and ${#ALLOWED_NETWORK_FILES[@]} named files"
@@ -208,22 +193,36 @@ fi
 # in its source and carries no networking symbol in its object file either. Whether one
 # of these is local is decided by where its URL came from, which grep cannot follow — so
 # the question this check asks is not "is it local" but "has a new one appeared". Each
-# call below was read: five take a path under Application Support or inside an installed
-# model, and the rest belong to the evaluation harness and the bakeoff, which ship in
-# nothing.
+# call below was read: the app's take a path under Application Support, inside the app
+# bundle or an installed model, or a file the user picked in an open panel, and the rest
+# belong to the evaluation harness and the bakeoff, which ship in nothing.
 URL_READ_PATTERN='\b(Data|String|NSData|NSString|NSArray|NSDictionary|NSImage|XMLDocument)\(contentsOf:'
 URL_READERS=(
+    'Sources/Uttrflow/AppDelegate.swift'
+    'Sources/UttrflowAudio/RecordingStore.swift'
+    'Sources/UttrflowClipboard/ClipboardPreferences.swift'
+    'Sources/UttrflowClipboard/ClipboardStore.swift'
+    'Sources/UttrflowClipboard/LegacyPictureMigration.swift'
+    'Sources/UttrflowCore/Secrets/BIP39RecoveryPhrase.swift'
+    'Sources/UttrflowCore/Support/DataTable.swift'
+    'Sources/UttrflowCore/Support/EncryptedStore.swift'
     'Sources/UttrflowCore/Support/StoredList.swift'
     'Sources/UttrflowDictionary/PersonalDictionaryStore.swift'
     'Sources/UttrflowLocalModel/PromptTokens.swift'
     'Sources/UttrflowLocalModel/QuantizedLoad.swift'
     'Sources/UttrflowPredict/EnvironmentReading+System.swift'
+    'Sources/UttrflowPredictStore/SQLite.swift'
+    'Sources/UttrflowSpeech/SpeechModelStore.swift'
+    'Sources/UttrflowTestSupport/GoldenFile.swift'
+    'Sources/UttrflowUX/AliasUnicodeRules.swift'
     'Sources/UttrflowEval/AccuracyBaseline.swift'
     'Sources/UttrflowEval/CorpusCache.swift'
     'Sources/UttrflowEval/CorpusUploadOutbox.swift'
     'Sources/UttrflowEval/JSONRecordStore.swift'
     'Sources/UttrflowEval/SpokenPassages.swift'
     'Sources/uttrflow-bakeoff/Bakeoff.swift'
+    'Sources/uttrflow-dev/Seams.swift'
+    'Sources/uttrflow-eval/SynthesiseCorpus.swift'
 )
 
 reader_filter=(-v)
@@ -243,32 +242,16 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 2. The cloud model is still entirely inside its compile-time island.
+# 2. No hosted clean-up engine can be switched back on by a build flag.
 # ---------------------------------------------------------------------------
-printf '\nThe cloud island\n'
+printf '\nNo hosted engine\n'
 
-if [[ ! -f "$CLOUD_ISLAND" ]]; then
-    note "$CLOUD_ISLAND has gone; nothing to gate"
+if grep -rqE 'UTTRFLOW_CLOUD' Package.swift Sources; then
+    fail "UTTRFLOW_CLOUD is named again" \
+        "A compile-time switch for a hosted engine is a network path one flag away" \
+        "from the shipping build. The product cleans speech on this Mac only."
 else
-    if [[ "$(head -n 1 "$CLOUD_ISLAND")" != "#if UTTRFLOW_CLOUD" ]]; then
-        fail "$CLOUD_ISLAND no longer opens with #if UTTRFLOW_CLOUD" \
-            "The hosted model is the only network path Uttrflow has. If it is not" \
-            "wrapped from the very first line, some of it compiles into the app."
-    elif [[ "$(tail -n 1 "$CLOUD_ISLAND")" != "#endif" ]]; then
-        fail "$CLOUD_ISLAND no longer ends with #endif" \
-            "Code after the #endif compiles unconditionally, which is how a network" \
-            "call gets into a build that promises not to have one."
-    else
-        pass "the hosted model is wrapped from first line to last"
-    fi
-fi
-
-if grep -rqE 'UTTRFLOW_CLOUD' Package.swift; then
-    fail "Package.swift now defines UTTRFLOW_CLOUD" \
-        "That switches the hosted model on for every target, which contradicts the" \
-        "product's stated promise that the shipping build has no network path."
-else
-    pass "no target defines UTTRFLOW_CLOUD"
+    pass "no source or target names UTTRFLOW_CLOUD"
 fi
 
 # ---------------------------------------------------------------------------
@@ -592,16 +575,12 @@ else
             # wholesale (#665). Only its onboarding objects are, and only while the
             # source list says so.
             #
-            # The cloud island is deliberately absent: it compiles out, so its object
-            # must hold no networking symbol at all, and this is what proves the `#if`
-            # rather than reading it.
             # Keyed by module as well as by object, because a basename on its own would
             # let a `TelemetryService.swift` in the clipboard inherit the account's
             # allowance. SwiftPM names each module's object directory after the directory
             # under Sources/, so the two line up.
             allowed_objects=""
             while IFS= read -r file; do
-                [[ "$file" == "$CLOUD_ISLAND" ]] && continue
                 relative="${file#Sources/}"
                 allowed_objects+="${relative%%/*}/$(basename "$file").o "
             done < <(
@@ -668,20 +647,42 @@ else
                 pass "no Uttrflow object outside the allowed files can reach the network"
             fi
         fi
-
-        # The compile-time gate, verified against the shipped artefact rather than
-        # assumed from reading the #if.
-        cloud_symbols="$(nm -a "$APP_BINARY" 2>/dev/null | xcrun swift demangle 2>/dev/null \
-            | grep -c 'UttrflowAI\.HTTPCleanupModel' || true)"
-        if [[ "$cloud_symbols" -gt 0 ]]; then
-            fail "HTTPCleanupModel is in the built app ($cloud_symbols symbols)" \
-                "The hosted model was supposed to be compiled out entirely. It is not," \
-                "so the shipping binary contains a network path after all."
-        else
-            pass "HTTPCleanupModel is absent from the built app"
-        fi
     fi
 fi
+
+# ---------------------------------------------------------------------------
+# 8. Every shipped call site counts its requests, and every purpose has a call site.
+# ---------------------------------------------------------------------------
+#
+# The Privacy pane shows what left this Mac from NetworkActivityLedger; a call site that
+# does not record makes that count a lie, and a purpose nobody records is a dead row.
+printf '\nNetwork-activity ledger\n'
+ledger_failures=$failures
+LEDGER_FILES=(
+    'Sources/UttrflowAccount/BackendTransport+URLSession.swift'
+    "$DOWNLOAD_ISLAND"
+    'Sources/UttrflowLocalModel/AnonymousHub.swift'
+    'Sources/Uttrflow/Updates/UpdateController.swift'
+    'Sources/Uttrflow/AppDelegate.swift'
+)
+for file in "${LEDGER_FILES[@]}"; do
+    if [[ ! -f "$file" ]]; then
+        fail "a ledger call site no longer exists: $file" \
+            "Move the name in LEDGER_FILES to wherever that request is now made."
+    elif ! grep -q 'NetworkActivityLedger' "$file"; then
+        fail "a call site sends without counting: $file" \
+            "Record each request with NetworkActivityLedger under its NetworkPurpose."
+    fi
+done
+PURPOSE_FILE='Sources/UttrflowCore/Support/NetworkActivity.swift'
+purposes=$(sed -n '/^public enum NetworkPurpose/,/^}/p' "$PURPOSE_FILE" | sed -n 's/^ *case \([a-zA-Z]*\)$/\1/p')
+for purpose in $purposes; do
+    if ! grep -rqE "(record\(|purpose: )\.$purpose\b" Sources --include='*.swift'; then
+        fail "the purpose .$purpose is recorded nowhere" \
+            "A purpose with no call site is a row that always says zero; remove it or record it."
+    fi
+done
+[[ "$failures" -eq "$ledger_failures" ]] && pass "every ledger call site records, and every purpose is recorded"
 
 # ---------------------------------------------------------------------------
 printf '\n'

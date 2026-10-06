@@ -1,5 +1,4 @@
 import Foundation
-import Synchronization
 import Testing
 
 @testable import UttrflowCore
@@ -8,48 +7,18 @@ import Testing
 
 // MARK: - Doubles
 
-/// A recogniser that reads out a scripted line per call, so a dictation's pieces are known in advance.
-private actor ScriptedSpeechEngine: SpeechEngine {
-    let kind = SpeechEngineKind.whisperKit
-    private let lines: [String]
-    private(set) var calls = 0
-
-    init(_ lines: [String]) {
-        self.lines = lines
+/// A recogniser that reads out a scripted line per call and hears nothing once they run out.
+private func reading(_ lines: [String]) -> FakeSpeechEngine {
+    let heard = lines.map {
+        Transcription(text: $0, detectedLanguage: DetectedLanguage(code: .english, confidence: 1))
     }
-
-    func prepare() async throws(SpeechEngineError) {}
-
-    func transcribe(
-        _ audio: AudioSamples, options: TranscriptionOptions
-    ) async throws(SpeechEngineError) -> Transcription {
-        calls += 1
-        guard calls <= lines.count else { throw .nothingHeard }
-        return Transcription(
-            text: lines[calls - 1], detectedLanguage: DetectedLanguage(code: .english, confidence: 1),
-            audioDuration: audio.duration)
-    }
+    return FakeSpeechEngine(transcribing: .successes(heard, afterwards: .failure(.nothingHeard)))
 }
 
 /// A tidier that finishes each piece the way the real one does — a capital at the front, a full stop at the end.
-private struct FinishingCleaner: TranscriptCleaning {
-    func clean(_ request: TransformationRequest) async throws(TransformationError) -> TransformationResult {
-        let finished = WordShape.finished(WordShape.capitalised(request.transcription.text))
-        return TransformationResult(text: finished, producedBy: .foundationModels)
-    }
-
-    func warm(for situation: Situation?) async {}
-}
-
-private final class CollectingInserter: TextInserting, Sendable {
-    private let received = Mutex<[String]>([])
-
-    func insert(_ text: String) async throws(TextInsertionError) -> InsertionAttempt {
-        received.withLock { $0.append(text) }
-        return InsertionAttempt(.accessibility)
-    }
-
-    var texts: [String] { received.withLock { $0 } }
+private func finishing() -> FakeTranscriptCleaner {
+    FakeTranscriptCleaner(
+        tidying: { WordShape.finished(WordShape.capitalised($0)) }, producedBy: .foundationModels)
 }
 
 /// A recording with a clear pause between each of its three phrases.
@@ -87,9 +56,9 @@ struct DictationPipelineJoinTests {
     private func dictate(_ lines: [String], seeing context: AppContext) async -> String? {
         let capture = FakeAudioCaptureEngine(stopOutcome: .success(Take.threePieces))
         await capture.setCaptured(Take.threePieces)
-        let inserter = CollectingInserter()
+        let inserter = FakeTextInserter()
         let pipeline = DictationPipeline(
-            capture: capture, speech: ScriptedSpeechEngine(lines), cleaner: FinishingCleaner(),
+            capture: capture, speech: reading(lines), cleaner: finishing(),
             context: FakeContextEngine(context: context), inserter: inserter, windowing: quick,
             earlyPoll: .milliseconds(2))
 
@@ -104,6 +73,40 @@ struct DictationPipelineJoinTests {
         applicationName: "Numbers", bundleIdentifier: "com.apple.iWork.Numbers", documentName: "Sheet 1")
     private static let mail = AppContext.fixture(
         applicationName: "Mail", bundleIdentifier: "com.apple.mail", documentName: "Draft")
+
+    @Test("every piece after the first is tidied knowing the previous piece as heard")
+    func tidierSeesThePreviousPiece() async {
+        let lines = ["we waited for the build", "because the runner was slow", "and then it passed"]
+        let capture = FakeAudioCaptureEngine(stopOutcome: .success(Take.threePieces))
+        await capture.setCaptured(Take.threePieces)
+        let cleaner = finishing()
+        let pipeline = DictationPipeline(
+            capture: capture, speech: reading(lines), cleaner: cleaner,
+            context: FakeContextEngine(context: Self.document), inserter: FakeTextInserter(),
+            windowing: quick, earlyPoll: .milliseconds(2))
+
+        await pipeline.startRecording()
+        await pipeline.finishRecording()
+
+        let seen = Dictionary(
+            cleaner.requests.filter { $0.scope == .piece }.map { ($0.transcription.text, $0.precedingPiece) },
+            uniquingKeysWith: { first, _ in first })
+        let expected: [String: String?] = [lines[0]: nil, lines[1]: lines[0], lines[2]: lines[1]]
+        #expect(seen == expected)
+    }
+
+    @Test("the pieces cleaned outside a dictation read the same previous piece")
+    func cleanedPiecesSeeThePreviousPiece() async {
+        let cleaner = finishing()
+        let pipeline = DictationPipeline(
+            capture: FakeAudioCaptureEngine(), speech: reading([]), cleaner: cleaner,
+            context: FakeContextEngine(context: Self.document), inserter: FakeTextInserter())
+        let heard = ["first piece", "second piece"].map { Transcription(text: $0) }
+
+        _ = await pipeline.clean(heard, seeing: Self.document)
+
+        #expect(cleaner.requests.filter { $0.scope == .piece }.map(\.precedingPiece) == [nil, "first piece"])
+    }
 
     @Test("a spoken sequence over three pieces of a real dictation becomes a list in a document")
     func listInADocument() async {
@@ -141,6 +144,6 @@ struct DictationPipelineJoinTests {
     func restatementAcrossAPause() async {
         let text = await dictate(
             ["let's meet at four", "no sorry at five", "in the small room"], seeing: Self.document)
-        #expect(text == "Let's meet at five. In the small room.")
+        #expect(text == "Let's meet at five in the small room.")
     }
 }

@@ -1,5 +1,6 @@
 // One dictionary entry and where it came from.
 
+import UttrflowCore
 public import struct Foundation.Date
 public import struct Foundation.UUID
 
@@ -24,7 +25,7 @@ public struct DictionaryEntry: Sendable, Equatable, Identifiable, Codable {
     public let pronunciation: String?
     public let origin: WordOrigin
     public let firstSeen: Date
-    /// How many dictations this entry has been applied to.
+    /// How many landed dictations this entry appeared in, by a rewrite or spelled right by the recogniser.
     public var timesUsed: Int
     /// How many uses the user undid; the ratio to `timesUsed` is what lets a bad word retire itself.
     public var timesReverted: Int
@@ -58,8 +59,25 @@ public struct DictionaryEntry: Sendable, Equatable, Identifiable, Codable {
             timesReverted: try values.decode(Int.self, forKey: .timesReverted))
     }
 
+    /// The spelling with case and spaces closed up, preserving symbols that change its written identity.
+    public var spellingKey: String { Self.spellingKey(for: word) }
+
+    /// The key two spellings share when they write the same word; an all-filtered spelling keys as itself.
+    public static func spellingKey(for spelling: String) -> String {
+        let closed = spelling.lowercased().filter { $0.isLetter || $0.isNumber || "+#&./-".contains($0) }
+        return closed.isEmpty ? spelling.lowercased() : closed
+    }
+
     /// What the index should key this entry on: how it sounds, not how it is spelt.
     public var soundsLike: String { pronunciation ?? word }
+
+    /// The entry spelt in Latin letters, a Devanagari spelling kept as its pronunciation. See `Docs/latin-output.md`.
+    public var inLatinScript: DictionaryEntry {
+        guard Romaniser.containsDevanagari(word) else { return self }
+        return DictionaryEntry(
+            id: id, word: Romaniser.romanised(word), pronunciation: pronunciation ?? word, origin: origin,
+            firstSeen: firstSeen, timesUsed: timesUsed, timesReverted: timesReverted)
+    }
 
     /// Uses the word survived, undos netted out; safe to compute because both counters stay in domain.
     public var netUses: Int { timesUsed - timesReverted }

@@ -7,6 +7,13 @@ public import UttrflowDictionary
 /// The personal dictionary and snippets a person can move between their own Macs.
 public struct PersonalDataArchive: Codable, Sendable, Equatable {
     public static let currentVersion = 1
+    public static let maximumSizeInBytes = 5 * 1024 * 1024
+    public static let maximumSnippetCount = 1_000
+    public static let maximumSnippetTriggerBytes = 256
+    public static let maximumSnippetExpansionBytes = 16_384
+    public static let maximumDictionaryWordBytes = 256
+    /// Imported words all count as added and escape the inferred-word cap, so the archive bounds them itself.
+    public static let maximumDictionaryEntryCount = 1_000
 
     public let version: Int
     public let dictionary: [DictionaryEntry]
@@ -20,63 +27,74 @@ public struct PersonalDataArchive: Codable, Sendable, Equatable {
 
     /// Encodes a complete snapshot, retaining identifiers, dates and usage counts.
     public func encoded() throws -> Data {
+        if let limitError { throw limitError }
         guard isValid else { throw PersonalDataArchiveError.invalidContents }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return try encoder.encode(self)
+        let data = try encoder.encode(self)
+        guard data.count <= Self.maximumSizeInBytes else {
+            throw PersonalDataArchiveError.archiveTooLarge
+        }
+        return data
     }
 
     /// Decodes and validates the entire file before a caller writes either store.
     public static func decode(_ data: Data) throws -> Self {
+        guard data.count <= maximumSizeInBytes else {
+            throw PersonalDataArchiveError.archiveTooLarge
+        }
         let archive = try JSONDecoder().decode(Self.self, from: data)
         guard archive.version == currentVersion else { throw PersonalDataArchiveError.unsupportedVersion }
+        if let limitError = archive.limitError { throw limitError }
         guard archive.isValid else { throw PersonalDataArchiveError.invalidContents }
         return archive
     }
 
-    /// Adds entries whose spelling or trigger is not already present, keeping the current records on conflicts.
-    public func merging(
-        dictionary existingDictionary: [DictionaryEntry], snippets existingSnippets: [Snippet]
-    )
-        -> PersonalDataMerge
-    {
-        var words = Set(existingDictionary.map { $0.word.lowercased() })
-        var mergedDictionary = existingDictionary
-        var wordIndexes = Dictionary(
-            existingDictionary.enumerated().map { ($0.element.word.lowercased(), $0.offset) },
-            uniquingKeysWith: { _, newest in newest })
-        var duplicateWords = 0
+    /// Adds new spellings with only their word and pronunciation, since a file can come from anyone. See `Docs/personal-data-archive.md`.
+    public func mergedDictionary(
+        into existing: [DictionaryEntry], importedAt: Date
+    ) -> PersonalDataMerge<DictionaryEntry> {
+        var ids = Set(existing.map(\.id))
+        var merged = existing
+        var spellings = Set(existing.map { $0.word.lowercased() })
+        var added: [DictionaryEntry] = []
+        var duplicates = 0
         for entry in dictionary {
-            if words.insert(entry.word.lowercased()).inserted {
-                wordIndexes[entry.word.lowercased()] = mergedDictionary.count
-                mergedDictionary.append(entry)
-            } else {
-                duplicateWords += 1
-                // A fresh install seeds this build's own word before import. Restore the archive's
-                // identity and counters when both copies are that shipped entry.
-                if entry.origin == .shipped,
-                    let index = wordIndexes[entry.word.lowercased()],
-                    mergedDictionary[index].origin == .shipped
-                {
-                    mergedDictionary[index] = entry
-                }
+            guard spellings.insert(entry.word.lowercased()).inserted else {
+                duplicates += 1
+                continue
             }
+            // An identifier already held by another word is a different record, so it gets its own.
+            let id = ids.contains(entry.id) ? UUID() : entry.id
+            let kept = DictionaryEntry(
+                id: id, word: entry.word, pronunciation: entry.pronunciation, origin: .added,
+                firstSeen: importedAt)
+            ids.insert(kept.id)
+            merged.append(kept)
+            added.append(kept)
         }
+        return PersonalDataMerge(records: merged, added: added, duplicates: duplicates)
+    }
 
-        var triggers = Set(existingSnippets.map(\.triggerWords))
-        var mergedSnippets = existingSnippets
-        var duplicateSnippets = 0
+    /// Adds snippets whose trigger is not already used, keeping the current record on a conflict.
+    public func mergedSnippets(into existing: [Snippet]) -> PersonalDataMerge<Snippet> {
+        var ids = Set(existing.map(\.id))
+        var triggers = Set(existing.map(\.triggerWords))
+        var merged = existing
+        var added: [Snippet] = []
+        var duplicates = 0
         for snippet in snippets {
-            if triggers.insert(snippet.triggerWords).inserted {
-                mergedSnippets.append(snippet)
-            } else {
-                duplicateSnippets += 1
+            guard triggers.insert(snippet.triggerWords).inserted else {
+                duplicates += 1
+                continue
             }
+            // An identifier already held by another trigger is a different record, so it gets its own.
+            let kept = ids.insert(snippet.id).inserted ? snippet : snippet.withFreshID()
+            ids.insert(kept.id)
+            merged.append(kept)
+            added.append(kept)
         }
-
-        return PersonalDataMerge(
-            dictionary: mergedDictionary, snippets: mergedSnippets,
-            duplicateWords: duplicateWords, duplicateSnippets: duplicateSnippets)
+        return PersonalDataMerge(records: merged, added: added, duplicates: duplicates)
     }
 
     private var isValid: Bool {
@@ -88,23 +106,49 @@ public struct PersonalDataArchive: Codable, Sendable, Equatable {
             !$0.word.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 && $0.timesUsed >= 0 && $0.timesReverted >= 0
         }
-            && snippets.allSatisfy {
-                !$0.triggerWords.isEmpty
-                    && !$0.expansion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    && $0.timesUsed >= 0
-            }
+            && snippets.allSatisfy { (try? SnippetStore.validate($0)) != nil && $0.timesUsed >= 0 }
+    }
+
+    private var limitError: PersonalDataArchiveError? {
+        if snippets.count > Self.maximumSnippetCount { return .tooManySnippets }
+        if dictionary.count > Self.maximumDictionaryEntryCount { return .tooManyDictionaryEntries }
+        if snippets.contains(where: {
+            $0.trigger.utf8.count > Self.maximumSnippetTriggerBytes
+                || $0.expansion.utf8.count > Self.maximumSnippetExpansionBytes
+        }) {
+            return .snippetTooLong
+        }
+        if dictionary.contains(where: {
+            $0.word.utf8.count > Self.maximumDictionaryWordBytes
+                || ($0.pronunciation?.utf8.count ?? 0) > Self.maximumDictionaryWordBytes
+        }) {
+            return .dictionaryWordTooLong
+        }
+        return nil
     }
 }
 
-/// What the validated import would add, and how many conflicting records it skipped.
-public struct PersonalDataMerge: Sendable, Equatable {
-    public let dictionary: [DictionaryEntry]
-    public let snippets: [Snippet]
-    public let duplicateWords: Int
-    public let duplicateSnippets: Int
+/// One list after an import: every record, the ones the archive added, and how many conflicts it skipped.
+public struct PersonalDataMerge<Record: Sendable & Equatable>: Sendable, Equatable {
+    public let records: [Record]
+    public let added: [Record]
+    public let duplicates: Int
 }
 
 public enum PersonalDataArchiveError: Error, Sendable {
     case unsupportedVersion
     case invalidContents
+    case archiveTooLarge
+    case tooManySnippets
+    case snippetTooLong
+    case dictionaryWordTooLong
+    case tooManyDictionaryEntries
+}
+
+extension Snippet {
+    fileprivate func withFreshID() -> Snippet {
+        Snippet(
+            trigger: trigger, expansion: expansion, created: created, timesUsed: timesUsed,
+            lastUsed: lastUsed)
+    }
 }

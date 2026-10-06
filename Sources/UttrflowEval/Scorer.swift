@@ -2,97 +2,50 @@ import UttrflowCore
 
 /// Scores one rewrite against a reference by word overlap, since several phrasings are correct.
 public enum Scorer {
-    public static func score(_ rewritten: String, against reference: EvaluationCase) -> CaseScore {
+    /// Scores the text as the field shows it, padded at the caret exactly as the pipeline pads it.
+    public static func score(_ output: String, against reference: EvaluationCase) -> CaseScore {
+        let rewritten = reference.context.insertionPoint.paddedBoundary(
+            for: output, in: reference.destination)
         let produced = tokens(rewritten)
         let wanted = tokens(reference.expected)
-        let producedSurface = surfaceWords(rewritten)
-        let wantedSurface = surfaceWords(reference.expected)
+        let wantedSurface = ClassifiedWord.words(of: reference.expected)
+        let capitalisation = CapitalisationTally.measure(surfaceWords(rewritten), against: wantedSurface)
         // A phrase is one run inside one sentence, so the run it is sought in keeps the sentence ends.
         let sentences = tokens(rewritten, keepingSentenceEnds: true)
-        // Matched on words only; a wordless requirement is reported as lost rather than quietly satisfied.
+        // Matched like a guard, so a symbol requirement such as "()" is sought literally rather than always lost.
         let lost = reference.mustKeep.filter { required in
-            !containsPhrase(tokens(required, keepingSentenceEnds: true), in: sentences)
+            !isPresent(required, in: rewritten, tokenised: sentences)
         }
         // A context case usually fails by adding what the context suggested, so both directions are checked.
         let invented = reference.mustNotAdd.filter { forbidden in
-            containsGuard(forbidden, in: rewritten, tokenised: sentences)
+            isPresent(forbidden, in: rewritten, tokenised: sentences)
         }
 
+        let alignment = WordErrorRate.measure(reference: wanted, hypothesis: produced).alignment
+        let marks = PunctuationTally.measure(rewritten, against: reference.expected)
         return CaseScore(
             caseID: reference.id,
-            similarity: overlap(produced, wanted),
-            markAccuracy: markAccuracy(rewritten, reference.expected),
-            caseAccuracy: caseAccuracy(producedSurface, wantedSurface),
+            similarity: overlap(
+                spellingFolded(produced, in: reference), spellingFolded(wanted, in: reference)),
+            markAccuracy: marks.accuracy,
+            caseAccuracy: capitalisation.accuracy,
             keptEverythingRequired: lost.isEmpty,
             lost: lost,
             isExact: normalisedWhitespace(rewritten) == normalisedWhitespace(reference.expected),
             invented: invented,
-            brokeShape: brokenShape(of: rewritten, against: reference)
+            brokeShape: brokenShape(of: rewritten, against: reference),
+            deleted: alignment.compactMap { if case .deletion(let word) = $0 { word } else { nil } },
+            capitalisation: capitalisation,
+            marks: marks,
+            // What a clean-up that wrote everything lower case, or left the recogniser's case, would score.
+            lowerCaseBaseline: CapitalisationTally.measure(
+                surfaceWords(reference.expected.lowercased()), against: wantedSurface),
+            spokenBaseline: CapitalisationTally.measure(
+                surfaceWords(reference.spoken), against: wantedSurface)
         )
     }
 
-    /// Measures shared words whose original capitalisation is preserved.
-    static func caseAccuracy(_ produced: [String], _ wanted: [String]) -> Double {
-        let alignment = WordErrorRate.measure(
-            reference: wanted.map { $0.lowercased() }, hypothesis: produced.map { $0.lowercased() })
-        let matches = alignment.hits
-        guard matches > 0 else { return 1 }
-        var producedIndex = 0
-        var wantedIndex = 0
-        var correct = 0
-        for operation in alignment.alignment {
-            switch operation {
-            case .match:
-                if produced[producedIndex] == wanted[wantedIndex] { correct += 1 }
-                producedIndex += 1
-                wantedIndex += 1
-            case .substitution:
-                producedIndex += 1
-                wantedIndex += 1
-            case .deletion:
-                wantedIndex += 1
-            case .insertion:
-                producedIndex += 1
-            }
-        }
-        return Double(correct) / Double(matches)
-    }
-
-    /// Measures comma and sentence-end placement with an F1 score over word boundaries.
-    static func markAccuracy(_ produced: String, _ wanted: String) -> Double {
-        let producedMarks = marks(produced)
-        let wantedMarks = marks(wanted)
-        guard !producedMarks.isEmpty || !wantedMarks.isEmpty else { return 1 }
-        let shared = producedMarks.intersection(wantedMarks).count
-        let precision = producedMarks.isEmpty ? 0 : Double(shared) / Double(producedMarks.count)
-        let recall = wantedMarks.isEmpty ? 0 : Double(shared) / Double(wantedMarks.count)
-        guard precision + recall > 0 else { return 0 }
-        return 2 * precision * recall / (precision + recall)
-    }
-
-    private static func marks(_ text: String) -> Set<String> {
-        var result: Set<String> = []
-        var word = ""
-        var wordCount = 0
-        func flush() {
-            guard !word.isEmpty else { return }
-            wordCount += 1
-            word = ""
-        }
-        for character in text {
-            if character.isLetter || character.isNumber {
-                word.append(character)
-                continue
-            }
-            flush()
-            if character == "," { result.insert("\(wordCount):comma") }
-            if ".!?".contains(character) { result.insert("\(wordCount):sentence") }
-        }
-        flush()
-        return result
-    }
-
-    private static func surfaceWords(_ text: String) -> [String] {
+    static func surfaceWords(_ text: String) -> [String] {
         var words: [String] = []
         var word = ""
         for character in text {
@@ -111,11 +64,18 @@ public enum Scorer {
         text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 
-    /// The beginning and ending checked literally, because case and a final mark are what these cases are about.
+    /// The beginning, ending and exact form checked literally, each named with its side so a missing anchor never reads as output.
     static func brokenShape(of rewritten: String, against reference: EvaluationCase) -> [String] {
         var broken: [String] = []
-        if let head = reference.mustBeginWith, !rewritten.hasPrefix(head) { broken.append(head) }
-        if let tail = reference.mustEndWith, !rewritten.hasSuffix(tail) { broken.append(tail) }
+        if let head = reference.mustBeginWith, !rewritten.hasPrefix(head) {
+            broken.append("begins with \"\(head)\"")
+        }
+        if let tail = reference.mustEndWith, !rewritten.hasSuffix(tail) {
+            broken.append("ends with \"\(tail)\"")
+        }
+        if let exact = reference.expectedExact, rewritten != exact {
+            broken.append("is exactly \"\(exact)\"")
+        }
         return broken
     }
 
@@ -155,6 +115,11 @@ public enum Scorer {
         return found
     }
 
+    /// Romanised Hindi has no single spelling, so its words are compared by the romaniser's sound key: "theek" is "thik".
+    static func spellingFolded(_ words: [String], in reference: EvaluationCase) -> [String] {
+        reference.language == .hindi ? words.map(Romaniser.soundKey) : words
+    }
+
     /// Harmonic mean of precision and recall over an aligned reading, so a word moved is not a word kept.
     static func overlap(_ produced: [String], _ wanted: [String]) -> Double {
         guard !produced.isEmpty || !wanted.isEmpty else { return 1 }
@@ -168,15 +133,15 @@ public enum Scorer {
         return 2 * precision * recall / (precision + recall)
     }
 
-    /// Whether a `mustNotAdd` guard is present: by word normally, literally when it has no letters or digits.
-    static func containsGuard(
-        _ forbidden: String, in rewritten: String, tokenised produced: [String]
+    /// Whether a requirement or guard is present: by word normally, literally when it has no letters or digits.
+    static func isPresent(
+        _ sought: String, in rewritten: String, tokenised produced: [String]
     ) -> Bool {
-        let phrase = tokens(forbidden, keepingSentenceEnds: true)
+        let phrase = tokens(sought, keepingSentenceEnds: true)
         guard phrase.isEmpty else { return containsPhrase(phrase, in: produced) }
-        // A guard holding nothing has nothing to look for, and nothing is not evidence against anybody.
-        guard forbidden.contains(where: { !$0.isWhitespace }) else { return false }
-        return rewritten.contains(forbidden)
+        // A blank phrase has nothing to look for, so it is never found: a blank guard never fires.
+        guard sought.contains(where: { !$0.isWhitespace }) else { return false }
+        return rewritten.contains(sought)
     }
 
     /// Whether `phrase` appears in `text` as a consecutive run; an empty phrase is present in nothing.

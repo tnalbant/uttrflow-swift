@@ -70,6 +70,45 @@ public enum WeightsAssets {
         else { return false }
         return revision == model.weightsRevision
     }
+
+    /// Whether every file `model` pins sits in `folder` with its pinned digest, each read in full.
+    static func areVerified(for model: SpeechModel, in folder: URL) -> Bool {
+        arePresent(for: model, in: folder)
+            && model.weightFiles.allSatisfy { name, expected in
+                (try? verified(file: folder.appending(path: name), expected: expected)) == true
+            }
+    }
+
+    /// The files `model` pins that sit in `folder` at their pinned size but no longer hash to their pin.
+    static func damaged(for model: SpeechModel, in folder: URL) -> [String] {
+        fileNames(of: model).filter { name in
+            guard let expected = model.weightFiles[name] else { return false }
+            let file = folder.appending(path: name)
+            let size = try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize
+            guard Int64(size ?? -1) == expected.bytes else { return false }
+            return (try? verified(file: file, expected: expected)) != true
+        }
+    }
+
+    /// Why a load of `model` from `folder` failed, read from the files; withdraws the revision of damaged weights so installing repairs them.
+    public static func loadFailure(
+        of model: SpeechModel, in folder: URL, description: String
+    ) -> SpeechEngineError {
+        guard missing(for: model, in: folder).isEmpty, TokenizerAssets.arePresent(in: folder) else {
+            return .modelNotInstalled
+        }
+        let damagedFiles = damaged(for: model, in: folder)
+        guard !damagedFiles.isEmpty else { return .modelLoadFailed(description: description) }
+        // Without the record, install re-verifies every file through staging and fetches only the bad ones.
+        try? FileManager.default.removeItem(at: folder.appending(path: revisionFileName))
+        return .modelDamaged(fileCount: damagedFiles.count)
+    }
+
+    /// Records in `folder` that it holds the weights revision `model` pins.
+    static func recordRevision(of model: SpeechModel, in folder: URL) throws {
+        try Data(model.weightsRevision.utf8).write(
+            to: folder.appending(path: revisionFileName), options: .atomic)
+    }
 }
 
 /// A store backed by a directory, with the download injected. See `Docs/speech-model-install.md`.
@@ -122,7 +161,7 @@ public struct FileSystemSpeechModelStore: SpeechModelStore {
             FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        return LocalStore.directory("Models", in: base)
+        return LocalStoreEntry.speechModels.location(in: base)
     }
 
     public func location(of model: SpeechModel) -> URL {
@@ -147,6 +186,36 @@ public struct FileSystemSpeechModelStore: SpeechModelStore {
     /// Whether the model's folder is there but lacks a file it needs, so it must be downloaded again.
     public func isIncomplete(_ model: SpeechModel) -> Bool {
         fileManager.fileExists(atPath: location(of: model).path) && !isInstalled(model)
+    }
+
+    /// Why `model` is not installed, in a sentence for the person, or `nil` when it is.
+    public func whyNotInstalled(_ model: SpeechModel) -> String? {
+        let folder = location(of: model)
+        let missingWeights = WeightsAssets.missing(for: model, in: folder)
+        if !fileManager.fileExists(atPath: folder.path) {
+            return "\(model.variant) has not been downloaded."
+        }
+        if !missingWeights.isEmpty {
+            return "\(model.variant) is incomplete: \(missingWeights.count) weight files are missing "
+                + "or the wrong size."
+        }
+        if !WeightsAssets.hasRevision(model, in: folder) {
+            return "\(model.variant) has no record of the pinned weights revision, which an install made "
+                + "by an earlier version lacks; installing checks its files in place and downloads only what does not match."
+        }
+        if !TokenizerAssets.arePresent(in: folder) {
+            return "\(model.variant) is missing \(ModelComponent.tokenizer.described)."
+        }
+        return nil
+    }
+
+    /// Records the pinned revision on weights already in place whose every file hashes to the pin.
+    func adoptVerifiedWeights(of model: SpeechModel) {
+        let folder = location(of: model)
+        guard !WeightsAssets.hasRevision(model, in: folder), WeightsAssets.areVerified(for: model, in: folder)
+        else { return }
+        // A failed record leaves the ordinary repair below, which verifies the same files through staging.
+        try? WeightsAssets.recordRevision(of: model, in: folder)
     }
 
     /// The parts of `model` still to be fetched, weights first because they own the progress bar.
@@ -195,6 +264,7 @@ public struct FileSystemSpeechModelStore: SpeechModelStore {
         } catch {
             throw Self.failure(error, needing: Self.installMargin)
         }
+        adoptVerifiedWeights(of: model)
         for component in missingComponents(of: model) {
             switch component {
             case .weights:
@@ -240,8 +310,7 @@ public struct FileSystemSpeechModelStore: SpeechModelStore {
         }
 
         do {
-            try Data(model.weightsRevision.utf8).write(
-                to: staging.appending(path: WeightsAssets.revisionFileName), options: .atomic)
+            try WeightsAssets.recordRevision(of: model, in: staging)
         } catch {
             throw Self.failure(error, needing: needed)
         }

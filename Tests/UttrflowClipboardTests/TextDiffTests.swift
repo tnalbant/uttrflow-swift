@@ -3,6 +3,7 @@
 import Testing
 
 @testable import UttrflowClipboard
+import UttrflowTestSupport
 
 /// A formatter is a program the user did not write running over code they did.
 @Suite("D6 · what the formatter wants to change")
@@ -145,7 +146,7 @@ struct TextDiffScalingTests {
 
     @Test("Every small pair gets the same lines as the full table, and the fewest changes")
     func agreesWithTheTable() {
-        var random = DiffSeeded(seed: 406)
+        var random = Seeded(seed: 406)
         for _ in 0..<20_000 {
             let alphabet = Array(["a", "b", "c", ""].prefix(Int.random(in: 1...4, using: &random)))
             let before = (0..<Int.random(in: 0...10, using: &random)).map { _ in
@@ -180,20 +181,6 @@ struct TextDiffScalingTests {
         #expect(TextDiff.interesting(in: all, context: 0).map(\.text) == ["a", "e"])
         #expect(TextDiff.interesting(in: all, context: -1).map(\.text) == ["a", "e"])
         #expect(TextDiff.interesting(in: []).isEmpty)
-    }
-}
-
-/// A fixed-seed generator, so every generated pair is the same on every run.
-private struct DiffSeeded: RandomNumberGenerator {
-    private var state: UInt64
-
-    init(seed: Int) { state = (UInt64(truncatingIfNeeded: seed) &* 0x9E37_79B9_7F4A_7C15) | 1 }
-
-    mutating func next() -> UInt64 {
-        state ^= state << 13
-        state ^= state >> 7
-        state ^= state << 17
-        return state
     }
 }
 

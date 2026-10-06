@@ -67,6 +67,7 @@ struct RomaniserTests {
         "writes Devanagari digits and stops as Latin ones, and leaves Latin text and spacing alone",
         arguments: [
             ("१२३", "123"), ("है।", "hai."), ("है।.", "hai."), ("है॥", "hai."),
+            ("है।।", "hai."), ("है!।", "hai!"), ("है।ठीक", "hai. thik"), ("है।\"", "hai.\""),
             ("कल का deploy हो गया", "kal ka deploy ho gaya"),
             ("PR भेज दूँगा, ok?", "PR bhej dunga, ok?"), ("ठीक\nहै", "thik\nhai"),
             ("so I'll be offline", "so I'll be offline"),
@@ -149,7 +150,7 @@ struct RomaniserTests {
         #expect(Romaniser.scriptFolded("Uttrflow") == "Uttrflow")
     }
 
-    @Test("romanises a transcription's text and timed words, keeping its timings and language")
+    @Test("romanises a transcription into a draft, keeping each word's confidence and its Devanagari origin")
     func romanisesTranscription() {
         let heard = Transcription(
             text: "हाँ ठीक है", detectedLanguage: DetectedLanguage(code: .hindi, confidence: 0.9),
@@ -159,19 +160,18 @@ struct RomaniserTests {
                     words: [
                         TranscribedWord(text: "हाँ", confidence: 0.4),
                         TranscribedWord(text: "ठीक", confidence: 1),
+                        TranscribedWord(text: "है", confidence: 0.8),
                     ])
             ], audioDuration: .seconds(1))
 
-        let romanised = heard.romanised
+        let draft = Draft(romanising: heard)
 
-        #expect(romanised.text == "haan thik hai")
-        #expect(romanised.segments.first?.words.map(\.text) == ["haan", "thik"])
-        #expect(romanised.segments.first?.words.first?.confidence == 0.4)
-        #expect(romanised.segments.first?.end == .seconds(1))
-        #expect(romanised.detectedLanguage == heard.detectedLanguage)
-        #expect(romanised.audioDuration == heard.audioDuration)
-        let english = Transcription(text: "hello there")
-        #expect(english.romanised == english)
+        #expect(draft.text == "haan thik hai")
+        #expect(draft.words.map(\.confidence) == [0.4, 1, 0.8])
+        #expect(draft.confidencesAreReal)
+        #expect(draft.words.indices.allSatisfy(draft.isHindi(at:)))
+        let english = Draft(romanising: Transcription(text: "hello there"))
+        #expect(english == Draft(transcription: Transcription(text: "hello there")))
     }
 }
 
@@ -231,5 +231,21 @@ struct LatinScriptTests {
         #expect(LatinScript.enforced("٣") == "3")
         #expect(LatinScript.westernDigit("7") == nil)
         #expect(LatinScript.westernDigit("x") == nil)
+    }
+    @Test(
+        "treats a change between Latin and Devanagari inside a token as a word boundary",
+        arguments: [
+            ("PostgreSQLमें", "PostgreSQL mein"), ("PRभेज", "PR bhej"), ("मैंPR", "main PR"),
+            ("PR-भेज", "PR-bhej"), ("PR'में", "PR'mein"), ("में-PR", "mein-PR"), ("PR में", "PR mein"),
+            ("v2में", "v2 mein"),
+        ])
+    func scriptChangeIsBoundary(mixed: String, typed: String) {
+        #expect(Romaniser.romanised(mixed) == typed)
+    }
+
+    @Test("leaves English text byte-identical")
+    func englishUntouched() {
+        let english = "PostgreSQL in v2, PR-sent; don't."
+        #expect(Romaniser.romanised(english) == english)
     }
 }

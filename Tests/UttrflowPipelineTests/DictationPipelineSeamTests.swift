@@ -49,7 +49,7 @@ private struct SentenceModel: CleanupModel {
         _ text: String, instructions: String, kind: TransformerKind
     ) async throws(TransformationError) -> String {
         guard let answer = answers.first(where: { text.contains($0.key) })?.value else {
-            throw .transformFailed(kind: kind, description: "no scripted answer")
+            throw .transformFailed(kind: kind, failure: .other)
         }
         return answer
     }
@@ -83,9 +83,11 @@ private final class SeamCorrector: WordCorrecting, Sendable {
         let words = transcription.text.spokenWords.map(String.init)
         let wanted = heard.split(whereSeparator: \.isWhitespace).map(String.init)
         guard wanted.count <= words.count,
-            let start = (0...(words.count - wanted.count)).first(where: { index in
-                words[index..<(index + wanted.count)].map { SpokenToken($0).core.lowercased() }
-                    == wanted.map(\.lowercased)
+            let start = (0...(words.count - wanted.count)).first(where: { (index: Int) -> Bool in
+                let window: [String] = words[index..<(index + wanted.count)].map {
+                    SpokenToken($0).core.lowercased()
+                }
+                return window == wanted.map { $0.lowercased() }
             })
         else { return [] }
         let range = start..<(start + wanted.count)
@@ -95,7 +97,7 @@ private final class SeamCorrector: WordCorrecting, Sendable {
         return [
             DictationCorrection(
                 heard: heard, wrote: wrote, wordRange: range, entryID: entryID,
-                reason: "heardAsSeveralWords", heardConfidence: 0.2)
+                reason: .heardAsSeveralWords, heardConfidence: 0.2)
         ]
     }
 
@@ -148,16 +150,16 @@ struct DictationPipelineSeamTests {
     private func dictateOutcome(
         _ lines: [String], seeing context: AppContext, cleaner: any TranscriptCleaning = rules,
         snippets: any SnippetExpanding = NoTextChanges(),
-        corrector: any WordCorrecting = NoTextChanges()
+        corrector: any WordCorrecting = NoTextChanges(), take: AudioSamples? = nil
     ) async -> DictationOutcome? {
-        let take = SeamTake.pieces(lines.count)
+        let take = take ?? SeamTake.pieces(lines.count)
         let capture = FakeAudioCaptureEngine(stopOutcome: .success(take))
         await capture.setCaptured(take)
         let pipeline = DictationPipeline(
             capture: capture, speech: SeamSpeechEngine(lines), cleaner: cleaner,
             context: FakeContextEngine(context: context), inserter: SeamInserter(),
-            snippets: snippets,
             corrector: corrector,
+            snippets: snippets,
             windowing: seamWindows, earlyPoll: .milliseconds(2))
 
         await pipeline.startRecording()
@@ -191,6 +193,19 @@ struct DictationPipelineSeamTests {
     func shortChatMessageKeepsItsSeam() async {
         let text = await dictate(["On my way.", "Be there soon."], seeing: Self.chat)
         #expect(text == "On my way. Be there soon")
+    }
+
+    /// Speech with no pause at all, so only the microphone change can end the first piece.
+    @Test("a microphone change mid-speech keeps the words on both sides, recognised apart")
+    func microphoneChangeKeepsBothSides() async throws {
+        let speech = SeamTake.tone(4)
+        let change = speech.count * 2 / 5
+        let take = AudioSamples.canonical(speech, discontinuities: [change])
+
+        let outcome = try #require(
+            await dictateOutcome(["On my way.", "Be there soon."], seeing: Self.chat, take: take))
+
+        #expect(outcome.text == "On my way. Be there soon")
     }
 
     @Test("a seam the recogniser left unmarked is still a sentence end in a chat")
@@ -289,7 +304,7 @@ struct DictationPipelineSeamTests {
             ["I opened payment", "sheet today"], seeing: Self.document, corrector: corrector)
 
         #expect(corrector.seen.contains("I opened payment sheet today"))
-        #expect(outcome?.text == "I opened PaymentSheet today")
+        #expect(outcome?.text == "I opened PaymentSheet today.")
         #expect(outcome?.changes.corrections.map(\.wordRange) == [2..<4])
     }
 
@@ -300,7 +315,7 @@ struct DictationPipelineSeamTests {
             ["we use utter", "flow daily"], seeing: Self.document, corrector: corrector)
 
         #expect(corrector.seen.contains("we use utter flow daily"))
-        #expect(outcome?.text == "We use Uttrflow daily")
+        #expect(outcome?.text == "We use Uttrflow daily.")
         #expect(outcome?.changes.corrections.map(\.wordRange) == [2..<4])
     }
 
@@ -311,7 +326,7 @@ struct DictationPipelineSeamTests {
             ["run the s q", "l migration"], seeing: Self.document, corrector: corrector)
 
         #expect(corrector.seen.contains("run the s q l migration"))
-        #expect(outcome?.text == "Run the SQL migration")
+        #expect(outcome?.text == "Run the SQL migration.")
         #expect(outcome?.changes.corrections.map(\.wordRange) == [2..<5])
     }
 
@@ -321,7 +336,7 @@ struct DictationPipelineSeamTests {
         let outcome = await dictateOutcome(
             ["I opened payment sheet", "today"], seeing: Self.document, corrector: corrector)
 
-        #expect(outcome?.text == "I opened PaymentSheet. Today")
+        #expect(outcome?.text == "I opened PaymentSheet. Today.")
         #expect(outcome?.changes.corrections.map(\.wordRange) == [2..<4])
     }
 }

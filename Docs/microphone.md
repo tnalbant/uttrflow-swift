@@ -1,15 +1,19 @@
 # The microphone, and the hardware moving under it
 
-## The failure
+When the audio hardware changes during a recording, `AVAudioEngineMicrophoneSource`
+(`Sources/UttrflowAudio/AVAudioEngineMicrophoneSource.swift`) rebuilds the engine on the new
+device, `InputDeviceSession` (`Sources/UttrflowAudio/InputDeviceSession.swift`) retries a device
+that has gone, and `AVAudioCaptureEngine` (`Sources/UttrflowAudio/AVAudioCaptureEngine.swift`)
+decides whether the recording can still be handed over. How samples are captured and converted is
+[`audio-capture.md`](audio-capture.md); what happens to a recording with no speech in it is
+[`silence.md`](silence.md).
+
+## The failure this handles
 
 `AVAudioEngine` stops itself whenever the audio hardware configuration changes, and posts
-`AVAudioEngineConfigurationChangeNotification`. The installed tap stops delivering
-buffers. **No error is raised anywhere.**
-
-Nothing in the app observed that notification, so a recording that met one carried on
-looking healthy — the menu bar lit, the waveform drawn, the key held — and captured
-nothing at all. When the user let go they got a hallucinated transcript, or now
-"Didn't catch that".
+`AVAudioEngineConfigurationChangeNotification`. The installed tap stops delivering buffers.
+**No error is raised anywhere.** Unobserved, a recording that meets one carries on looking
+healthy (the menu bar lit, the waveform drawn, the key held) and captures nothing.
 
 The triggers are ordinary, which is what makes this look random:
 
@@ -19,56 +23,65 @@ The triggers are ordinary, which is what makes this look random:
 - the input device being changed in System Settings;
 - a USB interface changing its sample rate.
 
-Bluetooth is the common one. A headset that connects while somebody is speaking is not
-an edge case — it is a Tuesday.
+Bluetooth is the common one: a headset that connects while somebody is speaking is not an edge
+case.
 
-## What the app does now
+## The rebuild
 
-`AVAudioEngineMicrophoneSource` keeps the caller's sample sink rather than handing it
-straight to one engine, observes the notification, and rebuilds: a new engine, a new tap,
-and a **new `AudioResampler` for the new input format**. That last part matters — the
-device that arrives can have a different sample rate and channel count from the one that
-left, and reusing the old resampler would convert from a format nothing is producing.
+`AVAudioEngineMicrophoneSource` keeps the caller's sample sink rather than handing it straight to
+one engine, observes the notification, and rebuilds: a new engine, a new tap, and a **new
+`AudioResampler` for the new input format**. The device that arrives can have a different sample
+rate and channel count from the one that left, and the old resampler would convert from a format
+nothing is producing.
 
-The accumulated audio survives, because it is held by `AVAudioCaptureEngine` rather than
-by the source. When samples precede a device change, the changeover loses the fraction of
-a second it takes, and the recording keeps the rest.
+The accumulated audio survives, because it is held by `AVAudioCaptureEngine` rather than by the
+source.
 
-If the device changes before the first sample, there is no earlier audio to join to the
-samples after a successful reopen, so the recording is allowed to continue. Once any
-sample has arrived, a device change still leaves a gap that the audio format cannot
-represent, and the recording is refused.
+## When the device has gone
 
-If the device has gone and nothing replaced it, the reopen is retried across the few
-seconds a device takes to re-enumerate — a Bluetooth headset or a sample-rate change is
-usually back well inside that. `InputDeviceSession` owns that schedule, because the
-notification that announces a configuration change is posted by an engine: once a reopen
-has failed there is no engine, so nothing would announce the device coming back, and a
-single `try?` left the microphone dead for the rest of the recording.
+If the device has gone and nothing replaced it, `InputDeviceSession` retries the reopen across the
+few seconds a device takes to re-enumerate. It owns that schedule because the notification that
+announces a configuration change is posted by an engine: once a reopen has failed there is no
+engine, so nothing would announce the device coming back.
 
-The hole is announced the moment the device goes, not when the reopen resolves. That ordering is
-load-bearing: a stop landing while the retry is still in flight cancels it, so a report that waited
-for the outcome would never be made at all and the truncated recording would be handed back as
-whole. When any sample preceded the change, the recording is refused rather than handed over. It sounds wrong to refuse a recording the microphone recovered from, but `AudioSamples`
-is a run of samples and a sample rate: it cannot say that time passed. The audio from before the
-change and the audio from after it sit next to each other with the missing seconds simply gone, so
-the words either side are joined into one sentence that nobody spoke. Refusing it offers the user a
-retry instead, which is the only honest option while a gap cannot be represented.
+| `ReopenSchedule.standard` delays | Total (`ReopenSchedule.total`) |
+|---|---|
+| 100, 200, 400, 800, 1,500 ms | 3 s |
 
-When the device never comes back, the session says so and the recording ends as a failure
-with a Retry, rather than handing back what it managed to capture. That distinction only
-holds before the first word: audio captured *before* the change survives, so a recording
-that ends this way can still contain speech, and half a sentence reads as a whole one. It
-is `.engineFailed`, and the WAV is finished before the refusal, so `DictationPipeline`
-claims that recording and the notice offers `.retryFromRecording` — the Dictation page's own
-Retry, which delivers to the clipboard on the user's say-so — and never `.retry`, which would
-open the microphone for a new dictation in place of the kept one. See
-`Docs/silence.md` for what the voice-activity check does with a recording that holds no
-speech at all.
+That covers a Bluetooth re-enumeration and a sample-rate change. `DeviceHealth` reports `.live`,
+`.reopening` or `.gone`. The reopen goes through the same `open()` as the first open, so it checks
+microphone permission the same way ([`audio-capture.md`](audio-capture.md)).
+
+## Whether the recording can be handed over
+
+| What happened | Result |
+|---|---|
+| Device changed before the first sample, reopened | the recording continues |
+| Device changed after any sample, reopened | handed over whole, with a discontinuity at the change |
+| Device never came back | refused: "The microphone did not come back after the device changed." |
+
+A gap is kept, not refused. The audio from before the change and the audio from after it sit next
+to each other with the missing seconds gone, so the change is recorded as a discontinuity: a sample
+offset in `AudioSamples.discontinuities`. `SpeechWindowing` always ends a piece there (at a pause
+just before it when there is one), never joins a short tail back across it, and the pieces either
+side are recognised apart and joined at the seam as pieces cut at a pause are. No word is invented
+across the hole and none is dropped.
+
+The hole is recorded the moment the device goes, at the sample count the callback sees, not when
+the reopen resolves. That ordering is load-bearing: a stop landing while the retry is still in
+flight cancels it, so a report that waited for the outcome would never be made.
+
+A device that never comes back is refused rather than handed over: audio
+captured *before* the change survives, so a recording that ends this way can still contain
+speech, and half a sentence reads as a whole one. The refusal is `.engineFailed`, and the WAV
+is finished before the refusal, so `DictationPipeline` claims that recording and the notice offers
+`.retryFromRecording` (the Dictation page's Retry, which delivers to the clipboard) and never
+`.retry`, which would open the microphone for a new dictation in place of the kept one. See
+[`recordings.md`](recordings.md).
 
 ## What this cannot fix
 
-macOS decides what the default input is. If a user starts dictating and their AirPods
-connect, the rest of the sentence is recorded through the AirPods, whose microphone is
-worse. That is the right behaviour — it is the device the system has chosen — but the
-transcript can be visibly worse either side of the join.
+macOS decides what the default input is. If AirPods connect while somebody is dictating, the rest
+of the sentence is recorded through the AirPods, whose microphone is worse. That is the right
+behaviour, since it is the device the system has chosen, but the transcript can be visibly worse
+either side of the join.

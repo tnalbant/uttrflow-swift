@@ -18,12 +18,13 @@ public final class HTTPAuthenticationService: AuthenticationService {
     /// This build's registered client identifier; not a credential, PKCE covers what an app cannot hide.
     public static let defaultClientID = "uttrflow-mac"
 
-    /// Each step of a sign-in and a session by status code and port alone; never a token, code or address.
+    /// Fixed account lifecycle facts; never a token, code, address or server-provided text.
     private static let log = Logger(subsystem: "com.uttrflow.Uttrflow", category: "account")
 
     private enum FailureReason: String {
         case addressCouldNotBeBuilt
-        case responseUnreadable
+        case deviceSignInUnreadable
+        case issuedSessionUnreadable
         case attemptMismatch
         case abandoned
         case codeExpired
@@ -208,7 +209,7 @@ public final class HTTPAuthenticationService: AuthenticationService {
             let verificationURL = URL(string: started.verificationUriComplete ?? started.verificationUri),
             Self.isOpenable(verificationURL)
         else {
-            throw refusal(.responseUnreadable)
+            throw refusal(.deviceSignInUnreadable)
         }
 
         let state = PKCEPair.base64URL(randomBytes(24))
@@ -600,7 +601,7 @@ public final class HTTPAuthenticationService: AuthenticationService {
     /// Keeps the session a sign-in was answered with, then reads the profile it unlocks.
     private func beginSession(issuedBy response: BackendResponse) async throws(AccountError) -> Profile {
         guard let issued = decode(IssuedSession.self, from: response.body) else {
-            throw refusal(.responseUnreadable)
+            throw refusal(.issuedSessionUnreadable)
         }
         do throws(AccountError) {
             try session.withLock { state throws(AccountError) in
@@ -686,14 +687,14 @@ public final class HTTPAuthenticationService: AuthenticationService {
     private func post(_ path: String, _ body: some Encodable) -> BackendRequest {
         BackendRequest(
             method: .post, url: url(path), headers: ["Content-Type": "application/json"],
-            body: encode(body))
+            body: encode(body), purpose: .account)
     }
 
     /// A bearer-authorised read of `address`, conditional on `validator` when there is one.
     private func get(_ address: URL, token: String, ifNoneMatch validator: String? = nil) -> BackendRequest {
         var headers = ["Authorization": "Bearer \(token)"]
         if let validator { headers["If-None-Match"] = validator }
-        return BackendRequest(method: .get, url: address, headers: headers)
+        return BackendRequest(method: .get, url: address, headers: headers, purpose: .account)
     }
 
     /// A conditional read of `v1/me`.
@@ -710,12 +711,16 @@ public final class HTTPAuthenticationService: AuthenticationService {
         }
     }
 
-    /// Turns a refusal into fixed wording; the server's message may contain text it did not write.
+    /// Logs only the response status while returning the response's explanation to the caller.
     private func refusal(_ response: BackendResponse) -> AccountError {
         Self.log.error(
             "sign-in: failed reason=serverRefused status=\(response.status, privacy: .public)"
         )
-        return .providerRefused(description: "the server refused sign-in")
+        let responseError = decode(ServerError.self, from: response.body)
+        let description =
+            responseError?.message ?? responseError?.errorDescription
+            ?? "the server refused that (\(response.status))"
+        return .providerRefused(description: description)
     }
 
     private func refusal(_ failure: FailureReason) -> AccountError {
@@ -727,7 +732,8 @@ public final class HTTPAuthenticationService: AuthenticationService {
         let description: String
         switch failure {
         case .addressCouldNotBeBuilt: description = "the sign-in address could not be built"
-        case .responseUnreadable: description = "the server response could not be read"
+        case .deviceSignInUnreadable: description = "the server started a sign-in we could not read"
+        case .issuedSessionUnreadable: description = "the server issued a session we could not read"
         case .attemptMismatch: description = "that sign-in does not answer this attempt"
         case .abandoned: description = "that sign-in was abandoned"
         case .codeExpired: description = "that code expired before it was used"

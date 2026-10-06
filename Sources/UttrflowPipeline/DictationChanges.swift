@@ -1,6 +1,6 @@
 // Every change the pipeline makes to what the user said, in a form it can show and undo.
 public import struct Foundation.UUID
-import UttrflowCore
+public import UttrflowCore
 
 /// One word Uttrflow replaced, with everything an undo needs on the value. See Docs/pipeline-changes.md.
 public struct DictationCorrection: Sendable, Equatable {
@@ -12,15 +12,15 @@ public struct DictationCorrection: Sendable, Equatable {
     public let wordRange: Range<Int>
     /// The dictionary entry that won, which `recordUse(of:)` and `recordRevert(of:)` both take.
     public let entryID: UUID
-    /// Why, in the proposing engine's own words; a string because the pipeline must not reinterpret it.
-    public let reason: String
+    /// Why the proposing engine made the change, carried through unchanged.
+    public let reason: CorrectionReason
     /// What the recogniser scored the replaced words, so a sceptic can see the engine only moved on a guess.
     public let heardConfidence: Double
     /// Where the written words begin among the inserted text's words, or `nil` when tidying changed them.
     public let writtenWordIndex: Int?
 
     public init(
-        heard: String, wrote: String, wordRange: Range<Int>, entryID: UUID, reason: String,
+        heard: String, wrote: String, wordRange: Range<Int>, entryID: UUID, reason: CorrectionReason,
         heardConfidence: Double, writtenWordIndex: Int? = nil
     ) {
         self.heard = heard
@@ -171,14 +171,23 @@ public struct CorrectedTranscript: Sendable, Equatable {
     public let text: String
     /// Every change made, in spoken order; empty is the expected and commonest answer.
     public let corrections: [DictationCorrection]
+    /// Heard-word ranges the corrector weighed a reading for and kept, so no later layer reopens them.
+    public let held: [Range<Int>]
 
-    public init(text: String, corrections: [DictationCorrection] = []) {
+    public init(text: String, corrections: [DictationCorrection] = [], held: [Range<Int>] = []) {
         self.text = text
         self.corrections = corrections
+        self.held = held
     }
 
     /// A transcript nothing was done to.
     public static func unchanged(_ text: String) -> Self { Self(text: text) }
+
+    /// The same transcript with these runs held as heard, bar any a correction changed.
+    func holding(_ ranges: [Range<Int>]) -> Self {
+        let kept = ranges.filter { range in !corrections.contains { $0.wordRange.overlaps(range) } }
+        return Self(text: text, corrections: corrections, held: held + kept)
+    }
 }
 
 /// One snippet firing once.
@@ -203,14 +212,20 @@ public struct ExpandedTranscript: Sendable, Equatable {
     public let text: String
     /// Every firing, in the order they appear. A snippet that fired twice appears twice.
     public let snippets: [SnippetUse]
+    /// UTF-16 units of ``text`` before where a snippet asked the caret to end, or `nil` to leave it at the end.
+    public let caret: Int?
 
-    public init(text: String, snippets: [SnippetUse] = []) {
+    public init(text: String, snippets: [SnippetUse] = [], caret: Int? = nil) {
         self.text = text
         self.snippets = snippets
+        self.caret = caret.flatMap { (0...text.utf16.count).contains($0) ? $0 : nil }
     }
 
     /// A transcript nothing was done to.
     public static func unchanged(_ text: String) -> Self { Self(text: text) }
+
+    /// How far the caret moves back from the end of the inserted text, in UTF-16 units; 0 leaves it there.
+    public var caretBackFromEnd: Int { caret.map { text.utf16.count - $0 } ?? 0 }
 
     /// The same transcript with every line break a space, as a single-line field wants, firings included.
     public var onOneLine: Self {
@@ -220,13 +235,29 @@ public struct ExpandedTranscript: Sendable, Equatable {
                 SnippetUse(
                     snippetID: $0.snippetID, matched: $0.matched,
                     expansion: Self.joiningLines($0.expansion))
+            },
+            caret: caret.map { caret in
+                // The lines before the caret are joined the way the whole text is, so it keeps its word.
+                guard text.contains(where: \.isNewline) else { return caret }
+                return Self.joinedLines(Self.prefix(of: text, units: caret)).utf16.count
             })
+    }
+
+    /// The first `units` UTF-16 units of `text`, rounded down to a whole character.
+    static func prefix(of text: String, units: Int) -> String {
+        let index = text.utf16.index(text.utf16.startIndex, offsetBy: units)
+        return String(text[..<index])
     }
 
     /// The lines of `text` joined by one space, each trimmed, a blank line dropped.
     static func joiningLines(_ text: String) -> String {
         guard text.contains(where: \.isNewline) else { return text }
-        return text.split(whereSeparator: \.isNewline)
+        return joinedLines(text)
+    }
+
+    /// Every line of `text` trimmed, blank ones dropped, the rest joined by one space.
+    private static func joinedLines(_ text: String) -> String {
+        text.split(whereSeparator: \.isNewline)
             .map { line in
                 String(line.drop(while: \.isWhitespace).reversed().drop(while: \.isWhitespace).reversed())
             }

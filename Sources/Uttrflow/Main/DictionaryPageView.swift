@@ -12,13 +12,15 @@ struct DictionaryPageView: View {
     /// Reports the chosen filter chip.
     var onFilter: (String) -> Void = { _ in }
 
-    /// The artboard's columns: word, sound, source, used, undone, and the row's controls.
+    /// The artboard's columns: word, sound, source, recogniser prompt, used, undone, and the row's controls.
     static let widths: [PageColumnWidth] = [
-        .share(1.1), .share(1.1), .share(1), .fixed(55), .fixed(60), .fixed(76),
+        .share(1.1), .share(1.1), .share(1), .share(1), .fixed(55), .fixed(60), .fixed(76),
     ]
 
     var body: some View {
-        if let empty = presentation.emptyState, presentation.filters.isEmpty {
+        if let empty = presentation.emptyState, presentation.filters.isEmpty,
+            presentation.notLearning == nil
+        {
             MainEmptyStateView(state: empty, onIntent: onIntent)
         } else {
             ScrollView {
@@ -45,6 +47,10 @@ struct DictionaryPageView: View {
                     if let footnote = presentation.footnote {
                         MainFootnote(text: footnote)
                     }
+                    if let notLearning = presentation.notLearning {
+                        DictionaryNotLearningView(section: notLearning, onIntent: onIntent)
+                            .padding(.top, 18)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -61,7 +67,7 @@ struct DictionaryPageView: View {
     private var table: some View {
         LazyVStack(alignment: .leading, spacing: 0) {
             PageTableHeader(
-                titles: ["Write it as", "Say it like", "From", "Used", "Undone", ""],
+                titles: ["Write it as", "Say it like", "From", "Recogniser", "Used", "Undone", ""],
                 widths: Self.widths)
             ForEach(presentation.rows) { row in
                 PageDivider()
@@ -82,10 +88,15 @@ struct DictionaryRowView: View {
 
     var body: some View {
         PageColumns(widths: DictionaryPageView.widths) {
-            Text(row.word)
-                .fontWeight(.semibold)
-                .foregroundStyle(PagePalette.text)
-                .lineLimit(1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(row.word)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(PagePalette.text)
+                    .lineLimit(1)
+                if let soundsLike = row.soundsLike {
+                    PageTintChip(text: soundsLike, tint: PagePalette.clipboardInk)
+                }
+            }
             Text(row.pronunciation)
                 .italic()
                 .foregroundStyle(PagePalette.text.opacity(0.6))
@@ -93,18 +104,24 @@ struct DictionaryRowView: View {
                 .accessibilityLabel(row.pronunciation == "—" ? "No pronunciation" : row.pronunciation)
             PageTintChip(text: row.source.title, tint: DictionarySourceTint.color(row.source))
                 .help(row.origin)
+            PageTintChip(
+                text: row.prompt.text,
+                tint: row.prompt.isInPrompt ? PagePalette.dictation : PagePalette.neutral
+            )
+            .help(row.prompt.spoken)
+            .accessibilityLabel(row.prompt.spoken)
             Text("\(row.timesUsed)×")
                 .monospacedDigit()
                 .foregroundStyle(PagePalette.text.opacity(0.6))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-                .accessibilityLabel("Used \(MainFormatting.count(row.timesUsed, "time", "times"))")
+                .accessibilityLabel(row.timesUsedSpoken)
             Text("\(row.timesUndone)×")
                 .monospacedDigit()
                 .foregroundStyle(undoneColor)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-                .accessibilityLabel("Undone \(MainFormatting.count(row.timesUndone, "time", "times"))")
+                .accessibilityLabel(row.timesUndoneSpoken)
             controls
         }
         .font(.system(size: 13))
@@ -149,6 +166,46 @@ struct DictionaryRowView: View {
         }
         // The row's height comes from its text, as in the design; the 22-point hit area overhangs it.
         .frame(maxWidth: .infinity, maxHeight: 19, alignment: .trailing)
+    }
+}
+
+/// The refused spellings behind a disclosure, each with Allow again drawn at rest.
+struct DictionaryNotLearningView: View {
+    let section: DictionaryNotLearning
+    var onIntent: (MainIntent) -> Void
+
+    var body: some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(section.note)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(PagePalette.faint)
+                    .padding(.bottom, 8)
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(section.rows) { row in
+                        if row.id != section.rows.first?.id { PageDivider() }
+                        HStack {
+                            Text(row.word)
+                                .foregroundStyle(PagePalette.text)
+                                .lineLimit(1)
+                            Spacer(minLength: 6)
+                            Button(row.allow.title) { onIntent(row.allow.intent) }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(PagePalette.clipboardInk)
+                                .accessibilityLabel("\(row.allow.title), \(row.word)")
+                        }
+                        .font(.system(size: 13))
+                        .padding(.horizontal, PageMetrics.rowInset)
+                        .padding(.vertical, 9)
+                    }
+                }
+                .pageCard()
+            }
+            .padding(.top, 8)
+        } label: {
+            PageSectionLabel(text: section.title)
+        }
     }
 }
 
@@ -276,10 +333,21 @@ struct DictionaryEditorView: View {
                 Text(editor.pronunciationHint)
                     .font(.system(size: 11.5))
                     .foregroundStyle(PagePalette.faint)
+                if let note = editor.pronunciationNote {
+                    Text(note)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(PagePalette.text)
+                }
             }
             PageEditorFooter(
                 problem: editor.problem, cancel: editor.cancel, save: save,
                 canSave: editor.canSave, onIntent: onIntent)
+            if let replace = editor.replace {
+                HStack {
+                    Spacer(minLength: 0)
+                    PageButton(action: replacing(replace), onIntent: onIntent)
+                }
+            }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -298,6 +366,14 @@ struct DictionaryEditorView: View {
         MainAction(
             title: editor.save.title,
             intent: .saveWord(word: draft.word, pronunciation: draft.pronunciation))
+    }
+
+    /// The Replace action rebuilt from the fields now, as Save is.
+    private func replacing(_ replace: MainAction) -> MainAction {
+        guard case .replaceWord(let id, _, _) = replace.intent else { return replace }
+        return MainAction(
+            title: replace.title,
+            intent: .replaceWord(id, word: draft.word, pronunciation: draft.pronunciation))
     }
 
     private var word: Binding<String> {

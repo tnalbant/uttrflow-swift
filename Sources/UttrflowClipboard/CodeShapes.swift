@@ -1,6 +1,7 @@
 // Recognises source code and shell commands.
 
 import Foundation
+import UttrflowCore
 
 /// Recognises code by two independent code-shaped signals, or by one unmistakable one.
 enum CodeShapes {
@@ -8,60 +9,29 @@ enum CodeShapes {
     @TaskLocal package static var tally: ScanTally?
 
     static func matches(_ text: String) -> Bool {
+        if isDiagnosticOutput(text) { return false }
+        if isMarkup(text) || isMarkdown(text) || isRubyBlock(text) { return true }
+        if text.wholeMatch(of: goShortDeclaration) != nil || text.wholeMatch(of: deferredCall) != nil
+            || text.wholeMatch(of: javaGenericDeclaration) != nil
+            || text.firstMatch(of: phpRequestAssignment) != nil
+            || text.firstMatch(of: moduleExportsAssignment) != nil
+        {
+            return true
+        }
         if text.hasPrefix("#!") { return true }
         if isImportHeader(text) { return true }
         if isShellCommand(text) { return true }
         if isOneLineStatement(text) { return true }
         if isOneLineInvocation(text) { return true }
         let sample = CodeSample.of(text)
+        if startsLikeCSSRule(sample), isCSSRule(in: sample) { return true }
         if isConfiguration(sample) { return true }
         return hasTwoSignals(in: sample)
     }
 
-    // MARK: - The signals
-
-    /// Whether the text carries two independent hints of code, read cheapest first and stopping at the second.
-    private static func hasTwoSignals(in text: String) -> Bool {
-        tally?.record(text.utf8.count)
-        // A pattern runs only when the bytes hold a literal it cannot match without.
-        func has(_ pattern: Regex<Substring>, needing literals: [StaticString]) -> Bool {
-            ClipBytes.containsAny(text, literals) && text.firstMatch(of: pattern) != nil
-        }
-        // Both braces, read once so a closing brace cannot also score as a statement ending.
-        let braces = text.contains("{") && text.contains("}")
-        let signals: [() -> Bool] = [
-            { braces },
-            { hasStatementEnding(text, countingClosingBrace: !braces) },
-            { isIndented(text) },
-            { has(invocation, needing: ["("]) },
-            { has(commentLine, needing: ["//", "/*", "*", "#", "--"]) },
-            { text.firstMatch(of: query) != nil },
-            { has(quotedMember, needing: ["\""]) },
-            { has(shellFragment, needing: ["|", "&&", "$(", ">", "-"]) },
-            {
-                has(
-                    controlFlow,
-                    needing: ["(", "return", "throw", "break", "continue", "yield", "else", "elif", "endif"])
-            },
-            { has(codeOperator, needing: ["=>", "->", "::", "==", "&&", "||", "+=", "-=", "++", "!="]) },
-            {
-                has(
-                    declaration,
-                    needing: [
-                        "func", "def", "fn", "sub", "class", "struct", "enum", "interface", "trait",
-                        "protocol",
-                        "actor", "let", "var", "const", "val", "public", "private", "internal", "static",
-                        "async",
-                        "await", "import", "from", "package", "using", "require", "#include",
-                    ])
-            },
-        ]
-        var found = 0
-        for signal in signals where signal() {
-            found += 1
-            if found == 2 { return true }
-        }
-        return false
+    /// Whether the first non-horizontal-whitespace scalar can start the only CSS rule this detector accepts.
+    private static func startsLikeCSSRule(_ text: String) -> Bool {
+        text.unicodeScalars.first { !CharacterSet.whitespaces.contains($0) } == "#"
     }
 
     /// A line that ends in a semicolon or an opening brace, and a closing one only where the braces signal did not already count it.
@@ -83,7 +53,7 @@ enum CodeShapes {
     /// Something being declared: a function, a type, a binding with a value, an import with a module.
     nonisolated(unsafe) static let declaration =
         #/
-        \b(?: func | function | def | fn | sub )\s+\w+\s*\(
+        ^\h*(?: func | function | def | fn | sub )\s+\w+\s*\(
         | \b(?: class | struct | enum | interface | trait | protocol | actor )\s+\w+
         | \b(?: let | var | const | val )\s+\w+\s*[:=]
         | \b(?: public | private | internal | fileprivate | static | async | await )\s+\w
@@ -202,21 +172,19 @@ enum CodeShapes {
     /// Matches an item in a YAML list.
     nonisolated(unsafe) static let yamlItem = #/\h*-(?:\h.*)?/#
 
-    /// Requires two or more keys, some nesting or a list, and nothing else; an email header has no nesting.
+    /// Requires two or more mapping keys or list entries, and nothing else.
     private static func isYAML(_ lines: [Substring]) -> Bool {
         var keys = 0
-        var nested = false
         for line in lines {
             if line.wholeMatch(of: yamlKey) != nil {
                 keys += 1
-                if line.first?.isWhitespace == true { nested = true }
             } else if line.wholeMatch(of: yamlItem) != nil {
-                nested = true
+                continue
             } else {
                 return false
             }
         }
-        return keys >= 2 && nested
+        return keys >= 2
     }
 
     /// Matches a TOML or INI table header, `[server]` or `[[servers]]`.
@@ -225,18 +193,17 @@ enum CodeShapes {
     /// Matches a TOML assignment, `port = 8080`.
     nonisolated(unsafe) static let tomlPair = #/\h*[\w.\-"]+\h*=\h*\S.*/#
 
-    /// Requires a table header first, then assignments and further headers only.
+    /// Requires two assignments, with optional table headers between them.
     private static func isTOML(_ lines: [Substring]) -> Bool {
-        guard let first = lines.first, first.wholeMatch(of: tomlTable) != nil else { return false }
         var pairs = 0
-        for line in lines.dropFirst() {
+        for line in lines {
             if line.wholeMatch(of: tomlPair) != nil {
                 pairs += 1
             } else if line.wholeMatch(of: tomlTable) == nil {
                 return false
             }
         }
-        return pairs >= 1
+        return pairs >= 2
     }
 
     /// Whether a one-line clip is a command or a pipeline; the command name is the only signal there is.
@@ -331,6 +298,12 @@ enum CodeShapes {
 
     /// Command words that are also everyday English, each with the subcommands that make it a command alone.
     static let ambiguous: [String: Set<String>] = [
+        "npm": [
+            "add", "audit", "build", "cache", "ci", "config", "exec", "fund", "help", "i", "init",
+            "install", "link", "list", "ls", "outdated", "pack", "publish", "remove", "rm", "run",
+            "search", "start", "test", "uninstall", "update", "version", "view", "why",
+        ],
+        "cat": [], "sort": [], "uniq": [], "export": [],
         "git": [
             "status", "add", "commit", "push", "pull", "clone", "checkout", "switch", "branch", "merge",
             "rebase", "log", "diff", "fetch", "stash", "reset", "init", "remote", "tag", "show", "restore",
@@ -363,6 +336,7 @@ enum CodeShapes {
 
     static let commands: Set<String> = [
         "sudo", "git", "npm", "npx", "yarn", "pnpm", "brew", "docker", "kubectl", "curl",
+        "cat", "sort", "uniq", "export",
         "wget", "ssh", "scp", "rsync", "chmod", "chown", "mkdir", "rmdir", "ln", "ls",
         "cd", "rm", "mv", "cp", "grep", "awk", "sed", "tar", "ps", "kill", "killall",
         "launchctl", "systemctl", "defaults", "codesign", "xcrun", "xcodebuild", "swift",

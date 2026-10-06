@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @testable import UttrflowPredict
@@ -27,11 +28,25 @@ struct DestructiveCommandTests {
             "reboot",
             "killall -9 Finder",
             "killall -KILL Finder",
+            "killall -SIGKILL Finder",
+            "killall -sigkill Finder",
+            "killall -s SIGKILL Finder",
+            "killall -sKILL Finder",
+            "killall --signal=SIGKILL Finder",
             "pkill -9 -f node",
             "pkill -KILL node",
+            "pkill -SIGKILL node",
             "pkill -s 9 node",
+            "pkill -s SIGKILL node",
+            "pkill -sKILL node",
+            "pkill --signal=SIGKILL node",
             "kill -9 -1",
             "kill -KILL -1",
+            "kill -SIGKILL 1234",
+            "kill -sigkill 1234",
+            "kill -s SIGKILL 1234",
+            "kill -sKILL 1234",
+            "kill --signal=SIGKILL 1234",
             ":(){ :|:& };:",
         ])
     func recognisesDestructive(_ line: String) {
@@ -82,9 +97,12 @@ struct DestructiveCommandTests {
             "npm run dev",
             "kill 1234",
             "kill -TERM 1234",
+            "kill -s SIGTERM 1234",
+            "kill --signal=SIGTERM 1234",
             "pkill node",
             "pkill -TERM -f node",
             "killall Finder",
+            "killall -TERM Finder",
             "restart the staging database",
         ])
     func leavesOrdinaryAlone(_ line: String) {
@@ -92,9 +110,22 @@ struct DestructiveCommandTests {
     }
 
     @Test(
+        "Argument consumers and package-manager removals remain ordinary.",
+        arguments: [
+            "echo rm", "echo please rm this", "man rm", "which dd", "tldr shred", "type rm",
+            "help rm", "info dd", "whatis rm", "apropos shred", "printf rm", "command -v rm",
+            "command -V dd",
+            "npm rm lodash", "pnpm remove lodash", "yarn remove lodash",
+        ])
+    func leavesHarmlessDestroyerNamesAlone(_ line: String) {
+        #expect(!DestructiveCommand.matches(line), "\(line) should be ordinary")
+    }
+
+    @Test(
         "A destroying command is recognised however it is reached or spelled.",
         arguments: [
             "/bin/rm -rf build", "\\rm -rf build", "sudo -E rm -rf /var", "sudo -u root rm -rf x",
+            "command rm -rf x",
             "FOO=1 rm -rf x", "env -i rm x", "nice -n 10 rm x", "find . -name '*.log' | xargs -n 1 rm",
             "find . -type f -delete", "find . -exec rm {} +", "srm secret.txt", "unlink file",
             "git push --force-with-lease", "git push origin --delete feature", "git push origin :feature",
@@ -338,6 +369,52 @@ struct DestructiveCommandTests {
     }
 
     @Test(
+        "Worktree, rm and forced submodule deinit throw work away, every flag spelling.",
+        arguments: [
+            "git worktree remove ../wt", "git worktree remove --force ../wt",
+            "git worktree remove -f ../wt", "git worktree remove --force",
+            "git -C repo worktree remove -f ../wt", "sudo git worktree remove ../wt",
+            "git rm file", "git rm -f file", "git rm --force file",
+            "git rm -rf file", "git rm -f Sources/App/Main.swift",
+            "git -C repo rm -f secret", "sudo git rm -f file",
+            "git submodule deinit -f path", "git submodule deinit --force path",
+            "git submodule deinit -f", "git -C repo submodule deinit -f path",
+            "sudo git submodule deinit --force path",
+        ])
+    func forcedGitOperationsAreDestructive(_ line: String) {
+        #expect(
+            DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be destructive")
+    }
+
+    @Test(
+        "Unforced submodule deinit and ordinary git worktree reads stay ordinary.",
+        arguments: [
+            "git worktree list", "git worktree add ../wt", "git worktree prune",
+            "git submodule deinit path", "git submodule deinit --all",
+            "git submodule status", "git submodule init path", "git rm --cached file",
+        ])
+    func unforcedSubmoduleAndWorktreeReadsStayOrdinary(_ line: String) {
+        #expect(
+            !DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be ordinary")
+    }
+
+    @Test func pathOnlyCheckoutIsDestructiveWhenTheFileExists() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: "checkout-4408-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appending(path: "App.swift")
+        try Data("x".utf8).write(to: file)
+        let path = file.path(percentEncoded: false)
+        #expect(DestructiveCommand.matches("git checkout \(path)", failClosedOnUnresolved: true))
+        #expect(DestructiveCommand.matches("git -C repo checkout \(path)", failClosedOnUnresolved: true))
+        #expect(
+            !DestructiveCommand.matches(
+                "git checkout missing-\(UUID().uuidString).swift", failClosedOnUnresolved: true))
+        #expect(!DestructiveCommand.matches("git checkout main", failClosedOnUnresolved: true))
+    }
+
+    @Test(
         "An rsync that deletes files is destructive, whichever delete flag it carries.",
         arguments: [
             "rsync -a --delete src/ backup/", "rsync -a --delete-after src/ backup/",
@@ -355,7 +432,8 @@ struct DestructiveCommandTests {
         "An output redirection that empties a file first is destructive.",
         arguments: [
             "echo x > notes.txt", "echo \"\" > notes.txt", "> notes.txt", "sort data.csv >| data.csv",
-            "ls 1> listing.txt", "make &> build.log", "echo x >notes.txt", "cat a.txt > b.txt && ls",
+            "ls 1> listing.txt", "make 2> errors.log", "make 3> trace.log", "make 2>| errors.log",
+            "make &> build.log", "echo x >notes.txt", "cat a.txt > b.txt && ls",
             "make 2>&1 | tee build.log", "make >& build.log", "make >&build.log",
             "ls -la >&listing.txt && ls",
         ])
@@ -368,8 +446,9 @@ struct DestructiveCommandTests {
         "An rsync that deletes nothing, and a redirection that empties no file, are ordinary.",
         arguments: [
             "rsync -a src dst", "rsync -av --progress src/ backup/", "echo x >> notes.txt",
-            "make 2> errors.log", "make 2>&1 | tee", "echo x >&2", "make > /dev/null",
-            "make > /dev/null 2>&1", "echo x > /dev/stderr", "make &>> build.log", "sort < data.csv",
+            "make 2>&1 | tee", "make 3>&2", "echo x >&2", "make > /dev/null",
+            "make 2> /dev/null", "make 3>| /dev/stderr", "make > /dev/null 2>&1",
+            "echo x > /dev/stderr", "make &>> build.log", "sort < data.csv",
             "grep '>' notes.txt", "make | tee -a build.log", "make | tee --append build.log", "make | tee",
             "make >&2", "make 1>&-", "make >& /dev/null", "make >>& build.log",
         ])
@@ -401,6 +480,45 @@ struct DestructiveCommandTests {
         ])
     func wrappedOrdinaryCommands(_ line: String) {
         #expect(!DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be ordinary")
+    }
+
+    @Test(
+        "Carriers that re-parse or pass through to the command they carry are judged by it.",
+        arguments: [
+            "eval \"rm -rf ~\"", "eval 'rm -rf ~/Documents'", "eval \"dd if=/dev/zero of=/dev/disk2\"",
+            "setsid rm -rf build", "setsid dd if=/dev/zero of=/dev/disk2",
+            "parallel rm -rf ~/Documents", "parallel -j 4 rm -rf ~/Documents",
+            "su -c \"rm -rf ~\"", "su -c 'rm -rf /var'", "su -c \"dd if=/dev/zero of=/dev/disk2\"",
+            "runuser -c \"rm -rf ~\"", "runuser -c 'rm -rf /tmp'",
+            "sudo eval \"rm -rf ~\"", "nice eval \"rm -rf x\"",
+        ])
+    func carrierCarriesDestroyer(_ line: String) {
+        #expect(
+            DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be destructive")
+    }
+
+    @Test(
+        "Carriers carrying an ordinary command are ordinary.",
+        arguments: [
+            "eval \"echo hi\"", "eval 'ls -la'", "eval \"date\"",
+            "setsid ls", "setsid make verify", "setsid date",
+            "parallel ls", "parallel -j 4 ls", "parallel echo done",
+            "su -c \"echo hi\"", "su -c 'ls -la'", "su alice -c \"echo hi\"",
+            "runuser -c \"echo hi\"", "runuser -c 'ls'",
+        ])
+    func carrierCarriesOrdinary(_ line: String) {
+        #expect(
+            !DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be ordinary")
+    }
+
+    @Test(
+        "An unknown carrier word followed by a destroyer fails closed, never reaching the carrier as the command.",
+        arguments: [
+            "unknown-wrapper rm -rf build", "fakecarrier dd if=/dev/zero of=/dev/disk2",
+        ])
+    func unknownCarrierFailsClosed(_ line: String) {
+        #expect(
+            DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be destructive")
     }
 
     @Test(
@@ -448,6 +566,27 @@ struct DestructiveCommandTests {
     }
 
     @Test(
+        "A push whose force or delete flag sits inside a short-flag cluster is destructive.",
+        arguments: [
+            "git push -fu origin feature", "git push -uf origin feature",
+            "git push -fd origin feature", "git push -vf origin feature",
+            "git push -df origin feature", "git push -fv origin feature",
+            "git -C repo push -fu origin feature",
+        ])
+    func clusteredPushFlagIsDestructive(_ line: String) {
+        #expect(DestructiveCommand.matches(line), "\(line) should be destructive")
+    }
+
+    @Test(
+        "A push whose only short flag is a harmless one is ordinary.",
+        arguments: [
+            "git push -u origin feature", "git push -v origin feature", "git push -q origin feature",
+        ])
+    func harmlessPushClusterIsOrdinary(_ line: String) {
+        #expect(!DestructiveCommand.matches(line), "\(line) should be ordinary")
+    }
+
+    @Test(
         "A cloud or hosting tool deleting a repository, a release, a bucket or a resource is destructive.",
         arguments: [
             "gh repo delete example/demo --yes", "gh release delete v1.0",
@@ -469,6 +608,45 @@ struct DestructiveCommandTests {
     func cloudDeletionsAreDestructive(_ line: String) {
         #expect(
             DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be destructive")
+    }
+
+    @Test(
+        "An AWS operation named outside the delete- or terminate- prefixes but irreversible in fact is destructive.",
+        arguments: [
+            "aws kms schedule-key-deletion --key-id K --pending-window-in-days 7",
+            "aws ec2 deregister-image --image-id ami-0",
+            "aws kms disable-key --key-id K",
+            "aws ec2 remove-tags --resources i-1 --tags Key=env",
+            "aws sqs purge-queue --queue-url https://sqs.example.com/q",
+        ])
+    func awsIrreversibleNamedOperationsAreDestructive(_ line: String) {
+        #expect(
+            DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be destructive")
+    }
+
+    @Test(
+        "gsutil rsync with the delete flag inside a short-flag cluster is destructive.",
+        arguments: [
+            "gsutil rsync -dr src gs://example",
+            "gsutil rsync -rd src gs://example",
+            "gsutil rsync -mdr src gs://example",
+            "gsutil -m rsync -dr src gs://example",
+        ])
+    func gsutilRsyncClusteredDeleteIsDestructive(_ line: String) {
+        #expect(
+            DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be destructive")
+    }
+
+    @Test(
+        "gsutil rsync without the delete flag, including a plain -r cluster, is ordinary.",
+        arguments: [
+            "gsutil rsync -r src gs://example",
+            "gsutil rsync src gs://example",
+            "gsutil -m rsync -r src gs://example",
+        ])
+    func gsutilRsyncWithoutDeleteIsOrdinary(_ line: String) {
+        #expect(
+            !DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be ordinary")
     }
 
     @Test(
@@ -516,9 +694,14 @@ struct DestructiveCommandTests {
         arguments: [
             "dropdb mydb", "dropdb -h db.example.com mydb", "dropuser app", "redis-cli FLUSHALL",
             "redis-cli -h cache.example.com -n 2 flushdb", "valkey-cli flushall",
+            "DROP KEYSPACE app", "DROP VIEW users", "DROP MATERIALIZED VIEW events_mv", "DROP USER app",
+            "DROP ROLE analyst", "DROP TYPE mood", "DROP FUNCTION score", "DROP PROCEDURE refresh",
             #"mongosh mydb --eval "db.dropDatabase()""#, #"mongo mydb --eval "db.users.drop()""#,
             #"mongosh --eval "db.users.deleteMany({})""#, #"sqlite3 app.db "DELETE FROM users""#,
             #"psql -c "DELETE FROM users WHERE id = 1""#, "DELETE FROM users",
+            #"cqlsh -e "DROP KEYSPACE app""#,
+            #"clickhouse-client -q "ALTER TABLE logs DELETE WHERE 1""#,
+            #"clickhouse-client -q "ALTER TABLE logs DROP PARTITION '2026-10'""#,
         ])
     func datastoreDeletionsAreDestructive(_ line: String) {
         #expect(
@@ -530,6 +713,7 @@ struct DestructiveCommandTests {
         arguments: [
             #"psql -c "select 1""#, "redis-cli get k", "redis-cli info", #"mongosh --eval "db.users.find()""#,
             #"sqlite3 app.db "SELECT * FROM users""#, "createdb mydb",
+            #"clickhouse-client -q "SELECT * FROM logs""#,
         ])
     func datastoreReadsAreOrdinary(_ line: String) {
         #expect(!DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be ordinary")
@@ -611,5 +795,162 @@ struct DestructiveCommandTests {
         ])
     func ordinaryFindActionClausesStayOrdinary(_ line: String) {
         #expect(!DestructiveCommand.matches(line), "\(line) should be ordinary")
+    }
+
+    /// The form `carrier host [flags] destroyer [args]` is judged by the carried destroyer with the same rules as a local one.
+    @Test(
+        "A remote shell carrier that runs a destroying command is recognised, with each destroyer spelled out.",
+        arguments: [
+            "ssh prod rm -rf /srv/app",
+            "ssh user@host dd if=/dev/zero of=/dev/disk2",
+            "ssh prod mkfs.ext4 /dev/sdb",
+            "ssh -i ~/.ssh/id_ed25519 prod rm -rf /srv/app",
+            "ssh -p 2222 prod rm -rf build",
+            "sudo ssh prod rm -rf /srv/app",
+            "mosh host rm -rf /srv/app",
+            "mosh user@host dd if=/dev/zero of=/dev/disk2",
+        ])
+    func remoteCarriersCarryingDestructive(_ line: String) {
+        #expect(
+            DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be destructive")
+    }
+
+    @Test(
+        "A remote shell carrier with no command or with an ordinary command is ordinary.",
+        arguments: [
+            "ssh prod",
+            "ssh user@host ls",
+            "ssh -p 2222 prod cat /etc/hostname",
+            "mosh host",
+            "mosh user@host uname -a",
+        ])
+    func remoteCarriersWithOrdinaryCommandsAreOrdinary(_ line: String) {
+        #expect(
+            !DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be ordinary")
+    }
+
+    @Test(
+        "A parallel runner that executes a destroyer is recognised.",
+        arguments: [
+            "parallel rm -rf /data",
+            "parallel -j 8 rm -rf /data",
+            "parallel --jobs 4 rm -rf /data",
+            "parallel dd if=/dev/zero of=/dev/disk2",
+            "parallel mkfs.ext4 /dev/sdb",
+        ])
+    func parallelCarryingDestructive(_ line: String) {
+        #expect(
+            DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be destructive")
+    }
+
+    @Test(
+        "A parallel runner with no command or with an ordinary command is ordinary.",
+        arguments: [
+            "parallel --citation",
+            "parallel -j 8",
+            "parallel ls",
+            "parallel 'echo hello'",
+        ])
+    func parallelWithOrdinaryCommandsIsOrdinary(_ line: String) {
+        #expect(
+            !DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be ordinary")
+    }
+
+    @Test(
+        "An fd runner with -x, -X, --exec, --exec-batch or --run is judged by the command it carries.",
+        arguments: [
+            "fd -x rm -rf {}",
+            "fd -X rm -rf {}",
+            "fd --exec rm -rf {}",
+            "fd --exec-batch rm -rf {}",
+            "fd --run rm -rf {}",
+            "fd pattern -x rm -rf {}",
+            "fd -e txt -x rm -rf {}",
+            "fd pattern -X dd if=/dev/zero of=/dev/disk2",
+            "fd -e txt --exec mkfs.ext4 /dev/sdb",
+            "sudo fd -x rm -rf {}",
+        ])
+    func fdCarryingDestructive(_ line: String) {
+        #expect(
+            DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be destructive")
+    }
+
+    @Test(
+        "An fd runner with no command or with an ordinary command is ordinary.",
+        arguments: [
+            "fd pattern",
+            "fd -e txt",
+            "fd -x ls",
+            "fd --exec ls",
+            "fd pattern -x ls",
+        ])
+    func fdWithOrdinaryCommandsIsOrdinary(_ line: String) {
+        #expect(
+            !DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be ordinary")
+    }
+
+    @Test(
+        "A docker exec or run that destroys inside a container is recognised.",
+        arguments: [
+            "docker exec db rm -rf /var/lib/postgresql/data",
+            "docker exec db dd if=/dev/zero of=/dev/disk2",
+            "docker exec db mkfs.ext4 /dev/sdb",
+            "docker exec -it db rm -rf /var/lib/postgresql/data",
+            "docker exec -u postgres db rm -rf /var/lib/postgresql/data",
+            "docker exec -w /tmp db rm -rf /data",
+            "docker exec -e KEY=VAL db rm -rf /data",
+            "docker run --rm app rm -rf /tmp/work",
+            "docker run -it app dd if=/dev/zero of=/dev/disk2",
+            "sudo docker exec db rm -rf /var/lib/postgresql/data",
+            "podman exec db rm -rf /data",
+            "podman run --rm app rm -rf /tmp/work",
+        ])
+    func containerExecCarryingDestructive(_ line: String) {
+        #expect(
+            DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be destructive")
+    }
+
+    @Test(
+        "A docker exec or run that only runs an ordinary command is ordinary.",
+        arguments: [
+            "docker exec db ls",
+            "docker exec -it db bash",
+            "docker exec db psql",
+            "docker run --rm app ls /data",
+            "podman exec db bash",
+            "podman run --rm app env",
+        ])
+    func containerExecWithOrdinaryCommandsIsOrdinary(_ line: String) {
+        #expect(
+            !DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be ordinary")
+    }
+
+    @Test(
+        "A kubectl exec that runs a destroyer in a pod is recognised.",
+        arguments: [
+            "kubectl exec pod -- rm -rf /data",
+            "kubectl exec pod -- dd if=/dev/zero of=/dev/disk2",
+            "kubectl exec pod -- mkfs.ext4 /dev/sdb",
+            "kubectl exec -n production pod -- rm -rf /data",
+            "kubectl exec -c container mypod -- rm -rf /data",
+            "kubectl exec -it pod -- rm -rf /data",
+            "sudo kubectl exec pod -- rm -rf /data",
+        ])
+    func kubectlExecCarryingDestructive(_ line: String) {
+        #expect(
+            DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be destructive")
+    }
+
+    @Test(
+        "A kubectl exec that only runs an ordinary command is ordinary.",
+        arguments: [
+            "kubectl exec pod -- ls",
+            "kubectl exec -it pod -- bash",
+            "kubectl exec pod -- psql",
+            "kubectl exec -n production pod -- env",
+        ])
+    func kubectlExecWithOrdinaryCommandsIsOrdinary(_ line: String) {
+        #expect(
+            !DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be ordinary")
     }
 }

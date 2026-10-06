@@ -16,7 +16,8 @@ struct RecordingStoreTests {
         deinit { try? FileManager.default.removeItem(at: directory.deletingLastPathComponent()) }
     }
 
-    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+    /// The real clock: a file this test writes directly is dated by the disk, not by the store.
+    private let now = Date()
 
     private func isExcludedFromBackup(_ url: URL) throws -> Bool {
         let values = try url.resourceValues(forKeys: [.isExcludedFromBackupKey])
@@ -43,9 +44,11 @@ struct RecordingStoreTests {
         let sandbox = Sandbox()
         let store = RecordingStore(directory: sandbox.directory)
         let first = try #require(await store.begin(at: now))
+        first.append([0.1])
         _ = await store.finish(first)
 
         let second = try #require(await store.begin(at: now))
+        second.append([0.1])
         #expect(await store.current() == nil)
         _ = await store.finish(second)
         #expect(await store.waiting(now: now).count == 2)
@@ -56,6 +59,7 @@ struct RecordingStoreTests {
         let sandbox = Sandbox()
         let store = RecordingStore(directory: sandbox.directory)
         let writer = try #require(await store.begin(at: now))
+        writer.append([0.1])
         let finished = await store.finish(writer)
 
         await store.discard(finished.id)
@@ -98,6 +102,7 @@ struct RecordingStoreTests {
         let writer = try #require(await store.begin(at: now))
         writer.append(Array(repeating: 0.3, count: 1_600))
         let recording = await store.finish(writer)
+        await store.settle(recording.id)
         await store.setDestination(
             AppContext(
                 applicationName: "Editor", bundleIdentifier: "com.example.editor",
@@ -110,7 +115,7 @@ struct RecordingStoreTests {
 
         #expect(
             restored.destination
-                == AppContext(
+                == AppIdentity(
                     applicationName: "Editor", bundleIdentifier: "com.example.editor"))
         #expect(restored.fieldKind == .codeEditor)
     }
@@ -122,8 +127,12 @@ struct RecordingStoreTests {
         let writer = try #require(await store.begin(at: now))
         writer.append(Array(repeating: 0.3, count: 1_600))
         let recording = await store.finish(writer)
-        let legacy = AppContext(applicationName: "Editor", bundleIdentifier: "com.example.editor")
-        let data = try PropertyListEncoder().encode(legacy)
+        await store.settle(recording.id)
+        let legacy = AppIdentity(applicationName: "Editor", bundleIdentifier: "com.example.editor")
+        let data = try PropertyListSerialization.data(
+            fromPropertyList: [
+                "applicationName": "Editor", "bundleIdentifier": "com.example.editor", "isSecure": false,
+            ], format: .binary, options: 0)
         try data.write(
             to: sandbox.directory.appending(path: "\(recording.id.uuidString).context"),
             options: .atomic)
@@ -139,6 +148,7 @@ struct RecordingStoreTests {
         let sandbox = Sandbox()
         let store = RecordingStore(directory: sandbox.directory)
         let writer = try #require(await store.begin(at: now))
+        writer.append([0.1])
         _ = await store.finish(writer)
         await store.settle(writer.id)
 
@@ -158,6 +168,7 @@ struct RecordingStoreTests {
         let sandbox = Sandbox()
         let store = RecordingStore(directory: sandbox.directory, retention: .seconds(60))
         let writer = try #require(await store.begin(at: now))
+        writer.append([0.1])
         let finished = await store.finish(writer)
 
         #expect(await store.waiting(now: now) == [finished])
@@ -171,6 +182,7 @@ struct RecordingStoreTests {
         let sandbox = Sandbox()
         let store = RecordingStore(directory: sandbox.directory, retention: .seconds(60))
         let writer = try #require(await store.begin(at: now.addingTimeInterval(365 * 86_400)))
+        writer.append([0.1])
         _ = await store.finish(writer)
 
         #expect(await store.waiting(now: now).isEmpty)
@@ -183,6 +195,7 @@ struct RecordingStoreTests {
         let sandbox = Sandbox()
         let store = RecordingStore(directory: sandbox.directory, retention: .seconds(60))
         let writer = try #require(await store.begin(at: now))
+        writer.append([0.1])
         let finished = await store.finish(writer)
 
         #expect(await store.waiting(now: now.addingTimeInterval(400 * 86_400)).isEmpty)
@@ -191,16 +204,54 @@ struct RecordingStoreTests {
         #expect(await store.waiting(now: now) == [finished])
     }
 
+    @Test("500 waiting recordings are pruned to the newest that fit the byte limit")
+    func manyRecordingsArePrunedToTheByteLimit() async throws {
+        let sandbox = Sandbox()
+        try FileManager.default.createDirectory(at: sandbox.directory, withIntermediateDirectories: true)
+        let audio = try #require(
+            AudioSamples(samples: Array(repeating: 0.1, count: 16_000), sampleRate: 16_000))
+        let wav = WAVEncoder.encode(audio)
+        var ids: [UUID] = []
+        for age in 0..<500 {
+            let id = UUID()
+            let file = sandbox.directory.appending(path: "\(id.uuidString).wav")
+            try wav.write(to: file)
+            try FileManager.default.setAttributes(
+                [.creationDate: now.addingTimeInterval(-Double(age))], ofItemAtPath: file.path)
+            ids.append(id)
+        }
+        let store = RecordingStore(directory: sandbox.directory, byteLimit: 10 * wav.count)
+
+        let waiting = await store.waiting(now: now)
+
+        #expect(waiting.map(\.id) == Array(ids.prefix(10)))
+        let left = try FileManager.default.contentsOfDirectory(atPath: sandbox.directory.path)
+        #expect(left.count == 10)
+    }
+
+    @Test("the newest recording is kept even when it alone is over the byte limit")
+    func theNewestRecordingSurvivesTheByteLimit() async throws {
+        let sandbox = Sandbox()
+        let store = RecordingStore(directory: sandbox.directory, byteLimit: 1)
+        let writer = try #require(await store.begin(at: now))
+        writer.append([0.1])
+        let finished = await store.finish(writer)
+
+        #expect(await store.waiting(now: now) == [finished])
+    }
+
     @Test("newest first, and only the files that are recordings")
     func listsNewestFirstIgnoringStrays() async throws {
         let sandbox = Sandbox()
         let store = RecordingStore(directory: sandbox.directory)
         let older = try #require(await store.begin(at: now))
+        older.append([0.1])
         let olderFinished = await store.finish(older)
         await store.settle(older.id)
         try? FileManager.default.setAttributes(
             [.creationDate: now.addingTimeInterval(-600)], ofItemAtPath: older.url.path)
         let newer = try #require(await store.begin(at: now))
+        newer.append([0.1])
         let newerFinished = await store.finish(newer)
         try "not audio".write(
             to: sandbox.directory.appending(path: "notes.txt"), atomically: true, encoding: .utf8)
@@ -325,6 +376,7 @@ struct RecordingStoreTests {
             directory: RecordingStore.defaultDirectory(in: container, for: "com.uttrflow.Uttrflow.dev"),
             retention: .seconds(60))
         let writer = try #require(await shipped.begin(at: now))
+        writer.append([0.1])
         let kept = await shipped.finish(writer)
         await shipped.settle(kept.id)
 
@@ -338,7 +390,8 @@ struct RecordingStoreTests {
 
 @Suite("RecordingStore, emptied")
 struct RecordingStoreDiscardEverythingTests {
-    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+    /// The real clock: a file this test writes directly is dated by the disk, not by the store.
+    private let now = Date()
 
     /// A fresh folder per test, removed by the test itself.
     private func directory() -> URL {
@@ -352,8 +405,10 @@ struct RecordingStoreDiscardEverythingTests {
         defer { try? FileManager.default.removeItem(at: folder.deletingLastPathComponent()) }
         let store = RecordingStore(directory: folder)
         let first = try #require(await store.begin(at: now))
+        first.append([0.1])
         _ = await store.finish(first)
         let second = try #require(await store.begin(at: now))
+        second.append([0.1])
         _ = await store.finish(second)
         await store.settle(second.id)
         let stray = folder.appending(path: "not-a-uuid.wav")
@@ -381,8 +436,10 @@ struct RecordingStoreDiscardEverythingTests {
         defer { try? FileManager.default.removeItem(at: folder.deletingLastPathComponent()) }
         let store = RecordingStore(directory: folder)
         let finished = try #require(await store.begin(at: now))
+        finished.append([0.1])
         _ = await store.finish(finished)
         let open = try #require(await store.begin(at: now))
+        open.append([0.1])
 
         try await store.discardEverything()
 

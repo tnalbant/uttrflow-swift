@@ -116,7 +116,7 @@ class OfflineAuditTests(unittest.TestCase):
         self.assertNotIn("Sources/UttrflowAudio/AuditProbe.swift", self.workspace.output())
 
     def test_an_allowance_that_names_a_missing_file_is_refused(self):
-        island = os.path.join(self.workspace.root, "Sources", "UttrflowAI", "HTTPCleanupModel.swift")
+        island = os.path.join(self.workspace.root, "Sources", "UttrflowSpeech", "TokenizerDownload.swift")
         moved = island + ".moved"
         os.rename(island, moved)
         try:

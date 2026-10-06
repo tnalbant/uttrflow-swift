@@ -1,7 +1,12 @@
 # Conditioning Whisper on the user's own words
 
 `VocabularyPrompt` in `Sources/UttrflowSpeech/VocabularyPrompt.swift` turns the personal
-dictionary into the prompt Whisper is conditioned on *before* it decodes anything.
+dictionary into the prompt Whisper is conditioned on *before* it decodes anything, and builds
+every `DecodingOptions` the WhisperKit backend decodes with. `WorkingSet`
+(`Sources/UttrflowDictionary/WorkingSet.swift`) chooses the words and `DictionaryVocabulary`
+(`Sources/UttrflowSpeech/VocabularySource.swift`) bridges the two. The pipeline ranks the words
+once per dictation, against the screen it began on, and gives the same list to every piece.
+[`speech-engines.md`](speech-engines.md) covers what the prompt costs the decoder's own rules.
 
 This is where a personal dictionary is worth the most. Rewriting "utter flow" to "Uttrflow"
 afterwards is a repair, and one that only fires when the recogniser happened to produce
@@ -20,14 +25,23 @@ so the real ceiling is 111.
 
 Truncating here rather than leaving it to the decoder is the whole point. WhisperKit keeps
 the *last* 111 tokens and drops the rest without a word, so a vocabulary ranked best-first
-would lose precisely the words worth having. It is not a rare case either: `WorkingSet`
-offers up to 28 words, matching the measured vocabulary that usually fits this budget.
-Long technical words can still make the token budget bind before that word limit.
+would lose precisely the words worth having.
 
-Words manually added during the last seven days rank ahead of older entries, newest first.
-This keeps a just-corrected name in front of entries that have accumulated a few uses. The
-Diagnostics page shows the exact dictionary words kept by the latest Whisper prompt; that
-personal list stays on screen and is omitted from copied diagnostics.
+| Constant | Value | Meaning |
+|---|---|---|
+| `VocabularyPrompt.maximumTokens` | 111 | the prompt budget |
+| `VocabularyPrompt.maximumLeadTokens` | 48 | the most of it the text before the caret may take |
+| `WorkingSet.defaultLimit` | 28 words | how many dictionary words usually fit beside the rest |
+| `WorkingSet.newAdditionPriorityDays` | 7 days | a word added by hand ranks ahead of older entries for this long |
+| `WorkingSet.recencyHalfLifeInDays` | 30 days | the age at which a word's value halves |
+| `WorkingSet.unusedInferredLifetimeDays` | 30 days | an unused inferred word stops taking a slot after this |
+
+Long technical words can make the token budget bind before the word limit. Words added by hand
+in the last seven days rank ahead of older entries, newest first, which keeps a just-corrected
+name in front of entries that have accumulated a few uses. Otherwise words are scored on
+frequency, recency and whether the frontmost app agrees with the entry. The Diagnostics page
+shows the dictionary words kept by the latest prompt ("Words in recogniser prompt"); that personal
+list stays on screen and is left out of Copy Diagnostics.
 
 Packing is word by word rather than a truncation mid-sequence: half of `PaymentSheet` in the
 prompt biases the decoder towards something the user has never said. A word too long for what
@@ -38,10 +52,20 @@ between words, because dropping a word that will not fit must not leave its sepa
 Special tokens are filtered out of every piece. WhisperKit discards them itself, so filtering
 here as well is what keeps the count being budgeted equal to the count that survives.
 
+## The text before the caret comes last
+
+The sentence or two before the caret (`TranscriptionOptions.precedingText`, read once per
+dictation and `nil` in a secure field; see [`context-budget.md`](context-budget.md)) follows the
+vocabulary sentence, so the decoder continues from the user's own words. It keeps its last whole
+words within `maximumLeadTokens`, and the vocabulary packs into what is left. A decode that comes
+back empty is retried with no prompt at all. The dictation bench's developer-vocabulary
+categories measure what a lead-in sentence is worth to recognition.
+
 ## The sentence around the words is the surprise
 
-The words are offered inside `" The words used here are …"`, and that framing is not
-decoration — it is the single most surprising thing measured here.
+The words are offered inside `" The words used here are …"` (`VocabularyPrompt.opening`), closed
+with `"."` (`closing`), and that framing is not decoration: it is the single most surprising thing
+measured here.
 
 | Prompt                                 | What the decoder heard |
 |----------------------------------------|------------------------|
@@ -60,22 +84,22 @@ Whisper's prompt is read as the transcript that came before, so the mark between
 words is the style the decoder continues when the audio says those two words next to each
 other — which a first and last name does.
 
-Measured on the bench's `nouns-vocabulary` clips, `nouns0` and `nouns1` in all three English
-voices, 21 September 2026 at `7deb139a`, against the shipping turbo model:
+Measured with `uttrflow-dev bench` and `Scripts/dictation_bench.py` on the bench's
+`nouns-vocabulary` clips, `nouns0` and `nouns1` in all three English voices, against the shipping
+turbo model:
 
 | Separator | Clips with an adjacent pair that gained a comma | `nouns-vocabulary` raw WER |
 |---|---|---|
 | `", "`    | 6 of 6 — "Zorvane, Kelthmar", "Ask Mirvella, Ostrander," | 0.0% |
 | `" "`     | 0 of 6 | 0.0% |
 
-Every dictionary word is still heard: the sentence around the words is what conditions the
-decoder, not the punctuation inside it. The word error rate cannot show this either way, since
-it drops punctuation — which is why the comma went unnoticed for so long.
+Every dictionary word is heard either way: the sentence around the words is what conditions the
+decoder, not the punctuation inside it. The word error rate cannot show the difference, since it
+drops punctuation.
 
-The budget is unchanged at 111, and a space costs no more than the comma it replaces: no token
-in the model's vocabulary begins with a comma followed by a space or a letter, so `", " + word`
-encoded the comma on its own and every word past the first now costs one token less. More of
-the dictionary fits, never less.
+A space also costs less than a comma: no token in the model's vocabulary begins with a comma
+followed by a space or a letter, so `", " + word` encodes the comma on its own, and every word
+past the first costs one token more with commas than with spaces.
 
 ## The forced prefill, and why a prompt otherwise returns nothing
 
@@ -89,10 +113,8 @@ The language and task tokens are absent when the model only knows English.
 
 > WhisperKit 1.1.0, `Core/TextDecoder.swift:163-223`.
 
-WhisperKit 0.18 ended a window the moment the sampler predicted the end token — *including*
-while it was still force-feeding the prompt, when whatever the sampler produced is thrown away
-anyway. Every conditioning prompt tripped that and returned an empty transcript. 1.1.0 ignores
-an end token sampled during its own prefill (`Core/TextDecoder.swift:679-686`) and honours one
+WhisperKit 1.1.0 ignores an end token sampled while it is still forcing the prompt, when whatever
+the sampler produces is thrown away anyway (`Core/TextDecoder.swift:679-686`), and honours one
 sampled at the last prefill token, which is the first real prediction.
 
 `DecoderPrefill` counts that run once, and it is the only place the count is written. A prompt
@@ -108,15 +130,15 @@ and lets the decode loop run up to `initialPromptIndex - 1 + sampleLength` steps
 prompt and the transcript** — not added on top of one another.
 
 A full prompt leaves about 108 positions for the words, and Hindi writes roughly 4.7 tokens per
-Devanagari word, so a Hindi piece over ~23 words on a full prompt, or ~44 words on the one-word
-shipped prompt, runs out of room mid-word. Issue #961 is the user-visible form of this budget
-collision. `CappedDecodeRetry` recovers the audio past the cap by re-decoding the tail; the
-underlying budget is unchanged.
+Devanagari word, so a Hindi piece over ~23 words on a full prompt, or ~44 words on a one-word
+prompt, runs out of room mid-word. `CappedDecodeRetry` recovers the audio past the cap by
+re-decoding the tail ([`speech-engines.md`](speech-engines.md)); the budget itself is fixed by
+WhisperKit.
 
 Each retry is a fresh decode with the same prompt, so it advances by the same ~23 or ~44 Hindi
 words, and `CappedDecodeRetry.maxRetries` is 10: one dictation recovers at most roughly 230 to
 440 Hindi words past the cap. A dictation that is still capped when the retries run out is
-marked `DecodeEffort.capUnresolved` rather than returned as if it were complete (#1727).
+marked `DecodeEffort.capUnresolved` rather than returned as if it were complete.
 
 ## Two decoding options that cost something
 
@@ -129,14 +151,49 @@ turbo model:
 | 3.3 s       | +4.1 ms   | 0.9%                        |
 | 24.3 s      | +19.1 ms  | 1.4%                        |
 
-Cheap enough that the alternative — a constant confidence, making the condition either
-vacuous or unsatisfiable — was never worth considering.
+A constant confidence is not used instead, because it makes the condition either vacuous or
+unsatisfiable, and the measured cost is small.
 
 **`promptTokens`** is applied once, ahead of the prefill, and re-forced for every 30-second
 window: WhisperKit builds the decoder's initial prompt before its seek loop and never
 overwrites it, so a two-minute dictation is biased just as strongly at the end as at the
 start. It costs the prefill cache and part of each window's decode budget, which is why the
 111 tokens are a ceiling rather than a target.
+
+## A saved prompt cache belongs to the audio it was computed on
+
+Each decoder block runs self-attention and then cross-attention over the encoder output, so
+from the second block on, the keys and values of the forced prompt already depend on the
+audio. A cache prefilled on one clip is therefore not the cache for another clip, and reuse
+is exact only inside one window (a retry or a fork over the same audio).
+
+`Scripts/prefix_cache_probe.py` measures it on the shipping turbo model (4 decoder layers):
+20 synthetic clips, greedy decoding without timestamps, each clip decoded with its own
+prefill and again with the prefix cache transplanted from the next clip. "Whole prefix" is
+every forced token but the last; "prompt only" is `<|startofprev|>` and the prompt, with the
+start, language and task tokens recomputed on the clip's own audio; "library prefill" is
+WhisperKit's `TextDecoderContextPrefill` model, a lookup table indexed by language and task
+that sees no audio. WhisperKit 1.1.0 ships that model but never loads it.
+
+| Prompt tokens | Cache | Max logit difference | Top-1 same | Transcripts same | Largest key or value difference, layers 0 / 1 / 2 / 3 |
+|---|---|---|---|---|---|
+| 0 | same clip, run twice | 0.00 | 20/20 | 20/20 | |
+| 0 | whole prefix from another clip | 1.77 | 20/20 | 19/20 | 0.00 / 0.32 / 0.74 / 1.43 |
+| 0 | library prefill | 2.14 | 20/20 | 19/20 | 0.04 / 0.86 / 1.01 / 1.23 |
+| 20 | whole prefix from another clip | 3.33 | 20/20 | 20/20 | 0.00 / 0.32 / 2.53 / 2.13 |
+| 20 | prompt only from another clip | 3.22 | 20/20 | 20/20 | |
+| 111 | whole prefix from another clip | 1.98 | 20/20 | 20/20 | 0.00 / 0.37 / 2.53 / 2.13 |
+| 111 | prompt only from another clip | 1.89 | 20/20 | 20/20 | |
+
+Layer 0 is identical across clips and layers 1 to 3 are not. The changed transcript is the
+same in both rows: a final full stop the clip's own prefill does not produce. So a transplanted
+cache is an approximation that changes logits by up to 3.3 and changed 2 of 120 transcripts
+here, not the identical output a cross-audio cache would need. The per-window prefill cost is
+reduced by shortening the prompt instead.
+
+> Apple M5 Pro, 48 GB, decoder and encoder on the Neural Engine, load average 170 to 240
+> during the 182-second run. Clips are `say` voices reading short sentences; real speech and
+> longer windows are not measured.
 
 ## Failing open
 
@@ -148,5 +205,27 @@ encode costs them the dictation.
 ## The `PromptTokenizer` seam
 
 The arithmetic above is checked against a tokeniser a test writes in three lines rather than
-against a 646 MB download. Its only real implementation adapts WhisperKit's own and lives
-beside the recogniser.
+against a 646 MB download. Its only real implementation adapts WhisperKit's own and lives in
+`WhisperKitBackend.swift`. `firstSpecialToken` is what the special-token filter compares against.
+
+## The prompt is not played back from non-speech
+
+A conditioned decoder given no evidence could continue its prompt, typing the listed words or
+the opening sentence from audio that said neither. `uttrflow-eval nonspeech --vocabulary <words>`
+conditions every clip of the non-speech corpus on those words and counts a clip as an echo when
+the words after the last spoken one are prompt words in prompt order, the opening sentence
+included; `--max-echo-rate` gates it.
+
+Measured on Apple M5 Pro with the shipping turbo model, 66 clips (six non-speech kinds, three
+seeds each, plus eight `say` sentences in one voice followed by each kind), with 20 invented
+names and five words the sentences really say ("bakery", "kettle", "printer", "folder",
+"plants"):
+
+| Prompt | Echoed | Inserted | Spoken dictionary words dropped |
+|---|---|---|---|
+| none | 0 of 66 | 1 of 66 | 0 |
+| 20 words | 0 of 66 | 1 of 66 | 0 |
+
+The one insertion is a breath clip in both runs ("The End" with the prompt), so the prompt adds
+none. With no echo found, no echo check runs at transcript assembly; the empty-result
+retry without the prompt in `CappedDecodeRetry` stays the only prompt-specific recovery.

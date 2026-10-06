@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 import UttrflowClipboard
 
@@ -7,14 +8,16 @@ import UttrflowClipboard
 // MARK: - Fixtures
 
 /// A blocking failure: the microphone is off, so nothing can be dictated at all.
-private let microphoneOff = FailurePresenter.present(PermissionError.microphoneDenied)
+private let microphoneOff = FailurePresenter.present(
+    PermissionError.microphoneDenied, floatingButtonShown: true)
 
 /// A degraded one: the words arrived, just on the clipboard rather than in the app.
 private let clipboardFallback = FailurePresenter.present(
-    TextInsertionError.insertionRejected(description: "read-only field"))
+    TextInsertionError.insertionRejected(description: "read-only field"), floatingButtonShown: true)
 
 /// One with nothing to offer, to prove the menu does not invent a row for it.
-private let noWayOut = FailurePresenter.present(AudioCaptureError.unsupportedInputFormat)
+private let noWayOut = FailurePresenter.present(
+    AudioCaptureError.unsupportedInputFormat, floatingButtonShown: true)
 
 private let twoRecents = [
     MenuBarRecent(
@@ -27,7 +30,7 @@ private let twoRecents = [
 
 extension MenuBarPresentation {
     /// The command whose intent is this one, if the menu is offering it at all.
-    fileprivate func command(_ intent: MenuBarIntent) -> MenuBarCommand? {
+    func command(_ intent: MenuBarIntent) -> MenuBarCommand? {
         commands.first { $0.intent == intent }
     }
 
@@ -47,7 +50,8 @@ struct MenuBarIconTests {
         #expect(
             icons == [
                 .mark, .symbol("mic.fill"), .symbol("sparkles"), .symbol("checkmark"),
-                .symbol("questionmark.circle"), .symbol("doc.on.clipboard"),
+                .symbol("exclamationmark.circle"), .symbol("questionmark.circle"),
+                .symbol("doc.on.clipboard"),
             ])
         #expect(Set(icons).count == DictationActivity.allCases.count)
     }
@@ -71,6 +75,19 @@ struct MenuBarIconTests {
         #expect(enabled.icon == disabled.icon)
     }
 
+    @Test("shows dictation switched off apart from resting, in the icon and the status line")
+    func dictationOffDiffersFromRest() {
+        let resting = MenuBarPresenter.present(MenuBarState(activity: .idle))
+        for activity in DictationActivity.allCases {
+            let off = MenuBarPresenter.present(
+                MenuBarState(activity: activity, features: MenuBarFeatures(dictation: false)))
+            #expect(off.icon == .symbol("mic.slash"))
+            #expect(off.icon != resting.icon)
+            #expect(off.statusLine == "Dictation off")
+            #expect(off.accessibilityLabel != resting.accessibilityLabel)
+        }
+    }
+
     @Test("overrides every activity when something needs fixing")
     func attentionOutranksActivity() {
         for activity in DictationActivity.allCases {
@@ -87,9 +104,36 @@ struct MenuBarIconTests {
     func degradedFailureDoesNotLightTheMenuBar() {
         let shown = MenuBarPresenter.present(MenuBarState(failure: clipboardFallback))
         #expect(!shown.isAttentionNeeded)
-        #expect(shown.icon == .mark)
+        #expect(shown.icon == .symbol("xmark.circle"))
         // It is still the news of the moment, so it still leads the menu.
         #expect(shown.statusLine == clipboardFallback.headline)
+    }
+
+    /// With no floating button the menu bar is the only surface left, so a non-blocking failure lights it.
+    @Test("lights the menu bar for a non-blocking failure when no floating button is shown")
+    func failureWithoutTheButtonLightsTheMenuBar() {
+        for severity in FailureSeverity.allCases {
+            let failure = FailurePresenter.present(
+                message: "Didn't catch that.", recovery: nil, severity: severity, floatingButtonShown: false)
+            let shown = MenuBarPresenter.present(MenuBarState(failure: failure))
+            #expect(shown.isAttentionNeeded, "\(severity)")
+            #expect(shown.icon == .symbol("exclamationmark.triangle.fill"))
+            #expect(shown.statusLine == "Didn't catch that.")
+        }
+    }
+
+    /// Shape, not colour alone: an informational notice and a failure differ from each other and from rest.
+    @Test("gives a notice beside the button a glyph of its own by severity")
+    func failureGlyphFollowsSeverity() {
+        let informational = FailurePresenter.present(
+            message: "Didn't catch that.", recovery: nil, severity: .informational, floatingButtonShown: true)
+        let shown = MenuBarPresenter.present(MenuBarState(failure: informational))
+        #expect(shown.icon == .symbol("info.circle"))
+        let icons = DictationActivity.allCases.map {
+            MenuBarPresenter.present(MenuBarState(activity: $0)).icon
+        }
+        #expect(!icons.contains(.symbol("info.circle")))
+        #expect(!icons.contains(.symbol("xmark.circle")))
     }
 
     @Test("shows copied, unconfirmed and inserted outcomes as different icons")
@@ -107,6 +151,15 @@ struct MenuBarIconTests {
         #expect(DictationActivity.completion(method: .clipboard, arrival: .notReported) == .copied)
         #expect(DictationActivity.completion(method: .typed, arrival: .unconfirmed) == .unconfirmed)
         #expect(DictationActivity.completion(method: .typed, arrival: .confirmed) == .inserted)
+    }
+
+    @Test("says part of the speech is missing only when a piece decoded to no words", arguments: [0, 1, 3])
+    func missedPiecesReachTheStatusLine(missed: Int) {
+        let activity = DictationActivity.completion(method: .typed, arrival: .confirmed, missedPieces: missed)
+        let shown = MenuBarPresenter.present(MenuBarState(activity: activity))
+        #expect(activity == (missed > 0 ? .partial : .inserted))
+        #expect(shown.statusLine == (missed > 0 ? MissedSpeech.line : "Inserted"))
+        #expect(shown.accessibilityLabel.contains("part not transcribed") == (missed > 0))
     }
 
     @Test("marks a live microphone even with nothing wrong")
@@ -128,8 +181,8 @@ struct MenuBarStatusTests {
         }
         #expect(
             lines == [
-                "Ready", "Listening…", "Tidying up…", "Inserted", "Inserted — not confirmed",
-                "Copied — press ⌘V",
+                "Ready", "Listening…", "Tidying up…", "Inserted", "Inserted — part not transcribed",
+                "Inserted — not confirmed", "Copied — press ⌘V",
             ])
         for (activity, line) in [
             (DictationActivity.copied, "Copied — press ⌘V"),
@@ -321,7 +374,7 @@ struct MenuBarContentsTests {
                     MenuBarStatus(title: "Nothing heard", detail: "Try again closer to the microphone.")))
     }
 
-    /// The popover names a ``Destination`` and the app owns the windows, so no callback is added.
+    /// The popover names a ``AppLocation`` and the app owns the windows, so no callback is added.
     @Test("asks for a window by naming the place, not by opening it")
     func windowsAreNamedAsDestinations() {
         let shown = MenuBarPresenter.present(MenuBarState())
@@ -545,6 +598,35 @@ struct MenuBarEnablementTests {
         #expect(shown.statusLine == "Listening… \(RemainingTime.phrase(for: advice) ?? "")")
     }
 
+    @Test(
+        "says how to finish a recording that releasing the keys does not end",
+        arguments: [
+            (StopGesture.letGo, "Listening…", "Uttrflow. Listening."),
+            (
+                .pressAgain, "Listening… Press shortcut to finish",
+                "Uttrflow. Listening. Press shortcut to finish."
+            ),
+            (
+                .pressAgainHandsFree, "Listening… Hands-free — press shortcut to finish",
+                "Uttrflow. Listening. Hands-free — press shortcut to finish."
+            ),
+        ])
+    func listeningSaysHowToFinish(gesture: StopGesture, line: String, spoken: String) {
+        let shown = MenuBarPresenter.present(MenuBarState(activity: .listening, stopGesture: gesture))
+        #expect(shown.statusLine == line)
+        #expect(shown.accessibilityLabel == spoken)
+    }
+
+    @Test("puts the countdown after how to finish")
+    func listeningCountsDownAfterTheInstruction() {
+        let advice = DictationAdvice.approaching(remaining: .seconds(74))
+        let shown = MenuBarPresenter.present(
+            MenuBarState(activity: .listening, recordingAdvice: advice, stopGesture: .pressAgain))
+        #expect(
+            shown.statusLine
+                == "Listening… Press shortcut to finish, \(RemainingTime.phrase(for: advice) ?? "")")
+    }
+
     /// Disabled rather than failing silently, which is what a refused microphone would look like.
     @Test("refuses to start a dictation that cannot happen")
     func startDictationEnablement() {
@@ -622,10 +704,12 @@ struct MenuBarEnablementTests {
                 == MenuBarRow(
                     title: twoRecents[0].title, tooltip: twoRecents[0].fullText,
                     insert: MenuBarCommand(
-                        title: "Paste", intent: .insertRecent(index: 0), tooltip: twoRecents[0].fullText),
+                        title: "Paste", intent: .insertRecent(id: twoRecents[0].id),
+                        tooltip: twoRecents[0].fullText),
                     copy: MenuBarCommand(
-                        title: "Copy", intent: .copyRecent(index: 0), tooltip: twoRecents[0].fullText)))
-        #expect(shown.command(.insertRecent(index: 1)) == nil)
+                        title: "Copy", intent: .copyRecent(id: twoRecents[0].id),
+                        tooltip: twoRecents[0].fullText)))
+        #expect(shown.command(.insertRecent(id: UUID())) == nil)
     }
 
     /// Reaching for an old dictation mid-insertion would race the one already on its way.
@@ -635,15 +719,15 @@ struct MenuBarEnablementTests {
         for activity in [DictationActivity.listening, .working] {
             let shown = MenuBarPresenter.present(
                 MenuBarState(activity: activity, recents: twoRecents, clips: clips))
-            #expect(shown.command(.insertRecent(index: 0))?.isEnabled == false)
-            #expect(shown.command(.copyRecent(index: 0))?.isEnabled == false)
-            #expect(shown.command(.insertClip(index: 0))?.isEnabled == false)
+            #expect(shown.command(.insertRecent(id: twoRecents[0].id))?.isEnabled == false)
+            #expect(shown.command(.copyRecent(id: twoRecents[0].id))?.isEnabled == false)
+            #expect(shown.command(.insertClip(id: clips[0].id))?.isEnabled == false)
         }
         for activity in [DictationActivity.idle, .inserted, .unconfirmed, .copied] {
             let shown = MenuBarPresenter.present(
                 MenuBarState(activity: activity, recents: twoRecents, clips: clips))
-            #expect(shown.command(.insertRecent(index: 0))?.isEnabled == true)
-            #expect(shown.command(.insertClip(index: 0))?.isEnabled == true)
+            #expect(shown.command(.insertRecent(id: twoRecents[0].id))?.isEnabled == true)
+            #expect(shown.command(.insertClip(id: clips[0].id))?.isEnabled == true)
         }
     }
 
@@ -672,12 +756,13 @@ struct MenuBarClipListTests {
         (0..<count).map { PanelFixture.clip("Clip number \($0)", minutesAgo: $0) }
     }
 
-    @Test("shows the five newest, each by its position")
+    @Test("shows the five newest and carries each clip identity")
     func fiveNewest() {
-        let shown = MenuBarPresenter.present(MenuBarState(clips: clips(7)))
+        let allClips = clips(7)
+        let shown = MenuBarPresenter.present(MenuBarState(clips: allClips))
         #expect(shown.clips.map(\.title) == (0..<5).map { "Clip number \($0)" })
-        #expect(shown.clips.map(\.insert.intent) == (0..<5).map { .insertClip(index: $0) })
-        #expect(shown.clips.map(\.copy.intent) == (0..<5).map { .copyClip(index: $0) })
+        #expect(shown.clips.map(\.insert.intent) == allClips.prefix(5).map { .insertClip(id: $0.id) })
+        #expect(shown.clips.map(\.copy.intent) == allClips.prefix(5).map { .copyClip(id: $0.id) })
     }
 
     @Test("is absent while the clipboard is switched off")
@@ -791,6 +876,19 @@ struct MenuBarUpdateTests {
         #expect(line(.idle) == "Ready")
     }
 
+    /// An open microphone is the one thing a VoiceOver user must hear, so an update waits behind it.
+    @Test("a live dictation outranks an update, which returns when it ends")
+    func dictationOutranksUpdate() {
+        let listening = MenuBarPresenter.present(
+            MenuBarState(activity: .listening, updateProgress: .readyToInstall))
+        #expect(listening.statusLine == "Listening…")
+        #expect(listening.accessibilityLabel == "Uttrflow. Listening.")
+        let working = MenuBarState(activity: .working, updateProgress: .downloading(fraction: 0.4))
+        #expect(MenuBarPresenter.present(working).statusLine == "Tidying up…")
+        let rested = MenuBarState(activity: .inserted, updateProgress: .readyToInstall)
+        #expect(MenuBarPresenter.present(rested).statusLine == "Update ready — installing when you pause")
+    }
+
     @Test("says when the update feed is being checked")
     func checking() {
         #expect(line(.checking) == "Checking for updates…")
@@ -806,10 +904,10 @@ struct MenuBarUpdateTests {
         #expect(MenuBarPresenter.present(state).statusLine == "Something went wrong")
     }
 
-    /// Below a failure and above the rest: an update is about to take the app away.
-    @Test("an update outranks the ordinary activity line")
+    /// Below a failure and a live dictation, above the rest: an update is about to take the app away.
+    @Test("an update outranks a resting activity line")
     func updateOutranksActivity() {
-        let state = MenuBarState(activity: .listening, updateProgress: .installing)
+        let state = MenuBarState(activity: .inserted, updateProgress: .installing)
         #expect(MenuBarPresenter.present(state).statusLine == "Updating…")
     }
 
@@ -851,14 +949,14 @@ struct MenuBarPrintedShortcutTests {
     @Test(
         "the AI suggestions switch says what its model is waiting on, in the words Settings uses",
         arguments: [
-            (SuggestionModelReadiness.loading, "AI Suggestions — Getting ready"),
-            (.downloading(fractionCompleted: nil), "AI Suggestions — Getting ready"),
-            (.downloading(fractionCompleted: 0.42), "AI Suggestions — Getting ready — 42%"),
-            (.downloading(fractionCompleted: 1.7), "AI Suggestions — Getting ready — 100%"),
-            (.releasedForMemory, "AI Suggestions — Paused to free memory"),
-            (.failed, "AI Suggestions — The model could not be fetched"),
-            (.ready, "AI Suggestions"),
-            (.notAsked, "AI Suggestions"),
+            (SuggestionModelReadiness.loading, "AI Suggestions, Beta — Getting ready"),
+            (.downloading(fractionCompleted: nil), "AI Suggestions, Beta — Getting ready"),
+            (.downloading(fractionCompleted: 0.42), "AI Suggestions, Beta — Getting ready — 42%"),
+            (.downloading(fractionCompleted: 1.7), "AI Suggestions, Beta — Getting ready — 100%"),
+            (.releasedForMemory, "AI Suggestions, Beta — Paused to free memory"),
+            (.failed, "AI Suggestions, Beta — The model could not be fetched"),
+            (.ready, "AI Suggestions, Beta"),
+            (.notAsked, "AI Suggestions, Beta"),
         ])
     func suggestionsSwitchShowsTheModel(model: SuggestionModelReadiness, title: String) {
         let shown = MenuBarPresenter.present(
@@ -873,7 +971,7 @@ struct MenuBarPrintedShortcutTests {
         let shown = MenuBarPresenter.present(
             MenuBarState(features: MenuBarFeatures(suggestions: false), suggestionModel: .failed))
         let item = shown.commands.first { $0.intent == .setFeature(.suggestions, isOn: true) }
-        #expect(item?.title == "AI Suggestions")
+        #expect(item?.title == "AI Suggestions, Beta")
     }
 }
 
@@ -933,5 +1031,63 @@ struct MenuBarUnheardSuggestionTests {
             Issue.record("the suggestion notice was shown while AI suggestions are off")
             return
         }
+    }
+}
+
+@Suite("AI suggestions runtime in the menu bar")
+struct MenuBarSuggestionRuntimeTests {
+    @Test("shows every unavailable coordinator state while suggestions are on")
+    func unavailableRuntimeStatesReachTheMenuBar() throws {
+        let unavailable: [(SuggestionRuntimeStatus, String)] = [
+            (.tapResting, "key tap is restarting"),
+            (.secureInputBlocked, "secure input field is active"),
+            (.tapFailed, "monitor input in Privacy & Security"),
+            (.corpusFailed, "corpus could not be opened"),
+        ]
+        for (runtime, expectedDetail) in unavailable {
+            let state = MenuBarState(
+                features: MenuBarFeatures(suggestions: true), suggestionRuntime: runtime)
+            let shown = MenuBarPresenter.present(state)
+            guard case .status(let status) = shown.header else {
+                Issue.record("the menu bar omitted the \(runtime) suggestions state")
+                continue
+            }
+            #expect(status.title == "AI suggestions paused")
+            #expect(status.detail?.contains(expectedDetail) == true)
+            #expect(status.emphasis == .attention)
+        }
+    }
+
+    @Test("keeps running and switched-off suggestions quiet")
+    func runningAndDisabledAreQuiet() {
+        for runtime in [SuggestionRuntimeStatus.idle, .starting, .running] {
+            let state = MenuBarState(
+                features: MenuBarFeatures(suggestions: true), suggestionRuntime: runtime)
+            guard case .hint = MenuBarPresenter.present(state).header else {
+                Issue.record("the menu bar reported the \(runtime) suggestions state")
+                continue
+            }
+        }
+        let disabled = MenuBarState(
+            features: MenuBarFeatures(suggestions: false), suggestionRuntime: .tapFailed)
+        guard case .hint = MenuBarPresenter.present(disabled).header else {
+            Issue.record("the menu bar showed a suggestions failure while suggestions were off")
+            return
+        }
+    }
+}
+
+@Suite("Status marker without colour")
+struct MenuBarEmphasisMarkerTests {
+    @Test("every emphasis has its own shape when colour must not carry it")
+    func shapesDifferWithoutColour() {
+        let markers = MenuBarEmphasis.allCases.map { $0.marker(differentiatesWithoutColour: true) }
+        #expect(Set(markers).count == MenuBarEmphasis.allCases.count)
+    }
+
+    @Test("the plain dot stays when colour may carry the emphasis")
+    func dotWithColour() {
+        let markers = Set(MenuBarEmphasis.allCases.map { $0.marker(differentiatesWithoutColour: false) })
+        #expect(markers == ["circlebadge.fill"])
     }
 }

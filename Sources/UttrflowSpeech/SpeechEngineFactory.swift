@@ -9,7 +9,10 @@ public enum SpeechEngineFactory {
         kind: SpeechEngineKind,
         model: SpeechModel = .default,
         modelFolder: URL,
-        prewarm: Bool = true,  // Only a measurement harness passes false; see Docs/performance.md.
+        prewarm: Bool = true,  // Only a measurement harness passes false; see Docs/performance-dictation.md.
+        compute: SpeechComputePlan = .shipping,  // Only a measurement harness passes another plan.
+        fallback: SpeechFallbackPlan = .shipping,  // Only a measurement harness passes another plan.
+        loadLog: SpeechModelLoadLog? = nil,
         idleAfter: Duration? = nil,
         didRelease: (@Sendable () -> Void)? = nil,
         didLoad: (@Sendable () -> Void)? = nil,
@@ -19,16 +22,14 @@ public enum SpeechEngineFactory {
         case .whisperKit:
             BackedSpeechEngine(
                 kind: .whisperKit,
-                backend: WhisperKitBackend(model: model, modelFolder: modelFolder, prewarm: prewarm),
+                backend: WhisperKitBackend(
+                    model: model, modelFolder: modelFolder, prewarm: prewarm, compute: compute,
+                    fallback: fallback, loadLog: loadLog),
                 idleAfter: idleAfter,
                 didRelease: didRelease,
                 didLoad: didLoad,
                 willLoad: willLoad
             )
-        case .appleSpeech:
-            BackedSpeechEngine(
-                kind: .appleSpeech, backend: AppleSpeechBackend(), idleAfter: idleAfter,
-                didRelease: didRelease, didLoad: didLoad, willLoad: willLoad)
         }
     }
 }

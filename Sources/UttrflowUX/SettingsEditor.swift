@@ -38,10 +38,10 @@ public enum SettingsEditor {
             updated.shortcutsReturnedToDefault.remove(action)
         case .tidying(let level):
             try applyTidying(level, to: &updated, given: capabilities)
-        case .transcription(let quality):
-            try applyTranscription(quality, to: &updated, given: capabilities)
         case .spokenLanguage(let code, let isSpoken):
             try applyLanguage(code, isSpoken: isSpoken, to: &updated)
+        case .pauses(let pauses):
+            updated.profile.pauses = pauses
         case .appearance(let appearance):
             // No capability to check: every Mac can draw itself light or dark.
             updated.appearance = appearance
@@ -50,6 +50,11 @@ public enum SettingsEditor {
                 throw SettingsRejection(reason: "Choose a listed hands-free interval.")
             }
             updated.handsFreeDoubleTapMilliseconds = milliseconds
+        case .handsFreeHold(let milliseconds):
+            guard Settings.handsFreeHoldChoices.contains(milliseconds) else {
+                throw SettingsRejection(reason: "Choose a listed hold length.")
+            }
+            updated.handsFreeHoldMilliseconds = milliseconds
         case .retention(let days):
             try applyRetention(days: days, to: &updated)
         case .cleaningStep(let step, let isOn):
@@ -60,7 +65,11 @@ public enum SettingsEditor {
             updated.destinations = updated.destinations.removing(bundle)
         case .suggestionsHere(let application, let isOn):
             try requireSuggestionsAreOn(in: settings)
-            updated.suggestions.set(application, isOn: isOn)
+            if isOn {
+                updated.suggestions.removePreferences(for: application)
+            } else {
+                updated.suggestions.set(application, isOn: false)
+            }
         case .suggestionAcceptKey(let application, let key):
             try requireSuggestionsAreOn(in: settings)
             updated.suggestions.setAcceptKey(key, in: application)
@@ -183,6 +192,10 @@ public enum SettingsEditor {
     static let heldChordNotClaimable =
         "A held combination of modifiers can only be the Dictate shortcut. Add a letter or number key."
 
+    /// Said for F13 to F20 alone on an action Carbon registers, which never fires a hot key without a modifier.
+    static let bareKeyNotClaimable =
+        "A key on its own can only be the Dictate shortcut. Hold ⌘, ⌥, ⌃ or ⇧ as well."
+
     /// The one gate a shortcut passes to be saved, asked by both the recorder and the editor.
     static func rejection(
         forShortcut binding: HotkeyBinding, for action: ShortcutAction
@@ -208,6 +221,12 @@ public enum SettingsEditor {
         {
             // Deliverable in general, but Carbon refuses every held-modifier-only combination.
             return SettingsRejection(reason: heldChordNotClaimable)
+        }
+        if binding.modifiers.isEmpty, binding.heldModifier == nil,
+            ShortcutRegistry.descriptor(for: action).delivery == .claimed
+        {
+            // Only the watched Dictate shortcut takes a key that types nothing on its own; Carbon needs a modifier.
+            return SettingsRejection(reason: bareKeyNotClaimable)
         }
         if action == .dictate, binding.heldModifier == nil,
             let reason = dictateCombinationConflict(binding)
@@ -270,27 +289,6 @@ public enum SettingsEditor {
             return reason.diagnosticDescription + ". Uttrflow will still apply its rules."
         }
         return "Full tidying is not available on this Mac yet, so Uttrflow will still apply its rules."
-    }
-
-    /// Throws when the engine behind this quality is not downloaded, then selects it.
-    private static func applyTranscription(
-        _ quality: SettingsTranscriptionQuality,
-        to settings: inout Settings,
-        given capabilities: SettingsCapabilities
-    ) throws(SettingsRejection) {
-        if let reason = unavailability(ofTranscription: quality, given: capabilities) {
-            throw SettingsRejection(reason: reason)
-        }
-        settings.engines.speech = quality.engine
-    }
-
-    /// Why this quality cannot be chosen, or `nil` when it can.
-    static func unavailability(
-        ofTranscription quality: SettingsTranscriptionQuality,
-        given capabilities: SettingsCapabilities
-    ) -> String? {
-        capabilities.readySpeechEngines.contains(quality.engine)
-            ? nil : "This option needs a download that has not finished yet."
     }
 
     // MARK: - Languages
@@ -363,13 +361,21 @@ public enum SettingsEditor {
             personalisation.suggestions(from: application) > 0
                 ? nil
                 : "Uttrflow has not picked up anything in \(SuggestionApplications.name(of: application)) yet."
+        case .persona:
+            personalisation.persona.isEmpty ? "Uttrflow has not noticed anything about you yet." : nil
+        case .personaFact(let fact):
+            personalisation.persona.contains { $0.fact == fact } ? nil : "This has already been removed."
         }
     }
+
+    /// Why a reset waits, said while a dictation could still write into what it removes.
+    static let finishTheDictationFirst =
+        "A dictation is still under way. Let it finish, then try again."
 
     /// What to say when the disk refused a reset, naming what is still here rather than apologising.
     static func reason(forFailed reset: SettingsReset) -> String {
         switch reset {
-        case .learnedWords, .suggestions:
+        case .learnedWords, .suggestions, .persona, .personaFact:
             "Uttrflow could not write to the disk, so nothing was forgotten. Try again."
         case .everything:
             "Uttrflow could not write to the disk, so some of this may still be here. Try again."

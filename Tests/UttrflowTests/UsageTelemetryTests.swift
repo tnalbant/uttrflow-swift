@@ -56,6 +56,25 @@ struct UsageTelemetryTests {
         #expect(report.languages.map(\.language).sorted { $0.rawValue < $1.rawValue } == [.english, .other])
     }
 
+    @Test("counts a recording cancelled back to idle without treating it as a failure")
+    func countsCancelledDictation() async throws {
+        let sender = RecordingTelemetrySender()
+        let usage = UsageTelemetry(isEnabled: true, sender: sender, version: "26.926.0")
+        let start = ContinuousClock.now
+
+        usage.observe(.idle, language: nil, at: start)
+        usage.observe(.recording, language: nil, at: start + .seconds(1))
+        usage.observe(.idle, language: nil, at: start + .seconds(2))
+        await usage.flushBeforeQuitting()
+
+        let report = try #require(sender.reports.first)
+        #expect(report.dictationCount == 1)
+        #expect(report.cancelledCount == 1)
+        #expect(report.failureCount == 0)
+        #expect(report.processingTotalMs == 0)
+        #expect(report.latencyP50Ms == nil)
+    }
+
     @Test("switching off drops what was collected, and nothing is sent")
     func switchingOffDropsEverything() async {
         let sender = RecordingTelemetrySender()

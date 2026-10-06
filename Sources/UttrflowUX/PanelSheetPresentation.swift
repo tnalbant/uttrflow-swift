@@ -113,9 +113,13 @@ extension PanelPresenter {
                 draft: draft,
                 placeholder: "pgprod",
                 note: note(for: proposal),
-                conflict: holder.map {
-                    "“\(proposal.corrected)” already belongs to \(name(of: $0, in: snapshot))"
-                },
+                conflict: !proposal.canCompareUnicodeNames
+                    ? "Name comparison is unavailable"
+                    : proposal.mixesScripts
+                        ? "Use one writing system in a name"
+                        : holder.map {
+                            "“\(proposal.corrected)” already belongs to \(name(of: $0, in: snapshot))"
+                        },
                 collections: [],
                 confirmTitle: isRemoval ? "Remove name" : "Save",
                 isConfirmEnabled: proposal.isUsable || isRemoval)

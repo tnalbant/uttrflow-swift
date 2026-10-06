@@ -31,5 +31,4 @@ else.**
 | No credentials, keys or private infrastructure identifiers | `Scripts/gitleaks_audit.sh` | exits 0 |
 | Gate unweakened | `git diff origin/main -- Scripts/disclosure_audit.py Scripts/disclosure_baseline.json` | no loosened pattern, no new path exemption |
 
-How the gate is layered and ratcheted: [`../disclosure-gate.md`](../disclosure-gate.md). Rules
-for your own setup go in your `AGENTS.local.md`; see `AGENTS.md`, "Local rules".
+How the gate is layered and ratcheted: [`../disclosure-gate.md`](../disclosure-gate.md).

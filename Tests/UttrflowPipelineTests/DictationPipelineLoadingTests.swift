@@ -39,16 +39,13 @@ private actor LoadGate {
 
 /// A recogniser whose load takes as long as the test says, and may fail at the end of it.
 private final class SlowLoadingSpeechEngine: SpeechEngine, Sendable {
-    let kind: SpeechEngineKind
+    let kind = SpeechEngineKind.whisperKit
     private let gate: LoadGate
     private let failure: SpeechEngineError?
 
-    init(
-        gate: LoadGate, failure: SpeechEngineError? = nil, kind: SpeechEngineKind = .whisperKit
-    ) {
+    init(gate: LoadGate, failure: SpeechEngineError? = nil) {
         self.gate = gate
         self.failure = failure
-        self.kind = kind
     }
 
     func prepare() async throws(SpeechEngineError) {
@@ -63,28 +60,12 @@ private final class SlowLoadingSpeechEngine: SpeechEngine, Sendable {
     }
 }
 
-/// A tidier that hands the words back as they came.
-private struct PassThroughCleaner: TranscriptCleaning {
-    func clean(
-        _ request: TransformationRequest
-    ) async throws(TransformationError) -> TransformationResult {
-        TransformationResult(text: request.transcription.text, producedBy: .rules)
-    }
-}
-
-/// An inserter that always lands.
-private struct LandingInserter: TextInserting {
-    func insert(_ text: String) async throws(TextInsertionError) -> InsertionAttempt {
-        InsertionAttempt(.accessibility)
-    }
-}
-
 private func makePipeline(
     speech: any SpeechEngine, capture: FakeAudioCaptureEngine
 ) -> DictationPipeline {
     DictationPipeline(
-        capture: capture, speech: speech, cleaner: PassThroughCleaner(),
-        context: FakeContextEngine(context: .fixture()), inserter: LandingInserter(),
+        capture: capture, speech: speech, cleaner: FakeTranscriptCleaner(),
+        context: FakeContextEngine(context: .fixture()), inserter: FakeTextInserter(),
         metrics: RecordingMetricsRecorder(), clock: ManualClock())
 }
 
@@ -163,25 +144,27 @@ struct DictationPipelineLoadingTests {
 
         #expect(await !pipeline.isLoading)
         #expect(await !pipeline.isReady)
-        #expect(await pipeline.currentState == .failed(DictationFailure(failure)))
+        #expect(
+            await pipeline.currentState
+                == .failed(DictationFailure(failure, speechEngineKind: .whisperKit)))
     }
 
-    @Test("an Apple Speech preparation failure keeps its engine and typed cause")
-    func failedAppleSpeechLoadKeepsItsCause() async throws {
+    @Test("a preparation failure keeps its engine and typed cause")
+    func failedLoadKeepsItsCause() async throws {
         let gate = LoadGate()
         await gate.open()
-        let failure = SpeechEngineError.modelLoadFailed(description: "unsupported locale")
+        let failure = SpeechEngineError.modelLoadFailed(description: "weights unreadable")
         let pipeline = makePipeline(
-            speech: SlowLoadingSpeechEngine(gate: gate, failure: failure, kind: .appleSpeech),
+            speech: SlowLoadingSpeechEngine(gate: gate, failure: failure),
             capture: FakeAudioCaptureEngine())
 
         await pipeline.prepare()
 
         guard case .failed(let notice) = await pipeline.currentState else {
-            Issue.record("the failed Apple Speech load did not reach pipeline state")
+            Issue.record("the failed load did not reach pipeline state")
             return
         }
-        #expect(notice.speechEngineKind == .appleSpeech)
+        #expect(notice.speechEngineKind == .whisperKit)
         #expect(notice.speechEngineError == failure)
     }
 
@@ -259,8 +242,8 @@ struct DictationPipelineLoadingTests {
 struct DictationPipelineLoadDeadlineTests {
     private func makePipeline(speech: FakeSpeechEngine, clock: ManualClock) -> DictationPipeline {
         DictationPipeline(
-            capture: FakeAudioCaptureEngine(), speech: speech, cleaner: PassThroughCleaner(),
-            context: FakeContextEngine(context: .fixture()), inserter: LandingInserter(),
+            capture: FakeAudioCaptureEngine(), speech: speech, cleaner: FakeTranscriptCleaner(),
+            context: FakeContextEngine(context: .fixture()), inserter: FakeTextInserter(),
             clock: clock, speechLoadLimit: .seconds(300))
     }
 

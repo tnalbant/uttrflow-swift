@@ -637,10 +637,9 @@ pass "$DOC_COUNT Markdown files (tracked, plus written-but-not-yet-staged)"
 # 0a. The documented pull-request lifecycle must match the live main ruleset.
 # ---------------------------------------------------------------------------
 #
-# Issue #1120 was not a typo but a blocked lifecycle: AGENTS.md said a green PR could be
-# self-merged while the live ruleset required independent review. The ruleset itself is
-# outside this tree, so this check keeps the local policy on the review-required side of
-# that boundary until the ruleset is deliberately changed.
+# The ruleset lives on the server, outside this tree, so this check keeps the documented
+# lifecycle on the review-required side of it: the workflow page must name every review gate
+# and must never say a pull request may be merged by its own author.
 printf '\nPull request lifecycle\n'
 
 if grep -Fq "**An agent may merge its own pull request once it is green**" Docs/agents/workflow.md; then
@@ -652,7 +651,6 @@ fi
 
 missing_policy=()
 for required in \
-    "release-policy:v4" \
     "requires one approving review" \
     "code-owner review" \
     "approval by someone other than the last pusher" \
@@ -688,6 +686,24 @@ if [[ -n "$history_findings" ]]; then
         "" $'\n'"$(printf '    %s\n' "$history_findings")"
 else
     pass "AGENTS.md and Docs/agents/ cite no issue, pull-request number or date"
+fi
+
+# ---------------------------------------------------------------------------
+# 0c. No document shows a tag in the retired YEAR.MONTH.DAY scheme.
+# ---------------------------------------------------------------------------
+#
+# Versions are YY.MMDD.REVISION (RELEASING.md). A `v2026.9.14` example teaches a tag the release
+# workflow refuses. The changelog keeps its historical release links; the scheme explanations
+# name the old version without the `v`, so they are not tags and are not matched.
+printf '\nNo document shows a retired release tag\n'
+
+retired_tag_findings=$(git grep -n -E '(^|[^A-Za-z0-9_])v20[0-9]{2}\.[0-9]+\.[0-9]+' -- '*.md' ':!CHANGELOG.md' || true)
+if [[ -n "$retired_tag_findings" ]]; then
+    fail "a document shows a release tag in the retired YEAR.MONTH.DAY scheme" \
+        "Use the current YY.MMDD.REVISION form, such as v26.0926.0, as RELEASING.md states." \
+        "" $'\n'"$(printf '    %s\n' "$retired_tag_findings")"
+else
+    pass "no document outside CHANGELOG.md shows a retired YEAR.MONTH.DAY tag"
 fi
 
 # ---------------------------------------------------------------------------
@@ -735,7 +751,7 @@ import sys
 # Root files that are load-bearing, so a bare mention of one is worth checking.
 ROOT_ALLOWLIST = {
     "AGENTS.md", "CHANGELOG.md", "CLAUDE.md", "CODE_OF_CONDUCT.md", "CONTRIBUTING.md",
-    "LICENSE.md", "PLAN.md", "Package.resolved", "Package.swift", "README.md",
+    "LICENSE.md", "Package.resolved", "Package.swift", "README.md",
     "RELEASING.md", "SECURITY.md", "TRADEMARK.md",
 }
 EXTENSIONS = (
@@ -824,11 +840,9 @@ fi
 # by a third, and a reader who acts on it is as misled as by a wrong exact number. "4,000+"
 # stays true and stays useful, which is what a floor is for.
 #
-# Two things are skipped, both because they are records rather than claims. PLAN.md is an
-# append-only phase log where each entry states the count on the day it was written, and
-# rewriting those would be a lie. So is a line in Swift Testing's own summary format — `Test
-# run with 579 tests in 83 suites` in `Docs/offline.md` is the transcript of one filtered
-# run. Fenced code blocks as a whole are *not* skipped: three of the #76 claims lived in a
+# One thing is skipped, because it is a record rather than a claim: a line in Swift Testing's
+# own summary format — `Test run with 579 tests in 83 suites` in `Docs/offline.md` is the
+# transcript of one filtered run. Fenced code blocks as a whole are *not* skipped: three of the #76 claims lived in a
 # `make verify` snippet inside one.
 printf '\nThe test count\n'
 
@@ -877,7 +891,6 @@ PYTHON
     claims="$(
         git ls-files --cached --others --exclude-standard \
             -- '*.md' 'Makefile' '.githooks/*' '.github/workflows/*' \
-        | grep -v '^PLAN\.md$' \
         | python3 -c "$COUNT_PROGRAM" "$REAL_TESTS"
     )"
 
@@ -986,6 +999,23 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 5b. Every command the measurement guide names exists in the Makefile, Scripts or the tools.
+# ---------------------------------------------------------------------------
+printf '\nMeasurement guide commands\n'
+if [[ "$SELF_TEST" -eq 1 ]]; then
+    measure_args=(--self-test)
+else
+    measure_args=()
+fi
+if measure_report="$(python3 "$PACKAGE_ROOT/Scripts/measure_commands_audit.py" "${measure_args[@]+"${measure_args[@]}"}" 2>&1)"; then
+    pass "every command in Docs/measure-a-change.md exists in the tree"
+else
+    fail "Docs/measure-a-change.md names a command the tree does not have" \
+        "A contributor following the guide would run something that is not there." \
+        "" $'\n'"$measure_report"
+fi
+
+# ---------------------------------------------------------------------------
 # 6. A performance headline stating a memory figure must name its suggestion mode.
 # ---------------------------------------------------------------------------
 #
@@ -1037,197 +1067,21 @@ PYTHON
 fi
 
 # ---------------------------------------------------------------------------
-# 7. Every artboard text row clears WCAG AA contrast against its translucent backing.
+# 7. The design gate stays in `make verify`.
 # ---------------------------------------------------------------------------
 #
-# The artboard generators draw a translucent menu over a gradient, and a backdrop blur
-# cannot lift the backing above the gradient's brightest source stop — so the contrast
-# against the brightest stop is the best case anywhere on the surface, and the darkest
-# stop is the worst. The audit script reads the gradient stops and menu fill from the
-# generator, walks the inline text-color declarations, and fails any row that drops below
-# 4.5:1 over any composited background.
-printf '\nDesign artboard contrast\n'
+# Every design check (palette, typeface, generator, canvas and contrast audits) runs under
+# `make design-audit`, described in Docs/agents/design.md. A gate outside `verify` is a gate CI never runs.
+printf '\nDesign gate in verify\n'
 
-if [[ ! -x "$PACKAGE_ROOT/Scripts/design_contrast_audit.py" ]]; then
-    fail "Scripts/design_contrast_audit.py is missing or not executable" \
-        "The audit pins the menu-bar artboard's text contrast; without it the generator" \
-        "could regress to the colours that production already moved off."
+verify_prerequisites=$(grep -E '^verify:' "$PACKAGE_ROOT/Makefile" | sed -e 's/^verify://' -e 's/##.*//')
+if grep -qw 'design-audit' <<<"$verify_prerequisites" \
+    && grep -qE '^design-audit:' "$PACKAGE_ROOT/Makefile"; then
+    pass "make verify runs make design-audit"
 else
-    if "$PACKAGE_ROOT/Scripts/design_contrast_audit.py" --self-test; then
-        if "$PACKAGE_ROOT/Scripts/design_contrast_audit.py" >&2; then
-            pass "every attention text row clears 4.5:1 against its composited backgrounds"
-        else
-            fail "an artboard text row fails WCAG AA contrast against its composited backing" \
-                "The audit prints which generator rule and which colour broke. The backing" \
-                "is translucent over a gradient, so the worst case is the gradient's darkest" \
-                "stop, not the average — backdrop blur cannot brighten past the brightest stop."
-        fi
-    else
-        fail "Scripts/design_contrast_audit.py --self-test failed" \
-            "The audit's own self-test (a known pass and a known fail) is no longer both" \
-            "passing, so the ratio predicate is broken. Fix the audit, not the artboard."
-    fi
-fi
-
-# ---------------------------------------------------------------------------
-# 7b. Every shared artboard surface/text token matches BrandPalette.swift.
-# ---------------------------------------------------------------------------
-#
-# `Design/_gen_common.py` and `Design/_gen_shell.py` declare the page, card, rail, control,
-# separator and primary/muted/dim text colours every artboard inherits. Nothing tied those
-# to `BrandPalette.swift`, the shipped app's single source of truth for the same roles, so
-# #1162 found all 73 artboards still drawing system greys the product moved off years ago.
-printf '\nDesign token parity\n'
-
-if [[ ! -x "$PACKAGE_ROOT/Scripts/design_token_parity_audit.py" ]]; then
-    fail "Scripts/design_token_parity_audit.py is missing or not executable" \
-        "The audit pins the shared artboard tokens to BrandPalette.swift; without it either" \
-        "side can drift and nothing notices."
-else
-    if "$PACKAGE_ROOT/Scripts/design_token_parity_audit.py" --self-test; then
-        if "$PACKAGE_ROOT/Scripts/design_token_parity_audit.py" >&2; then
-            pass "every shared artboard surface/text token matches BrandPalette.swift"
-        else
-            fail "a shared artboard token disagrees with BrandPalette.swift" \
-                "The audit prints which role, which theme and which two hex values disagree." \
-                "Update the generator token to match, then regenerate every artboard."
-        fi
-    else
-        fail "Scripts/design_token_parity_audit.py --self-test failed" \
-            "The audit's own self-test could not resolve a BrandPalette identifier reference," \
-            "so the Swift parser is broken. Fix the audit, not the artboard."
-    fi
-fi
-
-# ---------------------------------------------------------------------------
-
-# 7c. The design shell's sidebar matches SidebarPresenter.order.
-# ---------------------------------------------------------------------------
-#
-# `Design/_gen_shell.py` draws the persistent sidebar every `Main-*.dc.html` artboard sits
-# in. Nothing tied its row order to `SidebarPresenter.order`, the shipped sidebar's single
-# source of truth, so #1133 found the shell still drawing an old ten-row list starting with Dictation,
-# no Home row, a "Most recent" transcript card and a "Hold anywhere" shortcut footer —
-# neither of which `SidebarView` draws.
-printf '\nSidebar artboard contract\n'
-
-if [[ ! -x "$PACKAGE_ROOT/Scripts/design_sidebar_contract_audit.py" ]]; then
-    fail "Scripts/design_sidebar_contract_audit.py is missing or not executable" \
-        "The audit pins the design shell's sidebar rows to SidebarPresenter.order, and" \
-        "refuses a restored recent-transcript card or shortcut footer; without it either" \
-        "side can drift and nothing notices."
-else
-    if "$PACKAGE_ROOT/Scripts/design_sidebar_contract_audit.py" --self-test; then
-        if "$PACKAGE_ROOT/Scripts/design_sidebar_contract_audit.py" >&2; then
-            pass "the design shell's sidebar matches SidebarPresenter.order, with no recent-transcript card or shortcut footer"
-        else
-            fail "the design shell's sidebar disagrees with SidebarPresenter.order" \
-                "The audit prints which order mismatch or retired element broke. Update" \
-                "Design/_gen_shell.py's NAV to match, then regenerate every Main-*.dc.html" \
-                "artboard."
-        fi
-    else
-        fail "Scripts/design_sidebar_contract_audit.py --self-test failed" \
-            "The audit's own self-test could not resolve a known-good fixture or catch a" \
-            "known regression, so the parser is broken. Fix the audit, not the artboard."
-    fi
-fi
-
-# ---------------------------------------------------------------------------
-# 7c. The shared shell draws MainWindowStrip and OrbitPageHeader, with each page's caption.
-# ---------------------------------------------------------------------------
-#
-# #1138 found `Design/_gen_shell.py`'s shared main-window shell still drawing the retired
-# 44px `<div class="toolbar"><h2>` band instead of `MainWindowStrip` (the sidebar toggle
-# and account chip) and `OrbitPageHeader` (kicker, title, purpose caption, and ordered
-# scope/search/add controls). All 28 `Main-*.dc.html` artboards inherited that toolbar.
-printf '\nChrome artboard contract\n'
-
-if [[ ! -x "$PACKAGE_ROOT/Scripts/design_chrome_contract_audit.py" ]]; then
-    fail "Scripts/design_chrome_contract_audit.py is missing or not executable" \
-        "The audit pins the shell's MainWindowStrip/OrbitPageHeader structure and every" \
-        "page's caption to MainWindowView.swift and each page's own presenter; without it" \
-        "either side can drift and nothing notices."
-else
-    if "$PACKAGE_ROOT/Scripts/design_chrome_contract_audit.py" --self-test; then
-        if "$PACKAGE_ROOT/Scripts/design_chrome_contract_audit.py" >&2; then
-            pass "the shell's MainWindowStrip and OrbitPageHeader match production, with every page's caption"
-        else
-            fail "the shell's chrome disagrees with production" \
-                "The audit prints which structure or caption broke. Update" \
-                "Design/_gen_shell.py's MainWindowStrip/OrbitPageHeader (or the caption in" \
-                "Design/_gen_main.py / Design/_gen_app.py), then regenerate every" \
-                "Main-*.dc.html artboard."
-        fi
-    else
-        fail "Scripts/design_chrome_contract_audit.py --self-test failed" \
-            "The audit's own self-test could not resolve a known-good fixture or catch a" \
-            "known regression, so the parser is broken. Fix the audit, not the artboard."
-    fi
-fi
-
-
-# 7d. The Dictation artboards match DictationPresenter's own figures.
-# ---------------------------------------------------------------------------
-#
-# #153 renamed the populated rail's cleanup-ratio tile from "Accuracy" to
-# `DictationPresenter.accuracyTitle`, said plainly that it does not say whether words were
-# heard correctly, and dropped the baseline meter beside it. Nothing tied the design
-# generator to that decision, so #1139 found `Design/_gen_app.py` had drifted back to a
-# 97.2% "Accuracy" tile with a "Baseline" meter row.
-printf '\nDictation artboard contract\n'
-
-if [[ ! -x "$PACKAGE_ROOT/Scripts/design_dictation_contract_audit.py" ]]; then
-    fail "Scripts/design_dictation_contract_audit.py is missing or not executable" \
-        "The audit pins the Dictation rail to DictationPresenter's accuracyTitle and" \
-        "accuracyCaption, and refuses a restored Accuracy label or baseline meter; without" \
-        "it either side can drift and nothing notices."
-else
-    if "$PACKAGE_ROOT/Scripts/design_dictation_contract_audit.py" --self-test; then
-        if "$PACKAGE_ROOT/Scripts/design_dictation_contract_audit.py" >&2; then
-            pass "the Dictation rail matches DictationPresenter, with no Accuracy label or baseline meter"
-        else
-            fail "the Dictation rail disagrees with DictationPresenter" \
-                "The audit prints which title, caption or retired label broke. Update" \
-                "Design/_gen_app.py's Dictation section to match, then regenerate both" \
-                "Main-Dictation artboards."
-        fi
-    else
-        fail "Scripts/design_dictation_contract_audit.py --self-test failed" \
-            "The audit's own self-test could not resolve a known-good fixture or catch a" \
-            "known regression, so the parser is broken. Fix the audit, not the artboard."
-    fi
-fi
-# ---------------------------------------------------------------------------
-# 7e. The Insights artboards match InsightsPresentation, not an invented contract.
-# ---------------------------------------------------------------------------
-#
-# #1144: the Insights artboards drew a selectable-looking scope popup, an Accuracy tile
-# with a restored Baseline meter, and an entire "Languages you spoke" card with no
-# measured source, while the average line and each place's word count were missing. A
-# controlled `_gen_app.py` run reproduced every mismatch byte-for-byte, so nothing was
-# tying the generator to `InsightsPresentation.swift` or its tests.
-printf '\nInsights artboard contract\n'
-
-if [[ ! -x "$PACKAGE_ROOT/Scripts/insights_contract_audit.py" ]]; then
-    fail "Scripts/insights_contract_audit.py is missing or not executable" \
-        "The audit pins the Insights artboards to InsightsPresentation.swift; without it the" \
-        "generator can drift back to an invented scope, meter or language card unnoticed."
-else
-    if "$PACKAGE_ROOT/Scripts/insights_contract_audit.py" --self-test; then
-        if "$PACKAGE_ROOT/Scripts/insights_contract_audit.py" >&2; then
-            pass "the Insights artboards match InsightsPresentation and its tests"
-        else
-            fail "the Insights artboard generator disagrees with InsightsPresentation" \
-                "The audit prints every mismatch: scope, Accuracy wording, the language card," \
-                "the average line, or the place rows' word counts. Fix Design/_gen_app.py," \
-                "then regenerate every Insights artboard."
-        fi
-    else
-        fail "Scripts/insights_contract_audit.py --self-test failed" \
-            "The audit's own self-test could not find its section markers in" \
-            "Design/_gen_app.py, so the extraction is broken. Fix the audit, not the artboard."
-    fi
+    fail "make verify no longer runs make design-audit" \
+        "Docs/agents/design.md's rules are enforced only through design-audit, and CI runs only verify." \
+        "Put design-audit back among verify's prerequisites."
 fi
 
 # ---------------------------------------------------------------------------
@@ -1237,8 +1091,8 @@ fi
 # A tracked CLAUDE.md is a claim about what Claude Code will load as project memory: with
 # default Project instructions, Claude Code reads CLAUDE.md before any tool call and does
 # not consult AGENTS.md on its own. A CLAUDE.md that holds a prose pointer at AGENTS.md
-# therefore loads the pointer sentence and stops — the 491 lines of operating rules in
-# AGENTS.md are injected only if the model decides, on its own, to follow the link.
+# therefore loads the pointer sentence and stops — the operating rules in AGENTS.md
+# are injected only if the model decides, on its own, to follow the link.
 #
 # Three contents pass, in this order:
 #
@@ -1265,7 +1119,7 @@ else
     fail "$claude_md_problem" \
         "A tracked CLAUDE.md is loaded by Claude Code as project memory ahead of any tool." \
         "Prose that points at AGENTS.md — Markdown link or otherwise — is one sentence the" \
-        "model receives, not an import; the 491 lines of operating rules in AGENTS.md are" \
+        "model receives, not an import; the operating rules in AGENTS.md are" \
         "not injected unless the model decides, on its own, to open the file." \
         "Replace the body with a single '@AGENTS.md' line, or delete CLAUDE.md and let" \
         "AGENTS.md load directly, or turn CLAUDE.md into a real symlink to AGENTS.md."
@@ -1429,17 +1283,18 @@ else
     read -r -d '' CORPUS_PROGRAM <<'PYTHON' || true
 import re
 
-SOURCE = "Sources/UttrflowEval/EvaluationCorpus.swift"
+SOURCES = ["Sources/UttrflowEval/EvaluationCorpus.swift", "Sources/UttrflowEval/RequestCorpus.swift"]
 DOC = "Docs/bakeoff.md"
 
 real = {}
-for match in re.finditer(r"category: \.([A-Za-z]+),", open(SOURCE, errors="ignore").read()):
-    real[match.group(1)] = real.get(match.group(1), 0) + 1
+for source in SOURCES:
+    for match in re.finditer(r"category: \.([A-Za-z]+),", open(source, errors="ignore").read()):
+        real[match.group(1)] = real.get(match.group(1), 0) + 1
 real_total = sum(real.values())
 
 text = open(DOC, errors="ignore").read()
 sentence = re.search(
-    r"The corpus is ([0-9,]+) cases in six categories\*\*.*?written by hand\.",
+    r"The corpus is ([0-9,]+) cases in [a-z]+ categories\*\*.*?written by hand\.",
     text, re.DOTALL,
 )
 if sentence is None:
@@ -1476,99 +1331,39 @@ PYTHON
 fi
 
 # ---------------------------------------------------------------------------
-
-# 11. The Diagnostics artboards match DiagnosticsPresentation's own contract.
+# 7g. Every insertion scenario has an entry for every application class.
 # ---------------------------------------------------------------------------
-#
-# #1137 found `Design/_gen_main.py`'s Diagnostics section describing a different product:
-# a plain total from three stages, a five-second target, invented reliability and memory
-# figures, and a seven-day measurement window nothing on this Mac ever keeps. Nothing tied
-# the design generator to `DiagnosticsPresentation`'s own eight-stage, in-memory contract, so
-# it could — and did — drift back.
-printf '\nDiagnostics artboard contract\n'
+printf '\nInsertion test matrix\n'
 
-if [[ ! -x "$PACKAGE_ROOT/Scripts/design_diagnostics_contract_audit.py" ]]; then
-    fail "Scripts/design_diagnostics_contract_audit.py is missing or not executable" \
-        "The audit pins the Diagnostics section to DiagnosticsPresentation's stage titles," \
-        "footnote and empty-state copy, and refuses a restored duration target, memory" \
-        "figure or seven-day window; without it either side can drift and nothing notices."
-else
-    if "$PACKAGE_ROOT/Scripts/design_diagnostics_contract_audit.py" --self-test; then
-        if "$PACKAGE_ROOT/Scripts/design_diagnostics_contract_audit.py" >&2; then
-            pass "the Diagnostics section matches DiagnosticsPresentation, with no retired memory, target or window claims"
-        else
-            fail "the Diagnostics section disagrees with DiagnosticsPresentation" \
-                "The audit prints which stage title, footnote, empty state or retired claim" \
-                "broke. Update Design/_gen_main.py's Diagnostics section to match, then" \
-                "regenerate both Main-Diagnostics and Main-Diagnostics-Empty artboards."
-        fi
+if python3 "$PACKAGE_ROOT/Scripts/insertion_matrix_audit.py" --self-test; then
+    if python3 "$PACKAGE_ROOT/Scripts/insertion_matrix_audit.py"; then
+        pass "every insertion scenario names its test and an entry per class"
     else
-        fail "Scripts/design_diagnostics_contract_audit.py --self-test failed" \
-            "The audit's own self-test could not resolve a known-good fixture or catch a" \
-            "known regression, so the parser is broken. Fix the audit, not the artboard."
+        fail "Docs/insertion-test-matrix.md has a scenario without an entry" \
+            "Each scenario needs an existing test and, per class, a harness, a manual" \
+            "procedure with its own section, or 'not applicable'."
     fi
-fi
-
-
-# The identity sheet's teal ramp must match BrandPalette's production roles.
-# ---------------------------------------------------------------------------
-#
-# #1130: `Design/_gen_identity.py`'s RAMP named `#17A398` the listening-state colour years
-# after production moved to `BrandPalette.Teal.primary` (`#29C0B4`), and regenerating the
-# sheet reproduced the stale value byte-for-byte because the generator's own literal was
-# wrong. The audit reads each RAMP entry's hex by role and compares it to the `Teal` case
-# documented as that production role, so a colour that drifts from `BrandPalette.swift`
-# fails here instead of surviving silently in a design reference nobody re-reads.
-printf '\nIdentity sheet teal roles\n'
-
-if [[ ! -x "$PACKAGE_ROOT/Scripts/identity_role_audit.py" ]]; then
-    fail "Scripts/identity_role_audit.py is missing or not executable" \
-        "The audit pins the identity sheet's swatches to BrandPalette.Teal; without it a" \
-        "role can drift from production again the way #1130 did."
 else
-    if "$PACKAGE_ROOT/Scripts/identity_role_audit.py" --self-test; then
-        if "$PACKAGE_ROOT/Scripts/identity_role_audit.py" >&2; then
-            pass "every identity swatch matches its BrandPalette.Teal role"
-        else
-            fail "an identity swatch disagrees with BrandPalette.Teal" \
-                "BrandPalette.swift is the documented colour source of truth. Update" \
-                "RAMP in Design/_gen_identity.py to match it, then re-run every" \
-                "Design/_gen_*.py so the regenerated artboards carry the fix."
-        fi
-    else
-        fail "Scripts/identity_role_audit.py --self-test failed" \
-            "The audit's own self-test (a known match and a known mismatch) is no longer" \
-            "both passing, so the comparison is broken. Fix the audit, not the sheet."
-    fi
+    fail "Scripts/insertion_matrix_audit.py --self-test failed" \
+        "The audit must catch an empty cell before it checks the matrix."
 fi
 
 # ---------------------------------------------------------------------------
-# 7f. The sign-in artboards show only providers the app offers.
+# 12. Every number marked `<!-- count:Type.member -->` or `<!-- value:Type.member -->` matches the code.
 # ---------------------------------------------------------------------------
-# #1171 found the generator drawing Google, GitHub and Apple even though
-# SignInProvider.offered deploys Google alone. The generator reads the offered
-# cases and their button titles from Account.swift; this audit checks all four
-# committed appearances against that production contract.
-printf '\nSign-in artboard contract\n'
+printf '\nMarked numbers\n'
 
-if [[ ! -x "$PACKAGE_ROOT/Scripts/signin_artboard_contract_audit.py" ]]; then
-    fail "Scripts/signin_artboard_contract_audit.py is missing or not executable" \
-        "The audit keeps every light, dark and offline sign-in artboard aligned with" \
-        "SignInProvider.offered; without it a design-only provider can return silently."
-else
-    if "$PACKAGE_ROOT/Scripts/signin_artboard_contract_audit.py" --self-test; then
-        if "$PACKAGE_ROOT/Scripts/signin_artboard_contract_audit.py" >&2; then
-            pass "all four sign-in artboards match SignInProvider.offered"
-        else
-            fail "a sign-in artboard disagrees with SignInProvider.offered" \
-                "The audit names the artboard and provider/title mismatch. Regenerate" \
-                "the sign-in variants with Design/_gen_signin.py."
-        fi
+if python3 "$PACKAGE_ROOT/Scripts/docs_values_audit.py" --self-test; then
+    if python3 "$PACKAGE_ROOT/Scripts/docs_values_audit.py"; then
+        pass "every marked count and default agrees with Sources/"
     else
-        fail "Scripts/signin_artboard_contract_audit.py --self-test failed" \
-            "The audit's self-test must catch provider and title drift before it checks" \
-            "the committed artboards. Fix the audit before relying on it."
+        fail "a marked number disagrees with the code" \
+            "Each line above names the document, line, stated number and the real one." \
+            "Correct the prose; mark any new number read from code the same way."
     fi
+else
+    fail "Scripts/docs_values_audit.py --self-test failed" \
+        "The audit must name an off-by-one table before it checks the documents."
 fi
 
 # ---------------------------------------------------------------------------

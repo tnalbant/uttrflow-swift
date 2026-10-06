@@ -90,6 +90,22 @@ struct PrivateFileTests {
         #expect(try isExcludedFromBackup(sandbox.file.deletingLastPathComponent()))
     }
 
+    @Test("creates a chosen export with owner-only permissions before writing it atomically")
+    func ownerOnlyAtomicExportIsWritten() throws {
+        let sandbox = Sandbox()
+        try FileManager.default.createDirectory(
+            at: sandbox.file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let bytes = Data("private export".utf8)
+
+        try PrivateFile.writeOwnerOnlyAtomically(bytes, to: sandbox.file)
+
+        #expect(try Data(contentsOf: sandbox.file) == bytes)
+        #expect(try mode(of: sandbox.file) == PrivateFile.fileMode)
+        #expect(
+            try FileManager.default.contentsOfDirectory(atPath: sandbox.file.deletingLastPathComponent().path)
+                == ["kept.json"])
+    }
+
     /// An atomic write replaces the file rather than rewriting it, so a second write is a second mode.
     @Test("tightens a file that was already there and loose")
     func anExistingFileIsTightened() throws {

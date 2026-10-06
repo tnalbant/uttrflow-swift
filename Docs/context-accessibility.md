@@ -1,63 +1,105 @@
 # What applications actually answer
 
-`MacContextEngine` gathers a context from two sources with very different costs, and the split
-between them is what makes the degradation guarantee real rather than hoped for. The evidence here
-comes from a probe run against the running desktop; a CLI is not a representative test bed for the
-Accessibility API, and a well-behaved application never exercises the broken path.
+`MacContextEngine` (`Sources/UttrflowContext/MacContextEngine.swift`, with the system reads in
+`MacContextEngine+System.swift`) describes what the user is looking at when they dictate: the
+application, its window title, the selection and the text around the caret. It gathers that from
+two sources with very different costs, and the split between them is what makes its guarantee —
+never make the user wait — real rather than hoped for. `uttrflow-dev context` prints one reading
+of the frontmost application and how long it took. A command-line tool is not a representative
+test bed for the Accessibility API, and a well-behaved application never exercises the broken
+path, so the readings below are of real applications on the desktop.
 
-The three-row table below is this document's own probe and stays here as the evidence for the
-split it argues for. Read across applications it belongs with the rest, so it also feeds the
-`Value` column of [compatibility.md](compatibility.md).
+The tables here also feed the `Value` column of [compatibility.md](compatibility.md). The budget
+and its numbers are in [context-budget.md](context-budget.md).
 
 ## Identity is free; the window is not
 
 | Source | Cost | Permission | Can hang |
 | --- | --- | --- | --- |
-| `NSWorkspace` — name and bundle identifier | free | none | no |
-| Accessibility — window title, selection, caret text | a message to another app | required | yes |
+| `NSWorkspace`: name and bundle identifier | free | none | no |
+| Accessibility: window title, selection, caret text | a message to another app | required | yes |
 
-A probe running as an unsigned app with **no Accessibility grant at all** still read back `Claude`
-/ `com.anthropic.claudefordesktop` from `NSWorkspace`, while every Accessibility call it made
-returned `kAXErrorAPIDisabled`.
+Without an Accessibility grant, `uttrflow-dev context` still reads the application's name and
+bundle identifier from `NSWorkspace`, while every Accessibility call returns `kAXErrorAPIDisabled`
+and the window title and selection stay empty.
 
-So the two are gathered in that order and recorded as they arrive: identity first and banked the
-moment it lands, then the window read, which is the part allowed to hang. Whatever the budget
-interrupts, the application name is already in hand.
+So the two are gathered in that order and recorded as they arrive: identity first, banked the
+moment it lands, then the window read, which is the part allowed to hang. The window read banks
+each answer as it arrives: the title first, then the role, label and selection once the secure
+check has finished, then the caret text. Whatever the budget interrupts, the application name and
+every answer already banked are kept; a field whose secure check did not finish gives no text.
 
-## Applications answer the two halves separately
+## Applications answer the halves separately
 
-`FocusedWindow`'s title and selection are separately optional because applications answer them
-separately. In the probe:
+`FocusedWindow`'s title, selection and caret text are separately optional because applications
+answer them separately:
 
 | Application | Window title | Selection |
 | --- | --- | --- |
-| Chrome | yes | refused (`kAXErrorNoValue`) |
+| Google Chrome | yes | refused (`kAXErrorNoValue`) |
 | Terminal | yes | yes |
 | Slack | no | no |
 
-Hence the reads are issued separately and each half is kept on its own: an application that names
-its window but hides its selection still yields the half it was willing to give.
+The reads are issued separately and each is kept on its own: an application that names its window
+but hides its selection still yields the half it was willing to give. Between reads,
+`read(_:while:)` checks whether its caller is still waiting and stops sending messages once it is
+not.
+
+Two answers end the read early. A focused field that is secure (`FieldNames.isSecure`, from its
+role, subrole and names, or a value of mask characters alone) yields only the window title and
+`isSecure`, so none of its text can reach a prompt. Dictation and suggestions ask the names with
+`SurfaceProbe.names(of:)` and the value with `SurfaceProbe.text(of:names:at:)`, so the secure order
+and the bounded value window (`ValueWindow`) are one implementation. A field with several separate
+selections yields only the title, since no one selection is the caret.
 
 ## macOS will not say what is behind the front window
 
-`MacContextEngine` remembers the last application in front of the user that was not Uttrflow,
-rather than looking it up, because there is no way to ask. `runningApplications` comes back in
-launch order, not activation order. Watching the front change is the only honest source, so the
-engine subscribes to `NSWorkspace.didActivateApplicationNotification` for the whole time it exists,
-independently of whether a context read is in flight — an application activated between two
-dictations is remembered just as surely as one activated during a read.
+`MacContextEngine` remembers the last application in front that was not Uttrflow, because there is
+no way to ask: `runningApplications` comes back in launch order, not activation order. Watching the
+front change is the only source, so the engine subscribes to
+`NSWorkspace.didActivateApplicationNotification` for as long as it exists, independently of
+whether a read is in flight.
 
-This matters because Uttrflow is never the right answer for a context: its own window comes
-forward for settings, for onboarding, for a permission repair prompt, and "you are dictating into
-Uttrflow" is both useless and false — the words are on their way somewhere else. The application
-that was in front before is the honest answer; when there has not been one, nothing at all is.
-And with Uttrflow's own window in front, the focused window is Uttrflow's, so it is not read at
-all: filing its title under the application behind it would be a confident lie.
+Uttrflow is never the right answer for a context. Its own window comes forward for settings,
+onboarding and permission prompts, and "you are dictating into Uttrflow" is both useless and false:
+the words are on their way somewhere else. The application that was in front before is the answer;
+when there has not been one, there is none. With Uttrflow's own window in front the focused window
+is Uttrflow's, so it is not read at all: filing its title under the application behind it would be
+wrong.
 
-Uttrflow is recognised two ways because either can be missing. The bundle identifier is the
-reliable one but is absent when Uttrflow runs unbundled, from the command line; the process
-identifier always holds. The bundle identifiers are compared only once ours is known, so an
-application that reports no bundle identifier never matches an Uttrflow that has none either.
+Uttrflow is recognised two ways because either can be missing. The process identifier always
+holds; the bundle identifier is absent when Uttrflow runs unbundled from the command line. Bundle
+identifiers are compared only once ours is known, so an application that reports none never matches
+an Uttrflow that has none either.
+
+## Text an application does not publish is not read
+
+Canvas editors, remote windows and some web editors publish no text through Accessibility. Their
+context is empty, and that is the answer. Three ways of getting the text anyway are rejected:
+
+| Route | Why it is rejected |
+| --- | --- |
+| Post select-all and copy, then read the clipboard | Overwrites the user's clipboard, moves their selection, and costs a round trip through another app's event loop. |
+| Capture the screen | Needs the Screen Recording permission, which the product does not ask for. |
+| Recognise text in a capture | All of the above, plus a recognition pass of 100 ms or more, and it reads text the person never typed: menus, other windows, other people's messages. |
+
+`Scripts/context_reach_audit.py` (`make context-reach-audit`, run by `make verify`) fails when a
+context module names the clipboard, posts a key event, or uses screen capture or text recognition.
+
+## What a field calls itself
+
+A mail subject, a recipient list, a search box and an address bar are all one-line fields; only
+their names tell them apart. The focused-field read asks `AXTitle` in the same batched message as
+the names the secure check already reads (`AXRole`, `AXSubrole`, `AXIdentifier`,
+`AXPlaceholderValue`, `AXDescription`), so the label adds no message. `AppContext.fieldLabel` is the
+title, else the placeholder, else the description, as one line with control characters removed and
+cut to `AppContext.fieldLabelLimit` characters. A secure field carries no label. `FieldRole` maps
+`AXSearchField`, then whole label words, then the line count, to search, address bar, recipient,
+subject, message or one-line field.
+
+The label of an `AXTitleUIElement` link is not read: following it costs a second element and a
+second message. Which of these attributes each application fills for each field, and whether the
+link is needed, is not yet measured on this page.
 
 ## Core Foundation casts
 
@@ -70,5 +112,11 @@ type as always succeeding, so it would silently accept a non-element.
 `Scripts/coverage_report.py` excludes `MacContextEngine+System.swift`, `SurfaceProbe+System.swift`,
 `FocusedFieldReader+System.swift` and `CompositionProbe+System.swift` with a stated reason each:
 every line reaches into another running application or asks the window server about one. What they
-must never do — wait — is decided in `MacContextEngine` and `Deadline`, and tested there. They are
-kept short enough that reading them is a sufficient review.
+must never do — wait — is decided in `MacContextEngine` and `withDeadline`
+(`Sources/UttrflowCore/Support/StageTimeout.swift`) and tested there. Three are under the
+400-line limit `make exclusion-audit` sets for an excluded file. `FocusedFieldReader+System.swift`
+is over it and is listed in `OVERSIZED_EXCLUSIONS`: everything decided from what it reads is in
+`FocusedFieldSnapshot`, which is tested.
+
+Related: [accessibility-private-api.md](accessibility-private-api.md) for the one private symbol
+`FocusedFieldReader+System.swift` calls.

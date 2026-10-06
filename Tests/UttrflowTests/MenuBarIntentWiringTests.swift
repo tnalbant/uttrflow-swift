@@ -10,7 +10,7 @@ import UttrflowUX
 /// What choosing an item does in a fresh signed-in app, read without a window, a microphone or the defaults.
 private enum Reach: Equatable {
     /// Opens this surface.
-    case opens(UttrflowUX.Destination)
+    case opens(UttrflowUX.AppLocation)
     /// Leaves the app as it was, because a fresh app has no row at that position.
     case nothing
     /// Reaches the microphone, the saved settings, System Settings, a popover or the process, so no headless test drives it.
@@ -23,12 +23,11 @@ private func reach(of intent: MenuBarIntent) -> Reach {
     case .open(let destination): .opens(destination)
     // A fresh app has no speech model, and only onboarding downloads one.
     case .recover(.downloadSpeechModel): .opens(.onboarding)
-    case .recover(.retryFromRecording): .opens(.main(.history))
+    case .recover(.retryFromRecording), .recover(.showHistory): .opens(.main(.history))
     case .recover(.openSystemSettings), .recover(.retry), .recover(.pasteManually),
-        .recover(.copyTranscript),
-        .recover(.showRecentDictations):
+        .recover(.copyTranscript):
         .system
-    case .insertRecent, .copyRecent, .insertClip, .copyClip: .nothing
+    case .insertRecent, .copyRecent, .insertClip, .copyClip, .undoLearnedWord: .nothing
     case .startDictation, .stopDictation, .openClipboard, .setFeature, .checkForUpdates, .quit: .system
     }
 }
@@ -43,6 +42,7 @@ private func name(of intent: MenuBarIntent) -> String {
     case .copyRecent: "copyRecent"
     case .insertClip: "insertClip"
     case .copyClip: "copyClip"
+    case .undoLearnedWord: "undoLearnedWord"
     case .open: "open"
     case .openClipboard: "openClipboard"
     case .setFeature: "setFeature"
@@ -52,10 +52,10 @@ private func name(of intent: MenuBarIntent) -> String {
 }
 
 /// How many cases ``MenuBarIntent`` has, bumped deliberately when one is added.
-private let menuBarIntentCaseCount = 12
+private let menuBarIntentCaseCount = 13
 
 /// Every surface a menu item can name.
-private let everyDestination: [UttrflowUX.Destination] =
+private let everyDestination: [UttrflowUX.AppLocation] =
     [.onboarding] + SettingsTab.allCases.map { .settings($0) } + MainTab.allCases.map { .main($0) }
 
 /// Every item at least once, with each page, each fix and a first and a far row position.
@@ -67,13 +67,13 @@ private let samples: [MenuBarIntent] =
     + everyDestination.map { .open($0) }
     + [
         .recover(.openSystemSettings(.microphone)), .recover(.retry), .recover(.downloadSpeechModel),
-        .recover(.pasteManually), .recover(.showRecentDictations), .recover(.retryFromRecording),
+        .recover(.pasteManually), .recover(.showHistory), .recover(.retryFromRecording),
         .recover(.copyTranscript),
     ]
-    + [0, 7].flatMap { index -> [MenuBarIntent] in
+    + [UUID(), UUID()].flatMap { id -> [MenuBarIntent] in
         [
-            .insertRecent(index: index), .copyRecent(index: index), .insertClip(index: index),
-            .copyClip(index: index),
+            .insertRecent(id: id), .copyRecent(id: id), .insertClip(id: id),
+            .copyClip(id: id), .undoLearnedWord(id: id),
         ]
     }
 

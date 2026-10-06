@@ -36,7 +36,7 @@ private final class BlockingFocus: AccessibilityFocus, @unchecked Sendable {
     func hasFocusedElement() -> Bool { message(); return false }
     func isSelfFrontmost() -> Bool { false }
     func tail(upTo count: Int) -> FieldTail { message(); return .unreadable }
-    func frontmostApplication() -> InsertionDestination? { nil }
+    func focusedApplication() -> InsertionDestination? { nil }
     func focusedFieldIsSecure() -> Bool { message(); return false }
 }
 
@@ -51,10 +51,12 @@ private final class Flag: Sendable {
 private final class HeldPasteboard: Pasteboard, @unchecked Sendable {
     private let held = Mutex<String?>(nil)
     func text() -> String? { held.withLock { $0 } }
-    func setText(_ text: String) { held.withLock { $0 = text } }
-    func setText(_ text: String, richText: String?) { setText(text) }
-    func setConcealedText(_ text: String) { held.withLock { $0 = text } }
-    func setImage(_ data: Data) {}
+    func setText(_ text: String) -> PasteboardWriteResult {
+        held.withLock { $0 = text }
+        return .written(changeCount: nil)
+    }
+    func setConcealedText(_ text: String) -> PasteboardWriteResult { setText(text) }
+    func setImage(_ data: Data) -> PasteboardWriteResult { .written(changeCount: nil) }
 }
 
 /// Stands for any other actor in the process that needs a pool thread to make progress.

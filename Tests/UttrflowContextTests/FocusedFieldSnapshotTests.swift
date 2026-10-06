@@ -2,6 +2,7 @@ import CoreGraphics
 import Foundation
 import Testing
 
+import UttrflowCore
 import UttrflowPredict
 
 @testable import UttrflowContext
@@ -59,6 +60,49 @@ struct FocusedFieldSnapshotTests {
     @Test("A password field can take nothing, however much else it answers.")
     func secureFieldsTakeNothing() {
         #expect(snapshot(isSecure: true).placement == nil)
+    }
+
+    @Test("Credential prompts in terminals hide their reply from the current line")
+    func credentialPromptsAreSecure() {
+        let prompts = [
+            "[sudo] password for dev: hidden-reply",
+            "dev@example.test's password: hidden-reply",
+            "Enter passphrase for key '/Users/example/.ssh/id_ed25519': hidden-reply",
+            "Enter passphrase: hidden-reply",
+            "Enter code: hidden-reply",
+            "Enter token: hidden-reply",
+            "PIN: hidden-reply",
+            "Security token: hidden-reply",
+            "Password for admin: hidden-reply",
+        ]
+
+        for prompt in prompts {
+            let terminal = snapshot(
+                value: prompt, selection: NSRange(location: prompt.utf16.count, length: 0))
+            #expect(terminal.isSecure, "prompt: \(prompt)")
+            #expect(terminal.value == nil, "prompt: \(prompt)")
+            #expect(terminal.currentLine.isEmpty, "prompt: \(prompt)")
+            let context = PredictionContext(typed: terminal.currentLine, isSecure: terminal.isSecure)
+            #expect(Quieting.reason(context) == .secureField, "prompt: \(prompt)")
+        }
+    }
+
+    @Test("Credential-looking commands remain ordinary terminal input")
+    func credentialCommandsRemainReadable() {
+        let lines = [
+            "echo 'Password: example'",
+            "code src/App.swift:42",
+            "token: abc",
+            "Code: review",
+            "echo bob's password: x",
+            "bob's password manager: x",
+        ]
+
+        for line in lines {
+            let terminal = snapshot(value: line, selection: NSRange(location: line.utf16.count, length: 0))
+            #expect(!terminal.isSecure, "line: \(line)")
+            #expect(terminal.currentLine == line, "line: \(line)")
+        }
     }
 
     @Test("A field reported disabled cannot host a suggestion")
@@ -175,6 +219,23 @@ struct FocusedFieldSnapshotTests {
             #expect(reading.caretAtLineEnd, "\(closer)")
             #expect(reading.hasTextAfterCaret, "\(closer)")
         }
+    }
+
+    @Test("Accepting a completion leaves matching auto-closed punctuation in the editor.")
+    func completionDoesNotDuplicateAutoClosedPunctuation() {
+        let typed = "print(\"hel"
+        let autoClosed = "\")"
+        let reading = snapshot(
+            bundleIdentifier: "com.microsoft.vscode", role: FocusedFieldSnapshot.proseRole,
+            value: typed + autoClosed, selection: NSRange(location: typed.utf16.count, length: 0))
+        let suggestion = Suggestion.certain("print(\"hello world\")")
+            .trimmed(after: typed, matching: reading.closingPunctuationAfterCaret)
+
+        #expect(reading.closingPunctuationAfterCaret == "\")")
+        #expect(suggestion.accepting == "print(\"hello world")
+        #expect(suggestion.edit(after: typed)?.inserted == "lo world")
+        let inserted = suggestion.edit(after: typed)?.inserted ?? ""
+        #expect(typed + inserted + autoClosed == "print(\"hello world\")")
     }
 
     @Test("A real code caret inside following text still silences suggestions.")

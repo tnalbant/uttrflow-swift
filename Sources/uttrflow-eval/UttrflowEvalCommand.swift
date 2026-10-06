@@ -7,6 +7,11 @@ struct UttrflowEvalCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "uttrflow-eval",
         abstract: "Measure how well Uttrflow hears and how fast it answers.",
-        subcommands: [RecordCorpus.self, PullCorpus.self, TranscribeCorpus.self]
+        subcommands: [
+            RecordCorpus.self, PullCorpus.self, TranscribeCorpus.self, TailProbe.self, CueBleedProbe.self,
+            RetryParityProbe.self, SynthesiseCorpus.self, NonSpeechProbe.self, HomophoneConfidenceProbe.self,
+            AccentProbe.self, NormaliseText.self, FitFromTable.self, FallbackSweepProbe.self,
+            ClosedPhraseMarksProbe.self,
+        ]
     )
 }

@@ -7,6 +7,7 @@ public enum OnboardingPresenter {
     /// The page for a state, with the shortcut and how it is pressed drawn on the last one.
     public static func page(
         for state: OnboardingState, hotkey: HotkeyBinding, activation: HotkeyActivation = .holdToTalk,
+        shortcuts: ShortcutSet = .default,
         signsInAsStandIn: Bool = false, sharesUsageStatistics: Bool = false
     ) -> OnboardingPage {
         switch state.step {
@@ -14,7 +15,7 @@ public enum OnboardingPresenter {
         case .microphone: permission(.microphone, state)
         case .accessibility: permission(.accessibility, state)
         case .setup: setup(state)
-        case .ready: ready(state, hotkey: hotkey, activation: activation)
+        case .ready: ready(state, hotkey: hotkey, activation: activation, shortcuts: shortcuts)
         }
     }
 
@@ -48,12 +49,12 @@ public enum OnboardingPresenter {
                 state, mood: .brand, picture: .waveform(.talking, badge: nil), title: "Just talk.",
                 providers: providers,
                 buttons: [
-                    sharesUsageStatistics
-                        ? .plain("Keep off", "hand.raised", .setUsageStatistics(false))
-                        : .prominent("Keep off", "hand.raised", .setUsageStatistics(false)),
-                    sharesUsageStatistics
-                        ? .prominent("Share", "chart.bar", .setUsageStatistics(true))
-                        : .plain("Share", "chart.bar", .setUsageStatistics(true)),
+                    .choice(
+                        "Keep off", "hand.raised", .setUsageStatistics(false),
+                        isSelected: !sharesUsageStatistics),
+                    .choice(
+                        "Share", "chart.bar", .setUsageStatistics(true),
+                        isSelected: sharesUsageStatistics),
                 ],
                 hint: standIn ? standInHint : nil, showsTerms: true,
                 explanation: pitch + " Usage statistics are off unless you choose to share them.")
@@ -193,11 +194,12 @@ public enum OnboardingPresenter {
 
     /// The last page: a first try when dictation can work, else what still stands in the way.
     private static func ready(
-        _ state: OnboardingState, hotkey: HotkeyBinding, activation: HotkeyActivation
+        _ state: OnboardingState, hotkey: HotkeyBinding, activation: HotkeyActivation,
+        shortcuts: ShortcutSet
     ) -> OnboardingPage {
         switch state.detail.readiness ?? .ready {
         case .ready, .pastesManually:
-            trying(state, hotkey: hotkey, activation: activation)
+            trying(state, hotkey: hotkey, activation: activation, shortcuts: shortcuts)
         case .needsSpeechModel:
             page(
                 state, mood: .warning, picture: .download(0, .stopped),
@@ -226,7 +228,8 @@ public enum OnboardingPresenter {
 
     /// The first try: the keyboard's corner with the shortcut lit, the field the words land in, and Skip.
     private static func trying(
-        _ state: OnboardingState, hotkey: HotkeyBinding, activation: HotkeyActivation
+        _ state: OnboardingState, hotkey: HotkeyBinding, activation: HotkeyActivation,
+        shortcuts: ShortcutSet
     ) -> OnboardingPage {
         let keys = OnboardingKeys.of(hotkey)
         let lit = OnboardingKeys.corner(of: hotkey)
@@ -235,7 +238,10 @@ public enum OnboardingPresenter {
         let skip = OnboardingAction(
             title: "Skip to dashboard", intent: .finish, isProminent: false, countdown: nil, caption: nil)
         let copies = state.detail.readiness == .pastesManually
-        let clipboardHint = "Open the Clipboard panel with ⇧⌘V to browse and paste recent copies."
+        let clipboardHint =
+            shortcuts.first(for: .clipboard).map {
+                "Open the Clipboard panel with \(SettingsShortcut.compact($0)) to browse and paste recent copies."
+            } ?? "Open the Clipboard panel from the menu bar to browse and paste recent copies."
         let bracket = keys.count > 1 ? (holds ? "HOLD BOTH" : "PRESS BOTH") : (holds ? "HOLD" : "PRESS")
         var page: OnboardingPage
         switch state.detail.trial {

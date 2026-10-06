@@ -2,7 +2,7 @@
 
 private import Synchronization
 
-/// Wraps a generator so its passes run at utility priority and none starts while `mayRun` says no. See `Docs/performance.md`.
+/// Wraps a generator so its passes run at utility priority and none starts while `mayRun` says no. See `Docs/performance-suggestions.md`.
 public struct DiscretionaryGenerator: CandidateGenerating {
     private let inner: any CandidateGenerating
     private let mayRun: @Sendable () -> Bool

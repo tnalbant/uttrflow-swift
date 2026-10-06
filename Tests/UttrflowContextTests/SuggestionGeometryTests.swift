@@ -2,6 +2,7 @@ import CoreGraphics
 import Testing
 
 @testable import UttrflowContext
+import UttrflowTestSupport
 
 /// The main display of a Mac with a menu bar and a Dock.
 private let mainScreen = CGRect(x: 0, y: 84, width: 1512, height: 862)
@@ -47,7 +48,7 @@ struct SuggestionGeometryTests {
         let tallFieldBaseline = tallCaret.minY + fontDescent
         #expect(abs(tallGhostBaseline - tallFieldBaseline) <= 1)
 
-        let singleLineCaret = CGRect(x: 620, y: 500, width: 2, height: fontAscent - fontDescent)
+        let singleLineCaret = CGRect(x: 620, y: 500, width: 2, height: fontAscent + fontDescent)
         let singleLineAnchor = try #require(
             SuggestionGeometry.anchor(
                 for: .inlineGhost, caret: singleLineCaret, window: documentWindow, screen: mainScreen,
@@ -101,6 +102,30 @@ struct SuggestionGeometryTests {
         #expect(anchor?.frame.maxY == caretInMenuBarBand.maxY)
     }
 
+    @Test("A caret above or below the window has no ghost anchor")
+    func caretOutsideWindowHasNoAnchor() {
+        let above = CGRect(x: 620, y: documentWindow.maxY + 1, width: 2, height: 17)
+        let below = CGRect(x: 620, y: documentWindow.minY - 18, width: 2, height: 17)
+        #expect(
+            SuggestionGeometry.anchor(
+                for: .inlineGhost, caret: above, window: documentWindow, screen: mainScreen,
+                size: strip) == nil)
+        #expect(
+            SuggestionGeometry.anchor(
+                for: .inlineGhost, caret: below, window: documentWindow, screen: mainScreen,
+                size: strip) == nil)
+    }
+
+    @Test("A caret outside the visible field has no ghost anchor")
+    func caretOutsideFieldHasNoAnchor() {
+        let visibleField = CGRect(x: 600, y: 490, width: 300, height: 30)
+        let above = CGRect(x: 620, y: visibleField.maxY + 1, width: 2, height: 17)
+        #expect(
+            SuggestionGeometry.anchor(
+                for: .inlineGhost, caret: above, window: documentWindow, field: visibleField,
+                screen: mainScreen, size: strip) == nil)
+    }
+
     @Test("A dot narrower than the minimum still fits where only it does")
     func aSmallSurfaceNeedsOnlyItsOwnWidth() {
         let last = CGRect(x: mainScreen.maxX - 12, y: 500, width: 2, height: 17)
@@ -128,7 +153,7 @@ struct SuggestionGeometryTests {
         let anchor = try #require(
             SuggestionGeometry.anchor(
                 for: .inlineGhost, caret: atRight, window: documentWindow, field: field,
-                screen: mainScreen, size: strip, direction: .rightToLeft))
+                screen: mainScreen, size: CGSize(width: 2_000, height: 24), direction: .rightToLeft))
         #expect(anchor.frame.maxX == atRight.minX)
         #expect(anchor.frame.minX == field.minX)
     }
@@ -385,7 +410,7 @@ struct SuggestionGeometryTests {
     func surfaceTallSurfaceIsCutToTheWindow() throws {
         let tall = CGSize(width: 260, height: 1_200)
         // A window shorter than the screen; the surface would otherwise extend past the window's bottom.
-        let shortWindow = CGRect(x: 380, y: 200, width: 900, height: 300)
+        let shortWindow = CGRect(x: 380, y: 200, width: 900, height: 400)
         let anchor = try #require(
             SuggestionGeometry.anchor(
                 for: .inlineGhost, caret: caret, window: shortWindow, screen: mainScreen,

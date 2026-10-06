@@ -400,6 +400,19 @@ struct SettingsLanguagesPaneTests {
             ])
     }
 
+    @Test("offers how long the user pauses beside the languages, with usual pauses chosen to begin with")
+    func offersPauses() {
+        #expect(
+            languages().row("pauses")?.control
+                == .segmented(
+                    options: [
+                        SettingsOption(id: "usual", title: "Usual", change: .pauses(.usual)),
+                        SettingsOption(id: "long", title: "Long", change: .pauses(.long)),
+                        SettingsOption(id: "veryLong", title: "Very long", change: .pauses(.veryLong)),
+                    ],
+                    selectedID: "usual"))
+    }
+
     @Test("offers no way to remove the only language the user has, rather than refusing it afterwards")
     func theLastLanguageCannotBeUntangled() {
         guard case .languages(let chips, _) = languages().row("spokenLanguages")?.control else {
@@ -416,14 +429,25 @@ struct SettingsLanguagesPaneTests {
         #expect(example?.groupID == "tidying")
         #expect(example?.spoken == "um so i think we should uh ship it on friday")
         #expect(example?.writtenLabel == "Uttrflow writes · Standard")
-        #expect(example?.written == "I think we should ship it on Friday.")
+        #expect(example?.written == "So I think we should ship it on Friday.")
         #expect(SettingsPresenter.tidied(at: .light) == "So I think we should ship it on friday.")
         let rulesOutput = CleaningPipeline.standard.run(Draft(text: SettingsPresenter.exampleSpoken)).text
         #expect(SettingsPresenter.tidied(at: .light) == rulesOutput)
         #expect(
             SettingsTidyingLevel.rowExplanation
-                == "Both levels remove filler words and stammers. Standard also rewrites grammar and word choice when an on-device model is available."
+                == "Both levels remove filler sounds and stammers and add punctuation. Standard also repairs grammar slips with an on-device model, which adds a moment to each dictation. Neither level changes, reorders or drops the words you meant."
         )
+    }
+
+    /// The tidier removes and formats and never composes, so the copy may not promise a rewrite.
+    @Test("promises no rewrite in the tidying copy or example")
+    func promisesNoRewrite() {
+        let claims = ["rewrite", "word choice", "polish", "improve your", "rephrase"]
+        let copy = SettingsTidyingLevel.rowExplanation.lowercased()
+        #expect(claims.allSatisfy { !copy.contains($0) })
+        let light = SettingsPresenter.tidied(at: .light).split(separator: " ").map { $0.lowercased() }
+        let standard = SettingsPresenter.tidied(at: .standard).split(separator: " ").map { $0.lowercased() }
+        #expect(light == standard)
     }
 
     @Test("keeps each language's own name in its offer")
@@ -555,33 +579,10 @@ struct SettingsDictationPaneTests {
         SettingsPresenter.pane(for: .dictation, settings: settings, capabilities: capabilities)
     }
 
-    @Test("shows the trade the stored engine represents, not the engine")
-    func showsTheQuality() {
-        var settings = Settings.default
-        settings.engines.speech = .appleSpeech
-        guard
-            case .segmented(let options, let selected)? = dictation(settings).row("quality")?
-                .control
-        else {
-            Issue.record("the quality row is not a segmented control")
-            return
-        }
-        #expect(selected == SettingsTranscriptionQuality.faster.rawValue)
-        #expect(options.count == SettingsTranscriptionQuality.allCases.count)
-        #expect(dictation(settings).row("quality")?.explanation?.contains("does not recognise Hindi") == true)
-        #expect(
-            dictation(settings).row("quality")?.explanation?.contains("Most accurate for Hindi or Hinglish")
-                == true)
-    }
-
-    @Test("stays operable while either option can still run")
-    func operableWhileOneEngineIsReady() {
-        var capabilities = SettingsCapabilities.everything
-        capabilities.readySpeechEngines = [.appleSpeech]
-        #expect(dictation(.default, capabilities).row("quality")?.isEnabled == true)
-
-        capabilities.readySpeechEngines = []
-        #expect(dictation(.default, capabilities).row("quality")?.isEnabled == false)
+    @Test("offers no choice of recogniser, since there is one")
+    func offersNoRecogniserChoice() {
+        #expect(dictation().row("quality") == nil)
+        #expect(dictation().groups.allSatisfy { $0.id != "recognition" })
     }
 
     @Test("says dictation needs no connection")
@@ -608,11 +609,26 @@ struct SettingsPrivacyPaneTests {
         SettingsPresenter.pane(for: .privacy, settings: settings, capabilities: .everything)
     }
 
-    @Test("opens with the promise, before anything that can be changed")
-    func opensWithThePromise() {
-        let first = privacy().everyRow.first
-        #expect(first?.id == "onDevice")
-        #expect(first?.control == .status("On-device"))
+    @Test("counts what left this Mac by purpose, and dictation as none, from the ledger")
+    func countsNetworkActivity() {
+        let personalisation = SettingsPersonalisation(
+            learnedWords: 0, addedWords: 0, transcripts: 0,
+            network: [.modelDownload: NetworkTally(count: 3, last: Date())])
+        let pane = SettingsPresenter.pane(
+            for: .privacy, settings: .default, capabilities: .everything, personalisation: personalisation)
+        let network = pane.groups.first { $0.id == "network" }
+        #expect(network?.rows.first?.label == "Dictation")
+        #expect(network?.rows.first?.control == .status("0 requests"))
+        #expect(pane.row("network.modelDownload")?.control == .status("3 requests"))
+        #expect(pane.row("network.updateCheck")?.control == .status("0 requests"))
+        #expect(network?.rows.count == NetworkPurpose.allCases.count + 1)
+        #expect(pane.row("onDevice") == nil)
+    }
+
+    @Test("renders every purpose at zero on a Mac that has made no request")
+    func rendersForZeroActivity() {
+        let rows = privacy().groups.first { $0.id == "network" }?.rows ?? []
+        #expect(rows.allSatisfy { $0.control == .status("0 requests") })
         #expect(privacy().callout?.message.contains(SettingsPresenter.privacyPromise) == true)
         // A banner is only ever the suggestion model's news, which the capable Mac here has none of.
         #expect(everyPane().allSatisfy { $0.banner == nil })
@@ -784,7 +800,7 @@ struct SettingsAppearanceTests {
                 .appearance(appearance), to: Settings(),
                 given: SettingsCapabilities(
                     launchAtLogin: .unavailable, canPlayRecordingSound: false,
-                    readySpeechEngines: [], readyTransformers: []))
+                    readyTransformers: []))
             #expect(after.appearance == appearance)
         }
     }
@@ -948,9 +964,9 @@ struct UnarmedShortcutTests {
     @Test("says so, instead of showing a key that does nothing")
     func saysSo() throws {
         var capabilities = SettingsCapabilities.everything
-        capabilities.unarmedShortcuts = [.clipboard]
+        capabilities.unarmedShortcuts = [.clipboard: .shortcutUnavailable]
         let shown = try #require(row(capabilities))
-        #expect(shown.explanation == SettingsPresenter.unarmed)
+        #expect(shown.explanation == SettingsPresenter.unarmed(.shortcutUnavailable))
     }
 
     @Test("keeps the unarmed explanation ahead of the activation mode")
@@ -958,26 +974,37 @@ struct UnarmedShortcutTests {
         var settings = Settings.default
         settings.hotkeyActivation = .pressToToggle
         var capabilities = SettingsCapabilities.everything
-        capabilities.unarmedShortcuts = [.dictate]
+        capabilities.unarmedShortcuts = [.dictate: .shortcutUnavailable]
 
         let shown = try #require(
             SettingsPresenter.pane(for: .general, settings: settings, capabilities: capabilities)
                 .groups.flatMap(\.rows).first { $0.id == "shortcut.dictate" })
-        #expect(shown.explanation == SettingsPresenter.unarmed)
+        #expect(shown.explanation == SettingsPresenter.unarmed(.shortcutUnavailable))
+    }
+
+    @Test(
+        "names the refusal, so each cause reads differently",
+        arguments: [HotkeyError.observationNotPermitted, .accessibilityNeedsRefresh, .shortcutUnavailable])
+    func namesTheCause(_ cause: HotkeyError) throws {
+        var capabilities = SettingsCapabilities.everything
+        capabilities.unarmedShortcuts = [.clipboard: cause]
+        let shown = try #require(row(capabilities))
+        #expect(shown.explanation?.hasPrefix("Unavailable") == true)
+        #expect(shown.explanation?.hasSuffix(cause.userMessage) == true)
     }
 
     @Test("and every other row is left alone")
     func othersAreUntouched() throws {
         var capabilities = SettingsCapabilities.everything
-        capabilities.unarmedShortcuts = [.dictate]
+        capabilities.unarmedShortcuts = [.dictate: .shortcutUnavailable]
         let shown = try #require(row(capabilities))
-        #expect(shown.explanation != SettingsPresenter.unarmed)
+        #expect(shown.explanation != SettingsPresenter.unarmed(.shortcutUnavailable))
     }
 
     @Test("while an armed one keeps the explanation it always had")
     func armedIsUnchanged() throws {
         let shown = try #require(row(.everything))
-        #expect(shown.explanation != SettingsPresenter.unarmed)
+        #expect(shown.explanation != SettingsPresenter.unarmed(.shortcutUnavailable))
     }
 }
 

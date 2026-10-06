@@ -2,10 +2,11 @@
 """Enforces the one-line comment rule, and stops the count ever rising."""
 
 import argparse
-import json
 import os
 import re
 import sys
+
+import ratchet
 
 ROOTS = ("Sources", "Tests")
 BASELINE = os.path.join("Scripts", "comment_baseline.json")
@@ -76,12 +77,7 @@ def survey():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--update", action="store_true", help="record the current counts")
-    parser.add_argument(
-        "--after-merge",
-        action="store_true",
-        help="with --update, accept counts that rose because main moved underneath",
-    )
+    ratchet.add_arguments(parser)
     parser.add_argument("--report", action="store_true", help="list what is left, worst first")
     arguments = parser.parse_args()
 
@@ -97,42 +93,19 @@ def main():
             print(f"  {path}:{line}  “{phrase}”")
         return 0
 
-    baseline = {}
-    if os.path.exists(BASELINE):
-        baseline = json.load(open(BASELINE))
+    baseline = ratchet.load(BASELINE)
+
+    past_tense = len(history)
+    allowed_past_tense = baseline.get("past_tense", 0)
 
     if arguments.update:
-        recorded = baseline.get("files", {})
-        # With a baseline, a file it does not list was clean, so any count there is a rise.
-        risen = {
-            path: (recorded.get(path, 0), count)
-            for path, count in long_blocks.items()
-            if baseline and count > recorded.get(path, 0)
-        }
-        if risen and not arguments.after_merge:
-            print("Refusing to record a higher count. The baseline only goes down.")
-            for path, (was, now) in sorted(risen.items()):
-                print(f"  {path}: {was} -> {now}")
-            print("\nIf these arrived from main rather than from your own work, re-record")
-            print("with --after-merge. The rise then shows in the baseline's diff, where a")
-            print("reviewer can see it, rather than passing unremarked.")
+        if baseline and past_tense > allowed_past_tense and not arguments.after_merge:
+            print(f"Refusing to record a higher count: past-tense comments {allowed_past_tense} -> {past_tense}.")
             return 1
-        if risen:
-            print("Absorbing counts that rose with main. Each is a file to bring down later:")
-            for path, (was, now) in sorted(risen.items()):
-                print(f"  {path}: {was} -> {now}")
-        json.dump(
-            {"total": total, "files": long_blocks},
-            open(BASELINE, "w"),
-            indent=2,
-            sort_keys=True,
-        )
-        print(f"Recorded {total} multi-line comment blocks across {len(long_blocks)} files.")
-        return 0
+        return ratchet.update(BASELINE, long_blocks, "multi-line comment blocks", "a file to bring down later", arguments.after_merge, {"past_tense": past_tense})
 
     if not baseline:
-        print(f"No baseline at {BASELINE}. Run: python3 {sys.argv[0]} --update")
-        return 1
+        return ratchet.missing(BASELINE, sys.argv[0])
 
     recorded = baseline.get("files", {})
     failures = []
@@ -141,16 +114,19 @@ def main():
         if count > allowed:
             failures.append(f"{path}: {count} multi-line comment blocks, was {allowed}")
 
+    if past_tense > allowed_past_tense:
+        failures.append(f"past-tense comments: {past_tense}, was {allowed_past_tense}; run --report to list them")
+
     if failures:
         print("Comments: one line each, saying what the code does now.")
-        print("These files gained multi-line comment blocks:\n")
+        print("These counts rose above the baseline:\n")
         for failure in failures:
             print(f"  {failure}")
-        print(f"\nSee the comment rule in AGENTS.md.")
+        print(f"\nSee the comment rule in Docs/agents/code-quality.md.")
         print(f"Shrinking another file does not pay for growing this one.")
         return 1
 
-    print(f"Comments: {total} multi-line blocks, none higher than the baseline.")
+    print(f"Comments: {total} multi-line blocks and {past_tense} past-tense comments, none higher than the baseline.")
     return 0
 
 

@@ -219,7 +219,7 @@ Apple Silicon Mac, macOS 26 or later. Xcode 26.6 or later supplies the toolchain
 itself is SwiftPM.
 
 ```bash
-make verify     # lint, PII audit, build, 8,000+ tests, coverage floor, offline audit
+make verify     # lint, PII audit, build, test suite, coverage floor, offline audit
 make app        # builds and ad-hoc signs dist/Uttrflow.app
 open dist/Uttrflow.app
 make help       # every target
@@ -263,6 +263,7 @@ Sources/
   UttrflowSettings     What the user chose, kept between launches.
   UttrflowHistory      What was dictated, kept between launches and aged out on a clock.
   UttrflowDictionary   Words you say that a general model does not know, found by sound.
+  UttrflowDiagnostics  Opt-in crash and hang reports. The only module that links the crash reporter.
   UttrflowAccount      Who is signed in, and what their subscription allows.
   UttrflowClipboard    Clipboard history, classification and storage; panel UI lives in Uttrflow/Panel.
   UttrflowPredict      Finishing a line you have typed before: the turn, the gates, the ranking.
@@ -297,7 +298,6 @@ swift run uttrflow-dev models install         # one-time, 646 MB
 swift run uttrflow-dev record -s 5            # record 5s, write a WAV
 swift run uttrflow-dev transcribe -s 6        # record and transcribe
 swift run uttrflow-dev transcribe voice.wav   # transcribe a file
-swift run uttrflow-dev transcribe -e appleSpeech -s 6
 swift run uttrflow-dev clean "um so i think the the deployment is uh still running"
 swift run uttrflow-dev insert "Hello from Uttrflow."   # needs Accessibility access
 ```
@@ -315,7 +315,7 @@ Which implementations run is decided entirely by `EngineConfiguration`:
 
 ```swift
 EngineConfiguration(
-    speech: .whisperKit,                                    // or .appleSpeech
+    speech: .whisperKit,
     transformerPreference: [.foundationModels, .localModel, .rules]
 )
 ```
@@ -325,9 +325,6 @@ handle the request wins. An engine that cannot cope with the spoken language ste
 aside rather than producing bad output — which is how Hindi is routed away from
 Apple's model, whose 23 supported locales do not include it. The preference list must
 always end in `.rules`, which can handle anything, so the pipeline can never dead-end.
-
-`.cloud` is compiled in only when `UTTRFLOW_CLOUD` is defined. The shipping binary
-contains no network path.
 
 </details>
 
@@ -436,10 +433,9 @@ breadcrumbs, and nothing you dictated or copied. Builds made from source carry n
 key and never send anything. [Docs/crash-reporting.md](Docs/crash-reporting.md) has the details.
 
 The app is not hermetic and does not claim to be: it downloads a speech model on first run,
-roughly 646 MB, and signs you in once. After that it dictates with no network at all. A
-cloud clean-up engine exists behind the `UTTRFLOW_CLOUD` compilation flag and is **not** in
-the shipping binary, and the evaluation corpus is not a library product so it cannot be
-imported into the app.
+roughly 646 MB, and signs you in once. After that it dictates with no network at all. No
+clean-up engine is hosted, and the evaluation corpus is not a library product so it cannot
+be imported into the app.
 
 ## Contributing
 

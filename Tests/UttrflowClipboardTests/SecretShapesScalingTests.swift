@@ -3,6 +3,7 @@
 import Testing
 
 @testable import UttrflowClipboard
+@testable import UttrflowCore
 
 extension HeavyClipScans {
     @Suite("Reading a clip for a credential costs a bounded number of reads per character", .serialized)
@@ -40,6 +41,7 @@ extension HeavyClipScans {
             "headers": "Authorization: ",
             "open quotes": "'a\" ",
             "userinfo": "a://b@",
+            "scheme-less webhook prefixes": "hooks.slack.com/",
         ]
 
         private static func text(_ unit: String, length: Int) -> String {
@@ -85,6 +87,18 @@ extension HeavyClipScans {
             let text = Self.text("pwd=eyJa://b:", length: 2_000_000) + " x"
             let read = await offTheTestPool { Self.charactersRead(text) }
             #expect(read <= Self.readsPerCharacter * text.count)
+        }
+
+        @Test("A two-megabyte repeated scheme-less webhook prefix is classified within five seconds")
+        func repeatedSchemeLessWebhookPrefix() async {
+            let text = String(repeating: "hooks.slack.com/", count: 131_000)
+            let elapsed = await offTheTestPool {
+                let clock = ContinuousClock()
+                let start = clock.now
+                _ = ClipKindDetector.kind(of: text)
+                return start.duration(to: clock.now)
+            }
+            #expect(elapsed < .seconds(5))
         }
 
         @Test("A secret after a long run is still found")

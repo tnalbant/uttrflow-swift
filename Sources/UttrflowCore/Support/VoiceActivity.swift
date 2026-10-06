@@ -3,8 +3,8 @@ public enum VoiceActivity: Sendable {
     /// Loudness is measured over frames this long, in seconds.
     static let frameDuration = 0.02
 
-    /// A frame this quiet is silence however quiet the room is, at about -46 dBFS.
-    static let absoluteFloor: Float = 0.005
+    /// A frame below this level is silence, at about -90 dBFS.
+    static let absoluteFloor: Float = 0.0000316
 
     /// Speech is this many times louder than the room around it.
     static let signalToNoise: Float = 3
@@ -24,6 +24,9 @@ public enum VoiceActivity: Sendable {
     /// Audio kept either side of the speech, in seconds, so no onset is clipped.
     static let margin = 0.2
 
+    /// Counts samples read while a test has it bound, so the cost of an analysis is bounded by work rather than time.
+    @TaskLocal package static var samplesRead: WorkTally?
+
     /// The loudness a frame must reach to be speech: above the room by a margin, and never above ordinary speech.
     static func threshold(forFloor floor: Float) -> Float {
         Swift.max(absoluteFloor, Swift.min(floor * signalToNoise, assumedSpeechLevel))
@@ -39,7 +42,7 @@ public enum VoiceActivity: Sendable {
         let floor = percentile(sorted, floorPercentile)
         let ceiling = percentile(sorted, ceilingPercentile)
 
-        // A quiet room fails the first test; a fan passes it and fails the second.
+        // A very quiet recording fails the first test; a fan fails the second.
         guard ceiling >= absoluteFloor else { return nil }
         guard ceiling >= assumedSpeechLevel || ceiling >= floor * signalToNoise else { return nil }
 
@@ -66,6 +69,7 @@ public enum VoiceActivity: Sendable {
                 let sample = samples[index]
                 if sample.isFinite { sum += sample * sample }
             }
+            samplesRead?.record(frameLength)
             if (sum / Float(frameLength)).squareRoot() >= absoluteFloor { return true }
             start += frameLength
         }
@@ -84,6 +88,7 @@ public enum VoiceActivity: Sendable {
                 // A `nan` from a misbehaving driver compares false against every threshold.
                 if sample.isFinite { sum += sample * sample }
             }
+            samplesRead?.record(frameLength)
             loudness.append((sum / Float(frameLength)).squareRoot())
             start += frameLength
         }

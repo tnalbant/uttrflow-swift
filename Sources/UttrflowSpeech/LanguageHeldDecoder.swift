@@ -39,10 +39,10 @@ struct AllowedLanguageSampler: TokenSampling {
     }
 }
 
-/// A text decoder whose language detection is held to `languages`; everything else is the wrapped decoder's.
+/// A text decoder whose detection is held to `languages` and whose window decode is a `DecodeSession`.
 final class LanguageHeldDecoder: TextDecoding {
-    /// The compression ratio a language's clean decode stays under, where Whisper's 2.4 rejects it. See `Docs/speech-engines.md`.
-    static let compressionRatioThresholds: [String: Float] = ["hi": 3.0]
+    /// Each transcribed language's compression-ratio decision; `nil` keeps Whisper's 2.4. See `Docs/speech-engines.md`.
+    static let compressionRatioThresholds: [String: Float?] = ["en": nil, "hi": 3.0]
 
     /// The reason WhisperKit names a compression fallback by, a raw string that `WhisperKitContractTests` pins.
     static let compressionFallbackReason = "compressionRatioThreshold"
@@ -50,7 +50,7 @@ final class LanguageHeldDecoder: TextDecoding {
     /// The fallback WhisperKit decided on, re-judged with the language's own compression-ratio threshold.
     static func judged(_ result: DecodingResult, options: DecodingOptions) -> DecodingFallback? {
         guard let fallback = result.fallback, fallback.fallbackReason == compressionFallbackReason,
-            let language = options.language, let threshold = compressionRatioThresholds[language]
+            let language = options.language, let threshold = compressionRatioThresholds[language] ?? nil
         else { return result.fallback }
         var relaxed = options
         relaxed.compressionRatioThreshold = threshold
@@ -62,10 +62,16 @@ final class LanguageHeldDecoder: TextDecoding {
 
     private var inner: any TextDecoding
     private let languages: [LanguageCode]
+    /// Every decode window's per-step entropy, one record per `decodeText` call, fallback retries included.
+    let windows: DecodeWindowLog
 
-    init(wrapping inner: any TextDecoding, languages: [LanguageCode]) {
+    init(
+        wrapping inner: any TextDecoding, languages: [LanguageCode],
+        windows: DecodeWindowLog = DecodeWindowLog()
+    ) {
         self.inner = inner
         self.languages = languages
+        self.windows = windows
     }
 
     /// Detects among the allowed languages greedily, ignoring the fallback temperature it is handed.
@@ -136,10 +142,16 @@ final class LanguageHeldDecoder: TextDecoding {
         options decoderOptions: DecodingOptions,
         callback: TranscriptionCallback?
     ) async throws -> DecodingResult {
-        var result = try await inner.decodeText(
-            from: encoderOutput, using: decoderInputs, sampler: tokenSampler,
-            options: decoderOptions, callback: callback)
+        let evidence = EvidenceSampler(wrapping: tokenSampler)
+        let session = try DecodeSession(
+            decoder: inner,
+            window: .init(encoderOutput: encoderOutput, inputs: decoderInputs, options: decoderOptions))
+        var result = try await session.decode(sampler: evidence, callback: callback)
+        result.tokenLogProbs = evidence.tokenLogProbs(of: result)
+        // The evidence wrapper hides a greedy sampler's temperature, so it is read off the sampler handed in.
+        result.temperature = DecodeSession.temperature(of: tokenSampler, options: decoderOptions)
         result.fallback = Self.judged(result, options: decoderOptions)
+        windows.append(evidence.window(of: result))
         return result
     }
 }

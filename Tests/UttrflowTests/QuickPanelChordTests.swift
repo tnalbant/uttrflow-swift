@@ -4,6 +4,8 @@ import AppKit
 import Testing
 import UttrflowUX
 
+private import Carbon
+
 @testable import Uttrflow
 
 /// A view that records the keys the window hands it.
@@ -13,16 +15,61 @@ private final class KeyRecorder: NSView {
     override func keyDown(with event: NSEvent) { keys.append(event.charactersIgnoringModifiers ?? "") }
 }
 
-/// A key-down for `character` with `modifiers` held, addressed to `window`.
+/// A key-down for `characters` at `keyCode` with `modifiers` held, addressed to `window`.
 @MainActor
 private func key(
-    _ character: String, _ modifiers: NSEvent.ModifierFlags, in window: NSWindow? = nil
+    _ characters: String, _ modifiers: NSEvent.ModifierFlags,
+    keyCode: UInt16? = nil, in window: NSWindow? = nil
 ) throws -> NSEvent {
-    try #require(
+    let code = keyCode ?? characters.first.flatMap { PanelChord($0).keyCode } ?? 0
+    return try #require(
         NSEvent.keyEvent(
             with: .keyDown, location: .zero, modifierFlags: modifiers, timestamp: 0,
-            windowNumber: window?.windowNumber ?? 0, context: nil, characters: character,
-            charactersIgnoringModifiers: character, isARepeat: false, keyCode: 0))
+            windowNumber: window?.windowNumber ?? 0, context: nil, characters: characters,
+            charactersIgnoringModifiers: characters, isARepeat: false, keyCode: code))
+}
+
+/// Returns an installed Unicode keyboard table by its Text Input Source identifier.
+@MainActor
+private func keyboardLayout(_ id: String) throws -> Data {
+    let filter = [kTISPropertyInputSourceID as String: id] as CFDictionary
+    let list = try #require(
+        TISCreateInputSourceList(filter, true)?.takeRetainedValue() as? [TISInputSource],
+        "no input source list for \(id)")
+    let source = try #require(list.first, "\(id) is not installed")
+    let property = try #require(
+        TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData),
+        "\(id) has no Unicode layout table")
+    return Unmanaged<CFData>.fromOpaque(property).takeUnretainedValue() as Data
+}
+
+/// Makes the key event that a layout uses to type one labelled chord character.
+@MainActor
+private func layoutKey(_ chord: PanelChord, in id: String) throws -> NSEvent {
+    if chord.character == "\u{7F}" { return try key("\u{7F}", [.command, .shift], keyCode: 51) }
+    let data = try keyboardLayout(id)
+    let modifiers =
+        UInt32((cmdKey >> 8) & 0xFF)
+        | (chord.isShifted ? UInt32((shiftKey >> 8) & 0xFF) : 0)
+    let translated: (UInt16, String)? = data.withUnsafeBytes { raw in
+        guard let layout = raw.bindMemory(to: UCKeyboardLayout.self).baseAddress else { return nil }
+        for code in UInt16(0)...UInt16(127) {
+            var deadKeyState: UInt32 = 0
+            var output = [UniChar](repeating: 0, count: 4)
+            var length = 0
+            let status = UCKeyTranslate(
+                layout, code, UInt16(kUCKeyActionDown), modifiers, UInt32(LMGetKbdType()),
+                UInt32(kUCKeyTranslateNoDeadKeysBit), &deadKeyState, output.count, &length, &output)
+            guard status == noErr, length == 1, let scalar = UnicodeScalar(output[0]) else { continue }
+            let produced = String(scalar)
+            guard produced.lowercased().first == chord.character else { continue }
+            return (code, produced)
+        }
+        return nil
+    }
+    let (code, produced) = try #require(translated, "\(id) cannot produce \(chord.label)")
+    let flags: NSEvent.ModifierFlags = chord.isShifted ? [.command, .shift] : .command
+    return try key(produced, flags, keyCode: code)
 }
 
 @MainActor
@@ -30,20 +77,55 @@ private func key(
 struct QuickPanelChordTests {
     @Test("every row chord is recognised, with ⇧ where the chord takes it")
     func recognisesRowChords() throws {
-        #expect(QuickPanel.isRowChord(try key("m", .command)))
-        #expect(QuickPanel.isRowChord(try key("p", .command)))
-        #expect(QuickPanel.isRowChord(try key("C", [.command, .shift])))
-        #expect(QuickPanel.isRowChord(try key("\u{7F}", [.command, .shift])))
+        let examples: [(PanelRowAction, String, UInt16)] = [
+            (.reveal, "к", 15), (.copy, "с", 8), (.pin, "з", 35),
+            (.alias, "т", 45), (.move, "ь", 46), (.format, "а", 3),
+            (.reindent, "ш", 34), (.makeNote, "е", 17), (.delete, "\u{7F}", 51),
+        ]
+        for (action, producedCharacter, code) in examples {
+            let event = try key(
+                producedCharacter, action.chord.isShifted ? [.command, .shift] : .command,
+                keyCode: code)
+            #expect(QuickPanel.rowChord(event) == action.chord, Comment(rawValue: action.chord.label))
+        }
+    }
+
+    @Test("Dvorak produced letters win over their US key positions for row chords and undo")
+    func dvorakUsesProducedLetters() throws {
+        try assertLayoutUsesProducedLetters("com.apple.keylayout.Dvorak")
+    }
+
+    @Test("QWERTZ produced letters win over their US key positions for row chords and undo")
+    func qwertzUsesProducedLetters() throws {
+        try assertLayoutUsesProducedLetters("com.apple.keylayout.German")
+    }
+
+    @Test("a Latin letter never falls back to the Backspace position and deletes a row")
+    func producedLetterDoesNotFallBackToDelete() throws {
+        let event = try key("a", [.command, .shift], keyCode: 51)
+        #expect(QuickPanel.rowChord(event) == nil)
+    }
+
+    @Test("a layout without Latin output uses the physical position for row chords and undo")
+    func cyrillicFallsBackToPhysicalPosition() throws {
+        for action in PanelRowAction.allCases {
+            let code = try #require(action.chord.keyCode)
+            let flags: NSEvent.ModifierFlags = action.chord.isShifted ? [.command, .shift] : .command
+            let event = try key("я", flags, keyCode: code)
+            #expect(QuickPanel.rowChord(event) == action.chord, Comment(rawValue: action.chord.label))
+        }
+        let undo = try key("я", .command, keyCode: PanelChord("z").keyCode)
+        #expect(QuickPanel.claimsUndo(undo, offersRestore: true, fieldCanUndo: false))
     }
 
     @Test("keys that are not row chords are left to the menu and the field")
     func leavesOtherKeysAlone() throws {
-        #expect(!QuickPanel.isRowChord(try key("m", [])))
+        #expect(!QuickPanel.isRowChord(try key("ь", [], keyCode: 46)))
         #expect(!QuickPanel.isRowChord(try key("w", .command)))
-        #expect(!QuickPanel.isRowChord(try key("z", .command)))
-        #expect(!QuickPanel.isRowChord(try key("c", .command)))
-        #expect(!QuickPanel.isRowChord(try key("m", [.command, .option])))
-        #expect(!QuickPanel.isRowChord(try key("m", [.command, .control])))
+        #expect(!QuickPanel.isRowChord(try key("я", .command, keyCode: 6)))
+        #expect(!QuickPanel.isRowChord(try key("с", .command, keyCode: 8)))
+        #expect(!QuickPanel.isRowChord(try key("ь", [.command, .option], keyCode: 46)))
+        #expect(!QuickPanel.isRowChord(try key("ь", [.command, .control], keyCode: 46)))
     }
 
     /// Window ▸ Minimise is ⌘M, and the menu swallows it even where it is disabled.
@@ -55,7 +137,7 @@ struct QuickPanelChordTests {
         #expect(!PanelRowAction.move.chord.isShifted)
     }
 
-    @Test("⌘M reaches the panel's own key handler and is claimed before the menu")
+    @Test("a Cyrillic-produced physical ⌘M reaches the row action before the menu")
     func commandMReachesThePanel() throws {
         let panel = QuickPanel(
             contentRect: CGRect(x: 0, y: 0, width: 200, height: 100),
@@ -63,9 +145,12 @@ struct QuickPanelChordTests {
         let recorder = KeyRecorder()
         panel.contentView = recorder
         panel.makeFirstResponder(recorder)
+        var received: PanelChord?
+        panel.onRowChord = { received = $0 }
 
-        #expect(panel.performKeyEquivalent(with: try key("m", .command, in: panel)))
-        #expect(recorder.keys == ["m"])
+        #expect(panel.performKeyEquivalent(with: try key("ь", .command, keyCode: 46, in: panel)))
+        #expect(received == PanelRowAction.move.chord)
+        #expect(recorder.keys.isEmpty)
     }
 
     @Test("a key that is not a row chord is not claimed")
@@ -83,7 +168,7 @@ struct QuickPanelChordTests {
 
     @Test("⌘Z restores a clip while the offer shows, and otherwise only when the field has no typing to undo")
     func undoGoesToTheOfferThenTheField() throws {
-        let undo = try key("z", .command)
+        let undo = try key("я", .command, keyCode: 6)
 
         #expect(QuickPanel.claimsUndo(undo, offersRestore: true, fieldCanUndo: true))
         #expect(QuickPanel.claimsUndo(undo, offersRestore: true, fieldCanUndo: false))
@@ -95,15 +180,20 @@ struct QuickPanelChordTests {
     func redoIsLeftAlone() throws {
         #expect(
             !QuickPanel.claimsUndo(
-                try key("Z", [.command, .shift]), offersRestore: true, fieldCanUndo: false))
+                try key("Я", [.command, .shift], keyCode: 6),
+                offersRestore: true, fieldCanUndo: false))
         #expect(
             !QuickPanel.claimsUndo(
-                try key("z", [.command, .option]), offersRestore: true, fieldCanUndo: false))
-        #expect(!QuickPanel.claimsUndo(try key("z", []), offersRestore: true, fieldCanUndo: false))
-        #expect(!QuickPanel.claimsUndo(try key("x", .command), offersRestore: true, fieldCanUndo: false))
+                try key("я", [.command, .option], keyCode: 6),
+                offersRestore: true, fieldCanUndo: false))
+        #expect(
+            !QuickPanel.claimsUndo(try key("я", [], keyCode: 6), offersRestore: true, fieldCanUndo: false))
+        #expect(
+            !QuickPanel.claimsUndo(
+                try key("ч", .command, keyCode: 7), offersRestore: true, fieldCanUndo: false))
     }
 
-    @Test("⌘Z reaches the panel's own key handler ahead of Edit › Undo while a restore is offered")
+    @Test("a Cyrillic-produced physical ⌘Z restores ahead of Edit › Undo")
     func commandZReachesThePanel() throws {
         let panel = QuickPanel(
             contentRect: CGRect(x: 0, y: 0, width: 200, height: 100),
@@ -112,8 +202,22 @@ struct QuickPanelChordTests {
         panel.contentView = recorder
         panel.makeFirstResponder(recorder)
         panel.offersRestore = true
+        var restored = false
+        panel.onUndo = { restored = true }
 
-        #expect(panel.performKeyEquivalent(with: try key("z", .command, in: panel)))
-        #expect(recorder.keys == ["z"])
+        #expect(panel.performKeyEquivalent(with: try key("я", .command, keyCode: 6, in: panel)))
+        #expect(restored)
+        #expect(recorder.keys.isEmpty)
+    }
+
+    private func assertLayoutUsesProducedLetters(_ layout: String) throws {
+        for action in PanelRowAction.allCases {
+            let event = try layoutKey(action.chord, in: layout)
+            #expect(QuickPanel.rowChord(event) == action.chord, "\(layout): \(action.chord.label)")
+        }
+        let undo = try layoutKey(PanelChord("z"), in: layout)
+        #expect(
+            QuickPanel.claimsUndo(undo, offersRestore: true, fieldCanUndo: false),
+            "\(layout): undo")
     }
 }

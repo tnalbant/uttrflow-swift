@@ -12,8 +12,8 @@ struct ConcealingPasteboardTests {
         let pasteboard = FakePasteboard()
         let concealing = ConcealingPasteboard(pasteboard)
 
-        concealing.setText("sk-live-abcdef123456")
-        concealing.setText("sk-live-abcdef123456", richText: "<b>sk-live-abcdef123456</b>")
+        #expect(concealing.setText("sk-live-abcdef123456").didWrite)
+        #expect(concealing.setText("sk-live-abcdef123456", richText: "<b>sk-live-abcdef123456</b>").didWrite)
 
         #expect(pasteboard.concealed == ["sk-live-abcdef123456", "sk-live-abcdef123456"])
         #expect(concealing.text() == "sk-live-abcdef123456")

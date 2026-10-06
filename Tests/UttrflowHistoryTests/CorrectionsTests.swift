@@ -1,6 +1,7 @@
 // Tests for reasons, the corrections list, scopes, undo, corrected-word counting and salvage decoding.
 import Foundation
 import Testing
+import UttrflowCore
 
 @testable import UttrflowHistory
 
@@ -43,12 +44,13 @@ private func said(
 /// The vocabulary of reasons and its join to the engine's raw values.
 @Suite("The reason a word was changed")
 struct CorrectionReasonTests {
-    /// The join to `UttrflowAI.CorrectionReason`, which this module cannot see; a drifted spelling fails.
-    @Test("the raw values are the correction engine's own, letter for letter")
+    /// The stored spellings; a renamed case would orphan every record already on disk.
+    @Test("the raw values are the stored spellings, letter for letter")
     func rawValuesMatchTheEngine() {
         #expect(
             CorrectionReason.allCases.map(\.rawValue) == [
                 "seenOnScreen", "saidClearlyElsewhere", "heardAsStrayLetters", "heardAsSeveralWords",
+                "spelledAsInDictionary",
             ])
     }
 
@@ -58,6 +60,7 @@ struct CorrectionReasonTests {
         #expect(CorrectionReason.saidClearlyElsewhere.title == "You said it clearly elsewhere")
         #expect(CorrectionReason.heardAsStrayLetters.title == "Heard as stray letters")
         #expect(CorrectionReason.heardAsSeveralWords.title == "Heard as several words")
+        #expect(CorrectionReason.spelledAsInDictionary.title == "Spelled as in your dictionary")
     }
 
     @Test("a reason survives being written down and read back")
@@ -66,20 +69,24 @@ struct CorrectionReasonTests {
         #expect(String(decoding: encoded, as: UTF8.self) == "\"heardAsStrayLetters\"")
     }
 
-    /// A change with a reason this build cannot name is refused rather than drawn under a guessed one.
-    @Test("a correction is built from the engine's raw reason, or not at all")
-    func builtFromTheRawReason() {
-        let entry = UUID()
-        let correction = RecordedCorrection(
-            heard: "a sink p g", wrote: "asyncpg", wordRange: 0..<4, entryID: entry,
-            reason: "heardAsStrayLetters", heardConfidence: 0.2)
-        #expect(correction?.reason == .heardAsStrayLetters)
-        #expect(correction?.entryID == entry)
+    /// A newer build's reason is kept verbatim and shown as "Other", never dropped or renamed.
+    @Test("a reason this build cannot name reads as Other and writes back unchanged")
+    func unknownReasonIsKept() throws {
+        let decoded = try JSONDecoder().decode(
+            CorrectionReason.self, from: Data("\"heardInAnotherLanguage\"".utf8))
+        #expect(decoded == .unknown("heardInAnotherLanguage"))
+        #expect(decoded.title == "Other")
+        let encoded = try JSONEncoder().encode(decoded)
+        #expect(String(decoding: encoded, as: UTF8.self) == "\"heardInAnotherLanguage\"")
+    }
 
-        #expect(
-            RecordedCorrection(
-                heard: "um", wrote: "", wordRange: 0..<1, entryID: entry, reason: "filler",
-                heardConfidence: 0.2) == nil)
+    /// A known spelling never lands in `unknown`, so the engine's priority order sees every case.
+    @Test("every known reason reads back as itself", arguments: CorrectionReason.allCases)
+    func knownReasonsAreNamed(reason: CorrectionReason) {
+        #expect(CorrectionReason(rawValue: reason.rawValue) == reason)
+        if case .unknown = CorrectionReason(rawValue: reason.rawValue) {
+            Issue.record("\(reason.rawValue) read back as unknown")
+        }
     }
 }
 
@@ -398,14 +405,16 @@ struct RecordedChangesDecodingTests {
     }
 
     /// The case a fifth ``CorrectionReason`` creates for every user who runs an older build again.
-    @Test("a change named with a reason this build does not know costs that change")
+    @Test("a change named with a reason this build does not know is kept, shown and undoable")
     func unknownReason() throws {
         let decoded = try changes(
             """
             {"corrections":[\(Self.stored(reason: "heardInAnotherLanguage")),\
             \(Self.stored())],"snippets":[]}
             """)
-        #expect(decoded.corrections.map(\.wrote) == ["Uttrflow"])
+        #expect(decoded.corrections.map(\.wrote) == ["Uttrflow", "Uttrflow"])
+        #expect(decoded.corrections.first?.reason == .unknown("heardInAnotherLanguage"))
+        #expect(decoded.corrections.first?.reason.title == "Other")
     }
 
     /// The same containment for a field one build requires and another does not write.

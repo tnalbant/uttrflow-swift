@@ -29,6 +29,33 @@ struct RestatementTests {
     }
 
     @Test(
+        "correction, strike that, or rather and actually make it each take back the half before them",
+        arguments: [
+            ("ten k correction twelve k", 2, 3, 0),
+            ("pick the red one strike that the blue one", 4, 6, 1),
+            ("tea or rather coffee", 1, 3, 0),
+            ("ten k actually make it twelve k", 2, 5, 0),
+        ]
+    )
+    func spokenCorrectionPhrasesAreTriggers(text: String, trigger: Int, restart: Int, start: Int) {
+        let (draft, live) = reading(text)
+        #expect(Restatement.triggerRun(at: trigger, in: live, of: draft) == restart - trigger)
+        #expect(Restatement.discardedStart(before: trigger, after: restart, in: live, of: draft) == start)
+    }
+
+    @Test(
+        "correction and or rather used as ordinary words take nothing back",
+        arguments: [
+            ("the correction was small", 1, 2),
+            ("would you like to stay or rather not", 5, 7),
+        ]
+    )
+    func ordinaryUsesStay(text: String, trigger: Int, restart: Int) {
+        let (draft, live) = reading(text)
+        #expect(Restatement.discardedStart(before: trigger, after: restart, in: live, of: draft) == nil)
+    }
+
+    @Test(
         "every contracted subject pronoun is as weak an anchor as the pronoun",
         arguments: [
             "he's", "she's", "we're", "we'll", "we've", "we'd", "you're", "you'll", "you've", "you'd",
@@ -81,6 +108,17 @@ struct RestatementTests {
     func repeatedPhraseAnchorCanReachFurther(text: String, trigger: Int, restart: Int) {
         let (draft, live) = reading(text)
         #expect(Restatement.discardedStart(before: trigger, after: restart, in: live, of: draft) == 0)
+    }
+
+    @Test(
+        "a lone repeated word does not anchor beyond six words",
+        arguments: [
+            ("at noon we will send the report to them no sorry at one", 9, 11),
+            ("we need to book a table for six at the italian place on friday no sorry for eight", 14, 16),
+        ])
+    func loneWordAnchorKeepsTheShortReach(text: String, trigger: Int, restart: Int) {
+        let (draft, live) = reading(text)
+        #expect(Restatement.discardedStart(before: trigger, after: restart, in: live, of: draft) == nil)
     }
 
     @Test("a repeated phrase anchor does not cross a sentence")
@@ -249,6 +287,18 @@ struct RestatementTests {
         #expect(Restatement.discardedStart(before: 2, after: 3, in: actually.live, of: actually.draft) == 1)
         let no = reading("the red, no blue")
         #expect(Restatement.discardedStart(before: 2, after: 3, in: no.live, of: no.draft) == 1)
+    }
+
+    /// A trigger with nothing before it takes nothing back, however the word after it looks.
+    @Test(
+        "a trigger at word 0 takes nothing back, so the call never reads before the start",
+        arguments: [
+            ("actually three", 0, 1),
+            ("actually word", 0, 1),
+        ])
+    func triggerAtStartTakesNothingBack(text: String, trigger: Int, restart: Int) {
+        let (draft, live) = reading(text)
+        #expect(Restatement.discardedStart(before: trigger, after: restart, in: live, of: draft) == nil)
     }
 }
 
