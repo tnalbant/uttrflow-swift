@@ -14,8 +14,7 @@ public struct AcronymCasingPass: WholeTextCleaningPass {
         let lexicon = TechnicalLexicon.terms
             .filter { Self.namedCategories.contains($0.category) && $0.applies(in: destination) }.map(\.id)
         let own = vocabulary.filter { !$0.contains(where: \.isWhitespace) }.map { WordShape($0).core }
-        let sighted = onScreen.flatMap { $0.split(whereSeparator: \.isWhitespace) }
-            .map { WordShape(String($0)).core }
+        let sighted = onScreen.flatMap { WordTokens.words($0, .display) }.map { WordShape($0).core }
         var forms: [String: String] = [:]
         // Later sources win: the user's spelling beats the screen's, and the screen's beats the lexicon's.
         for form in lexicon.filter(Self.isOneWord) + sighted.filter(Self.isAcronym)
