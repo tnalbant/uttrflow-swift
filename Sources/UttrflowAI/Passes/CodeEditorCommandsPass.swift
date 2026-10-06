@@ -3,6 +3,7 @@ import UttrflowCore
 /// Writes spoken symbol commands in executable code.
 struct CodeEditorCommandsPass: PieceCleaningPass {
     static let id: PassID = .codeEditorCommands
+    static let laws: Set<PassLaw> = Set(PassLaw.allCases)
 
     func apply(_ draft: Draft) -> Draft {
         var draft = draft

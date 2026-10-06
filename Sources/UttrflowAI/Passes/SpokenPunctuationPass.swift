@@ -4,6 +4,7 @@ public import UttrflowCore
 /// Turns a punctuation mark said by name into the mark, and a spoken email address into the address, when used rather than mentioned.
 public struct SpokenPunctuationPass: PieceCleaningPass {
     public static let id: PassID = .spokenPunctuation
+    public static let laws: Set<PassLaw> = Set(PassLaw.allCases)
     private let destination: Destination
 
     /// The particles after which "dash" and "hyphen" are the verbs they also are: "dash off a note".
