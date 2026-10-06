@@ -47,7 +47,7 @@ public struct FirstWordPass: WholeTextCleaningPass {
     }
 
     public func apply(_ draft: Draft) -> Draft {
-        var draft = draft
+        var draft = policy == .fromInsertionPoint ? unshouted(draft) : draft
         let text = draft.text
         let heardWords =
             heard.map { $0.split(whereSeparator: \.isWhitespace).map(String.init) }
@@ -114,6 +114,28 @@ public struct FirstWordPass: WholeTextCleaningPass {
         }
         return draft
     }
+
+    /// Lowers every unedited word of a transcript the decoder returns all in capitals; a known term keeps its form.
+    func unshouted(_ draft: Draft) -> Draft {
+        let spoken = draft.presentIndices.filter { !draft.words[$0].heard.isEmpty }
+        let lettered = spoken.map { WordShape(draft.words[$0].heard).core.filter(\.isLetter) }.filter {
+            $0.count >= 2
+        }
+        guard lettered.count >= Self.minimumShoutedWords,
+            lettered.allSatisfy({ $0.allSatisfy(\.isUppercase) })
+        else { return draft }
+        var draft = draft
+        for index in spoken where draft.words[index].text == draft.words[index].heard {
+            let shape = WordShape(draft.words[index].text)
+            let key = shape.core.lowercased()
+            let lowered = shape.replacingCore(with: namedForms[key] ?? key)
+            if lowered != draft.words[index].text { draft.replace(at: index, with: lowered, by: Self.id) }
+        }
+        return draft
+    }
+
+    /// Words of two letters or more a transcript needs, all in capitals, before its capitals are read as the decoder's.
+    static let minimumShoutedWords = 3
 
     private static func followsDemotedSentenceEnd(at position: Int, in live: [Int], of draft: Draft) -> Bool {
         guard position > 0 else { return false }
