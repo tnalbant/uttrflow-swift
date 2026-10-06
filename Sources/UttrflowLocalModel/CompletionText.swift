@@ -442,7 +442,7 @@ enum CompletionText {
         let letterSlip = letterSlipNeedsSameForm(line, at: index, wanted: wanted, matched: matched)
         let sameWord =
             letterSlip && sameWordAfterAddedLetter(line, at: index, wanted: wanted, matched: matched)
-        // An added apostrophe, space or other non-alphanumeric leaves every typed letter and digit as it was.
+        // An added apostrophe, space or other non-alphanumeric leaves every typed letter and digit unchanged.
         if sameWord || !(line[index].isLetter || line[index].isNumber) {
             resumes.append((next, matched))
         }

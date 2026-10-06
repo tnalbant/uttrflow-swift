@@ -134,7 +134,7 @@ public struct PunctuationTally: Sendable, Equatable, Codable {
         return tally
     }
 
-    /// Precision and recall's harmonic mean for one class; `nil` when it was neither wanted nor produced.
+    /// Precision and recall's harmonic mean for one class; `nil` when it is neither wanted nor produced.
     public func f1(of mark: MarkClass) -> Double? {
         let wantedCount = wanted[mark] ?? 0
         let producedCount = produced[mark] ?? 0
