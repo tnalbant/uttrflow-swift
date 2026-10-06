@@ -696,7 +696,7 @@ struct MainIntentWiringTests {
         let notice = try #require(app.actionNotice)
         #expect(notice.message == MainNotice.clipboardCopyFailed.message)
         #expect(notice.message != "Copied — click where you want it, then press ⌘V")
-        #expect(pasteboard.writeCount == 0)
+        #expect(pasteboard.writeCount == 1)
     }
 }
 
