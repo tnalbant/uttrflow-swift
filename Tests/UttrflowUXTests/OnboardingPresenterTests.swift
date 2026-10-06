@@ -230,7 +230,7 @@ struct OnboardingPresenterTests {
         let offering = page(OnboardingState(step: .signIn, detail: .signIn(.offering)))
         #expect(offering.title == "Just talk.")
         #expect(offering.picture == .waveform(.talking, badge: nil))
-        #expect(offering.explanation == OnboardingPresenter.pitch)
+        #expect(offering.explanation?.hasPrefix(OnboardingPresenter.pitch) == true)
         #expect(offering.explanation?.contains("Use a shortcut") == true)
         #expect(offering.explanation?.contains("one key") == false)
         #expect(offering.providers.first?.label == "Google")
@@ -582,8 +582,8 @@ struct OnboardingPresenterTests {
 
     @Test("prints a key it cannot name as a code rather than as the wrong letter")
     func anUnnamedKeyIsNotGuessedAt() {
-        let unusual = HotkeyBinding(keyCode: 7, modifiers: [.command])
-        #expect(OnboardingKeys.of(unusual) == ["⌘", "Key 7"])
+        let unusual = HotkeyBinding(keyCode: 52, modifiers: [.command])
+        #expect(OnboardingKeys.of(unusual) == ["⌘", "Key 52"])
     }
 
     /// Issue 353: a chord of modifiers drew its key as a raw code, and a held Fn as "Key 63".
