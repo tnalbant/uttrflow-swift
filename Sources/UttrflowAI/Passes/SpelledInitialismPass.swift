@@ -144,11 +144,11 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
         return draft
     }
 
-    /// Whether nothing but letters this pass joined lies between two words.
     /// The lexicon's acronyms, lower-cased, which confirm a run of letters an article opens.
     private static let knownAcronyms = Set(
         TechnicalLexicon.terms.filter { $0.category == .acronym }.map { $0.id.lowercased() })
 
+    /// Whether nothing but letters this pass joined lies between two words.
     private static func touches(_ left: Int, _ right: Int, in draft: Draft) -> Bool {
         (left + 1..<right).allSatisfy { draft.words[$0].state == .removed(by: id) }
     }
