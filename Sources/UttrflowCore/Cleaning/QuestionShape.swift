@@ -159,6 +159,8 @@ public enum QuestionShape {
             for (offset, word) in clause.dropFirst().prefix(3).enumerated() {
                 // A subject before the auxiliary names a thing; one after it completes the inversion.
                 if subjects.contains(word) { return offset > 0 && !opensExclamation(clause) }
+                // An adverb's question word takes no noun, so a determiner after it opens the clause's subject.
+                if offset == 0, adverbialQuestionWords.contains(first), determiners.contains(word) { return false }
                 if verbsBeforeSubject.contains(word) || pronounVerbs.contains(word) {
                     return true
                 }
@@ -311,6 +313,9 @@ public enum QuestionShape {
         "what", "where", "when", "why", "who", "whom", "whose", "which", "how",
     ]
 
+    /// Question words that ask about a circumstance and never take a noun, unlike "which car" or "what time".
+    private static let adverbialQuestionWords: Set<String> = ["when", "where", "why"]
+
     /// A question word contracted onto "is", which asks whatever follows.
     static let contractedQuestionWords: Set<String> = [
         "what's", "where's", "who's", "how's", "when's", "why's",
@@ -393,7 +398,7 @@ public enum QuestionShape {
     ]
 
     /// Pronouns that can only be a subject, so one past a question's opening starts a second clause.
-    static let newSubjects: Set<String> = ["i", "we", "he", "she", "they"]
+    public static let newSubjects: Set<String> = ["i", "we", "he", "she", "they"]
 
     /// Verbs that can introduce reported content in an inverted question.
     private static let reportedVerbs: Set<String> = [

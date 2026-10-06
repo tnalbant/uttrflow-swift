@@ -232,8 +232,8 @@
       "licence": "MIT",
       "redistribution": true,
       "note": "read through DataTable; see Docs/data-tables.md",
-      "sha256": "b51259363aa9a1d3945a47010bba823935f3e598dd861bd8a0db299a134b50e9",
-      "bytes": 7848
+      "sha256": "4fc7efaee28db020061e5e4b3005e42157fb2584f95a53bf37a0b9468158540a",
+      "bytes": 12450
     },
     {
       "path": "Sources/UttrflowCore/Resources/Tables/technical-lexicon.json",
@@ -241,8 +241,8 @@
       "licence": "MIT",
       "redistribution": true,
       "note": "written for this repository, copied from no list; read through DataTable; see Docs/data-tables.md",
-      "sha256": "44c883d97377cba8fbb9663617f4c522cb96f646468764af3bacda95f2f7c144",
-      "bytes": 19743
+      "sha256": "2163e6141a2b7c5d4a063838db817ac4c9da29d41ee6231371ab534392e7dab1",
+      "bytes": 19999
     },
     {
       "path": "Sources/UttrflowUX/Resources/PropertyValueAliases.txt",

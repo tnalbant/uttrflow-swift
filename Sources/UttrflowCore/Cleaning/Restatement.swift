@@ -121,7 +121,7 @@ public enum Restatement {
         let replacesOneWord = replacesSingleWord(
             before: trigger, after: restart, evidence: evidence, in: live, of: draft)
         for candidate in stride(from: trigger - 1, through: earliestPhraseAnchor, by: -1) {
-            if anchors(draft.shape(at: live[candidate]).key, the: firstAfter),
+            if anchors(draft.shape(at: live[candidate]).key, the: draft.shape(at: live[restart]).core),
                 candidate >= earliest
                     || repeatsPhrase(from: candidate, before: trigger, after: restart, in: live, of: draft)
             {
@@ -225,8 +225,9 @@ public enum Restatement {
     }
 
     /// A camel-case dictionary word can retain the first heard word as a component, such as `payment` in `PaymentSheet`.
+    /// Reads `written` as spoken, before lower-casing, since the components are found at its capitals.
     private static func anchors(_ heard: String, the written: String) -> Bool {
-        guard heard != written, heard.count >= 3 else { return heard == written }
+        guard heard != written.lowercased(), heard.count >= 3 else { return heard == written.lowercased() }
         let characters = Array(written)
         var start = characters.startIndex
         for index in characters.indices where index > start && characters[index].isUppercase {
