@@ -31,10 +31,12 @@ enum PieceJoiner {
                 removableStops.append(original.count - 1)
             }
         }
-        let source = original
-        let exact = source == text
-        return SeamSnippetInput(
-            text: text, removableStops: exact ? removableStops : [], source: exact ? source : text)
+        // The message's finishing cases the openings and adds a closing stop, which leaves every seam stop where it was.
+        let head = String(text.prefix(original.count))
+        let exact =
+            head.lowercased() == original.lowercased() && head.count == original.count
+            && text.dropFirst(original.count).allSatisfy { ".!?".contains($0) }
+        return SeamSnippetInput(text: text, removableStops: exact ? removableStops : [], source: text)
     }
 
     /// Every piece as one, with the corrections' word ranges moved to where their piece begins.
@@ -672,7 +674,7 @@ enum PieceJoiner {
         let head = draft.shape(at: live[position + length])
         if let value = Self.ordinals[head.key] {
             guard
-                prefix != nil || head.endsClause
+                prefix != nil || head.endsClause || opensClauseAfterPause(at: position, in: draft, live, starts: starts)
                     || hasPriorOrdinalSequence(
                         value, before: word, in: draft, starts: starts
                     )
@@ -722,6 +724,14 @@ enum PieceJoiner {
             }
     }
 
+    /// Whether a bare ordinal opens a piece and a clause after it: "first we fix the build", where "first place" names a rank.
+    private static func opensClauseAfterPause(
+        at position: Int, in draft: Draft, _ live: [Int], starts: [Int]
+    ) -> Bool {
+        guard starts.contains(live[position]), position + 1 < live.count else { return false }
+        return QuestionShape.newSubjects.contains(draft.shape(at: live[position + 1]).key)
+    }
+
     /// Whether earlier sentence openings establish the ordinal sequence before this word.
     private static func hasPriorOrdinalSequence(
         _ value: Int, before word: Int, in draft: Draft, starts: [Int]
@@ -734,7 +744,10 @@ enum PieceJoiner {
             let ordinal = prefix && position + 1 < live.count ? live[position + 1] : opening
             guard let prior = Self.ordinals[draft.shape(at: ordinal).key] else { continue }
             if prior == 1 {
-                guard prefix || draft.shape(at: ordinal).endsClause else { continue }
+                guard
+                    prefix || draft.shape(at: ordinal).endsClause
+                        || opensClauseAfterPause(at: position, in: draft, live, starts: starts)
+                else { continue }
                 seen = [1]
             } else if seen.contains(prior - 1) {
                 seen.insert(prior)

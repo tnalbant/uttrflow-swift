@@ -398,7 +398,7 @@ public enum QuestionShape {
     ]
 
     /// Pronouns that can only be a subject, so one past a question's opening starts a second clause.
-    static let newSubjects: Set<String> = ["i", "we", "he", "she", "they"]
+    public static let newSubjects: Set<String> = ["i", "we", "he", "she", "they"]
 
     /// Verbs that can introduce reported content in an inverted question.
     private static let reportedVerbs: Set<String> = [

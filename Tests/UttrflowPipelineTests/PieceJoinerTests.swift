@@ -163,11 +163,11 @@ struct PieceJoinerListTests {
                 == "First, we fix the build. Then we ship it.")
     }
 
-    @Test("a sequence that stops before the end is prose, since the speaker went on without it")
-    func brokenSequenceIsProse() {
+    @Test("a sentence after a complete sequence closes the list as its own paragraph")
+    func sentenceAfterSequenceClosesList() {
         let text = joined(
             ["First, fix the build.", "Second, review the PR.", "And then the other thing."], .document)
-        #expect(text == "First, fix the build.\n\nSecond, review the PR. And then the other thing.")
+        #expect(text == "- Fix the build\n- Review the PR\n\nAnd then the other thing.")
     }
 
     @Test("a sequence that does not start at one is prose, since the first item is not a piece")
@@ -189,7 +189,7 @@ struct PieceJoinerListTests {
     func ordinalAndDecimalSubjectsAreProse() {
         #expect(
             joined(["First place went to Sam.", "Second place went to Priya."], .document)
-                == "First place went to Sam.\n\nSecond place went to Priya.")
+                == "First place went to Sam. Second place went to Priya.")
         #expect(
             joined(["I came first. Second place is fine."], .document)
                 == "I came first. Second place is fine.")
