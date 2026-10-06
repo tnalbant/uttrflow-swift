@@ -92,8 +92,13 @@ WAKEUPS_BOUND_BY = {
 }
 
 # Known breaches of the budget, each open under the issue that fixes it; a listed breach that is gone fails as stale.
-BREACHES_OPEN = {
-    ("Sources/Uttrflow/UttrflowApp.swift", "model", "local)"): "#5711: dictation tidy uses the scorer unwrapped",
+BREACHES_OPEN = {}
+
+# Suggestion-model uses that are not discretionary, keyed by file and argument label, each with its reason printed on every run.
+MODEL_USES_EXEMPT = {
+    ("Sources/Uttrflow/UttrflowApp.swift", "localTidier"): (
+        "dictation tidy, which the person is waiting on, so it runs at user-interactive priority"
+    ),
 }
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -440,6 +445,7 @@ PRIORITY_ABOVE_UTILITY = re.compile(
 
 def check_priority(tree, findings, report):
     scanned = 0
+    exempt_seen = set()
     for path, text in tree.files.items():
         if path.startswith(MODEL_WORK):
             scanned += 1
@@ -468,11 +474,19 @@ def check_priority(tree, findings, report):
                         continue
                     line = line_of(text, offset)
                     snippet = text[offset : text.find("\n", offset)].strip()
+                    label = re.search(r"(\w+)\s*:\s*$", text[text.rfind("\n", 0, offset) + 1 : offset])
+                    exempt = (path, label.group(1)) if label else None
+                    if exempt in MODEL_USES_EXEMPT:
+                        exempt_seen.add(exempt)
+                        report.append(f"  ✓ {path}:{line} `{label.group(1)}: {name}` exempt: {MODEL_USES_EXEMPT[exempt]}")
+                        continue
                     findings.fail(
                         "priority", path, line,
                         f"the suggestion model `{name}` is used outside a utility wrapper: `{snippet}`",
                         (path, "model", snippet),
                     )
+    for stale in set(MODEL_USES_EXEMPT) - exempt_seen:
+        findings.failures.append(f"priority: {stale[0]} no longer passes a suggestion model as `{stale[1]}`; remove it from MODEL_USES_EXEMPT")
     report.append(f"  ✓ {scanned} model-work files read for priority")
 
 
