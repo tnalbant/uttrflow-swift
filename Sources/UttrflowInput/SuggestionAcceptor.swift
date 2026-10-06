@@ -101,11 +101,11 @@ public struct SuggestionAcceptor: Sendable {
             return (.refused("the focused field cannot be read"), nil)
         }
         if let rebased = Acceptance.rebase(drawn, after: typed, onto: before) {
+            // The whole suggestion already being there means the keys got ahead of the read, and there is nothing left to do.
+            if rebased.inserted.isEmpty, rebased.replaced.isEmpty { return (.nothing, nil) }
             let preceding = rebased.replaced.isEmpty ? nil : String(before.suffix(rebased.replaced.count))
             return (.write(rebased), preceding)
         }
-        // The whole suggestion already being there means the keys got ahead of the read, and there is nothing left to do.
-        if before.hasSuffix(typed + drawn.inserted), !drawn.isReplacement { return (.nothing, nil) }
         return (.refused("the text before the caret is not the line the suggestion was drawn for"), nil)
     }
 }
