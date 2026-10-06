@@ -791,6 +791,18 @@ public actor ClipboardStore {
             in: Self.interleaving(
                 saved: Self.orderedForDisplay(stored.filter(\.isKept)),
                 history: Self.orderedForDisplay(stored.filter { !$0.isKept })))
+        let normalized = Self.numberedForEviction(list)
+        lastUsedOrder = normalized.compactMap(\.lastUsedOrder).max() ?? 0
+        wholeList = normalized
+        sweepOnce()
+        migrateLegacyImagesOnce()
+        return normalized
+    }
+
+    /// Keeps stored use orders that are whole and distinct, so a reopened list equals the one it was written from.
+    private static func numberedForEviction(_ list: [Clip]) -> [Clip] {
+        let stored = list.compactMap(\.lastUsedOrder)
+        if stored.count == list.count, Set(stored).count == list.count { return list }
         let ordered = list.enumerated().sorted { left, right in
             switch (left.element.lastUsedOrder, right.element.lastUsedOrder) {
             case (let leftOrder?, let rightOrder?):
@@ -809,14 +821,9 @@ public actor ClipboardStore {
         for (order, clip) in ordered.enumerated() {
             orderByIndex[clip.offset] = UInt64(order + 1)
         }
-        let normalized = list.enumerated().map { pair in
+        return list.enumerated().map { pair in
             pair.element.orderedForEviction(orderByIndex[pair.offset])
         }
-        lastUsedOrder = UInt64(normalized.count)
-        wholeList = normalized
-        sweepOnce()
-        migrateLegacyImagesOnce()
-        return normalized
     }
 
     /// Starts the picture pass off the clipboard actor so sealed files do not slow down ⇧⌘V.
