@@ -130,6 +130,20 @@ enum CommandCredentialShape {
         return table
     }()
 
+    /// Short letters whose value runs on in the same word, so a cluster stops being read at them.
+    private static let valueLetters: [String: Set<Character>] = {
+        var table: [String: Set<Character>] = ["curl": Set("AbcCdDeEFHKmoPQrtTwxXyYz")]
+        for program in [
+            "mysql", "mariadb", "mysqldump", "mysqladmin", "mysqlimport", "mysqlshow", "mysqlcheck",
+        ] {
+            table[program] = Set("hPuDeS")
+        }
+        for program in ["docker", "podman", "nerdctl"] { table[program] = Set("u") }
+        table["redis-cli"] = Set("hpnu")
+        table["ssh-keygen"] = Set("tbCfI")
+        return table
+    }()
+
     /// Long flags that carry a user and password together, for the programs that read them so.
     private static let userFlags: [String: Set<String>] = ["curl": ["user", "proxy-user"]]
 
@@ -218,8 +232,16 @@ enum CommandCredentialShape {
     ) -> String? {
         guard let rules = passwordFlags[program] else { return nil }
         if let subcommand = passwordSubcommand[program], !subcommands.contains(subcommand) { return nil }
-        for rule in rules where word.hasPrefix(rule.flag) {
-            let attached = String(word.dropFirst(rule.flag.count))
+        let valued = valueLetters[program] ?? []
+        // A cluster such as `-sSu` is read letter by letter, up to a letter whose value runs on in the word.
+        let letters = word.dropFirst()
+        for index in letters.indices {
+            let letter = letters[index]
+            guard let rule = rules.first(where: { $0.flag == "-\(letter)" }) else {
+                if valued.contains(letter) { return nil }
+                continue
+            }
+            let attached = String(letters[letters.index(after: index)...])
             switch rule.form {
             case .attached:
                 return attached.isEmpty ? nil : attached
