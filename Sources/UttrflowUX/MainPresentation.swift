@@ -42,8 +42,10 @@ public enum MainIntent: Sendable, Equatable {
 
     /// Open the inline word editor; the word arrives on ``saveWord(word:pronunciation:)``.
     case addWord
-    /// Commit the inline word editor; it only ever adds, since a dictionary row never offers Edit.
+    /// Commit the inline word editor as a new word; an edited word arrives as ``replaceWord(_:word:pronunciation:)``.
     case saveWord(word: String, pronunciation: String)
+    /// Open the inline word editor on this word, keeping its identity and counters on save.
+    case editWord(UUID)
     /// Close the inline word editor unchanged.
     case cancelWordEdit
     /// Delete a word from the dictionary.

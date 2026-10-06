@@ -3283,6 +3283,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             actionNotice = nil
             mainWindow?.show(.dictionary)
             editWord(DictionaryDraft(pronunciation: written))
+        case .editWord(let id):
+            guard let entry = knownWords.first(where: { $0.id == id }) else { return }
+            editWord(
+                DictionaryDraft(editing: id, word: entry.word, pronunciation: entry.pronunciation ?? ""))
         case .cancelWordEdit:
             editWord(nil)
         case .saveWord(let word, let pronunciation):
