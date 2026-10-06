@@ -63,7 +63,8 @@ public enum SecureField {
             "onetimecode", "verificationcode", "authcode", "authenticationcode", "2facode",
             "mfacode", "totpcode", "securitycode", "cardsecuritycode", "cardverificationcode",
             "cardnumber", "ccnumber", "creditcard", "creditcardnumber", "cccsc",
-            "securityanswer", "securityquestion", "socialsecurity", "socialsecuritynumber",
+            "securityanswer", "securityquestion", "recoveryanswer", "recoveryquestion",
+            "recoverycode", "recoveryphrase", "socialsecurity", "socialsecuritynumber",
             "accountnumber", "routingnumber", "dateofbirth",
         ]
         if sensitiveCompacts.contains(where: compact.contains) { return true }
@@ -72,7 +73,8 @@ public enum SecureField {
             "one time code", "verification code", "auth code", "authentication code",
             "2fa code", "mfa code", "totp code", "security code", "card security",
             "card verification", "card number", "credit card", "security answer",
-            "security question", "social security", "account number", "routing number",
+            "security question", "recovery answer", "recovery question", "recovery code",
+            "recovery phrase", "social security", "account number", "routing number",
             "date of birth",
         ]
         if sensitivePhrases.contains(where: phrase.contains) { return true }

@@ -44,6 +44,11 @@ struct SecureFieldTests {
             "Credit card number",
             "PIN",
             "Security answer",
+            "recovery_answer",
+            "Recovery answer",
+            "recoveryQuestion",
+            "Recovery code",
+            "recovery-phrase",
             "SSN",
             "Date of birth",
         ])
@@ -69,6 +74,12 @@ struct SecureFieldTests {
         arguments: ["pinterest", "Pinned", "spinner", "shipping", "Topping", "cvsReceipt", "Spin"])
     func wordsContainingCodeLettersAreNotSecure(name: String) {
         #expect(!SecureField.namesASecret(name))
+    }
+
+    @Test("A recovery field that names an email address or a phone number is not secure.")
+    func recoveryContactIsNotSecure() {
+        #expect(!SecureField.namesASecret("Recovery email"))
+        #expect(!SecureField.namesASecret("recovery_phone"))
     }
 
     @Test("An ordinary field is not secure.")
