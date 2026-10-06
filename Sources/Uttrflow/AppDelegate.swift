@@ -90,6 +90,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     private let menuBar = MenuBarController()
     private let dock = DockPanelController()
+    /// The last external app the user was typing in, retained while the menu itself is frontmost.
+    private var suggestionApplicationBundleIdentifier: String?
     private var recents = RecentDictations()
     /// The newest clips as the popover last read them, resolved by identity when a row is chosen.
     private var menuClips: [Clip] = []
@@ -124,13 +126,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Counts and timings, sent hourly unless Settings says not to. See `Docs/account-telemetry.md`.
     private var telemetry: UsageTelemetry?
     /// Whether secure keyboard entry is hiding the shortcut, checked on app switches and menu opens rather than on a timer.
-    private let secureInput = SecureInputWatch()
+    private let secureInput: SecureInputWatch
     private var secureInputObserver: (any NSObjectProtocol)?
     private var dictationSessionObservers: [any NSObjectProtocol] = []
     private var screenLockObserver: (any NSObjectProtocol)?
 
     /// Whether the recogniser can dictate, which is not whether its files are on disk.
     private var speechReadiness: SpeechModelReadiness = .notInstalled
+    /// The input UID the next recording opens, read off the main actor at every open.
+    private let chosenMicrophone = MicrophoneChoice()
     /// When the load under way began, so the estimate is said only once a load has run long enough to need it.
     private var speechLoadStarted: ContinuousClock.Instant?
     /// Redraws the load's estimate once a second while a load runs, and is gone once it ends.
@@ -270,9 +274,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         waitForCalm: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
         transformerReadiness: @escaping @Sendable (UserProfile) async -> Set<TransformerKind> = {
             profile in await SettingsCapabilities.refreshed(for: profile).readyTransformers
-        }, pasteboard: (any UttrflowInput.Pasteboard)? = nil
+        }, pasteboard: (any UttrflowInput.Pasteboard)? = nil,
+        secureInput: SecureInputWatch = SecureInputWatch()
     ) {
         self.container = container
+        self.secureInput = secureInput
         self.onboardingRecordStore = onboardingRecordStore
         self.encryptedStore = encryptedStore
         self.localTidier = localTidier
@@ -351,6 +357,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// The history record the last transcript came from, so deleting that record forgets it too.
     private(set) var lastTranscriptID: UUID?
     private var lastTranscriptGeneration = 0
+    /// The newest history write, awaited before the last transcript is checked against history.
+    private var historyWrite: Task<Void, Never>?
     /// Asked when the panel opens whether a paste can be placed, held so the answer costs one call.
     private let accessibility = AccessibilityPermissionGate()
     private let microphone = MicrophonePermissionGate()
@@ -465,6 +473,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         wireInterface()
         CGEventKeystrokeSender.startObservingLayout()
         startWatchingForTheShortcut()
+        accessibilityTrust.start()
         startWatchingTheClipboard()
         startCompletingWhatIsTyped()
         pressureSource.start { [weak self] in self?.memoryPressureChanged(to: $0) }
@@ -956,7 +965,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Finishes the dictation in flight before letting the process die, but not for ever.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         completions?.stop()
-        Task { [weak self, pipeline, clipboard, telemetry] in
+        let watchingClipboard = settings.clipboardEnabled && !isClipboardPaused
+        let arrived: @Sendable (NoticedClip) async -> Void = { [weak self] noticed in
+            await self?.clipArrived(noticed)
+        }
+        Task { [weak self, pipeline, clipboard, clipboardWatcher, telemetry] in
             let controller = self?.controller
             let finishingCompletions = self?.completions
             let quittingPipeline = pipeline.map { pipeline in
@@ -969,6 +982,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 budget: Self.quitBudget,
                 clock: ContinuousClock(),
                 pipeline: quittingPipeline,
+                catchUpClipboard: {
+                    guard watchingClipboard else { return }
+                    await clipboardWatcher.catchUp(handing: arrived)
+                },
                 flushClipboard: { await clipboard.flushUse() },
                 finishCompletions: { await finishingCompletions?.finishWrites() },
                 stopController: { await controller?.stop() },
@@ -1309,18 +1326,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
 
         // Held so the floating button's meter reads the level without queueing behind a `stop()`.
+        let chosenMicrophone = chosenMicrophone
+        chosenMicrophone.apply(settings)
         let microphone = AVAudioCaptureEngine(
-            source: AVAudioEngineMicrophoneSource(), recordings: recordings, cue: cue)
+            source: AVAudioEngineMicrophoneSource(preferredUID: { chosenMicrophone.current }),
+            recordings: recordings, cue: cue)
         dock.setLevelSource { microphone.momentaryLevel }
         dock.onInputSilent = { [weak self] in self?.announce(InputSilence.line, urgently: false) }
 
+        // Where each dictation landed, so "delete that" under the command key can find it. See `Docs/commands.md`.
+        let ledger = InsertionLedger()
         let pipeline = DictationPipeline(
             capture: microphone,
             speech: speech,
             cleaner: cleaner(for: settings),
             context: context,
             // Announced, like every write this app makes. See `Docs/insertion.md`.
-            inserter: TextInsertion.dictation(),
+            inserter: TextInsertion.dictation(ledger: ledger),
             speechWords: { seeing in await speechWords.vocabulary(favouring: seeing) },
             corrector: DictionaryCorrections { [dictionary] in await dictionary.index() },
             snippets: StoredSnippets(store: snippets),
@@ -1348,6 +1370,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     secretClassifier: { ClipKindDetector.kind(of: $0) == .secret })
             ]),
             profile: settings.profile,
+            commands: EditCommandRegistry([RecordedEditCommand(ledger: ledger)]),
             layers: qualityLayers
         )
         self.pipeline = pipeline
@@ -1404,15 +1427,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private func wireInterface() {
         guard let pipeline else { return }
 
+        updateSuggestionApplicationContext()
         menuBar.onCommand = { [weak self] intent in self?.carryOut(intent) }
         menuBar.onMenuWillOpen = { [weak self] in
             self?.checkSecureInput()
+            self?.refreshMenuBar()
             self?.refreshMenuClips()
         }
         secureInputObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.checkSecureInput() }
+            MainActor.assumeIsolated {
+                self?.updateSuggestionApplicationContext()
+                self?.checkSecureInput()
+                self?.refreshMenuBar()
+            }
         }
 
         // Submitted, not handled: the controller queues gestures so press and release cannot interleave.
@@ -2440,6 +2469,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Internal so a test can end a dictation without a microphone.
     func render(_ state: DictationState) {
         getOutOfTheWay(for: state)
+        // A press that started or failed a dictation is an event that already arrived, so no timer is needed.
+        switch state {
+        case .recording, .failed: checkSecureInput()
+        default: break
+        }
         telemetry?.observe(state, language: settings.profile.preferredLanguages.first)
         if case .inserted(let outcome) = state { noteCleanUp(outcome) }
         // Recorded before the menu is drawn, and kept even when insertion failed. §19.
@@ -2470,7 +2504,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 // Not an empty set: unmeasured is a different fact from nothing changed.
                 keep(record)
             }
-        case .idle, .recording, .transcribing, .tidying, .inserting:
+        case .idle, .recording, .transcribing, .tidying, .inserting, .discarded:
             break
         }
         // Whichever way it ended, the row that said "Retrying…" is not retrying any more.
@@ -2612,7 +2646,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         lastTranscriptID = record.id
         recents.add(record)
         let days = settings.transcriptRetentionDays
-        Task { [weak self] in
+        let previous = historyWrite
+        historyWrite = Task { [weak self] in
+            await previous?.value
             guard let self else { return }
             do {
                 _ = try await history.append(record, keeping: Retention(days: days, now: Date()))
@@ -2638,8 +2674,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         refreshMenuBar()
     }
 
-    /// Why the shortcut cannot be heard, for both surfaces that say so.
-    private var shortcutUnheard: String? {
+    /// Why the shortcut cannot be heard, for both surfaces that say so. Internal so a test can read it.
+    var shortcutUnheard: String? {
         ShortcutArming.unheard(
             secureInputBlocking: secureInput.isBlocking, failure: shortcutArming.failure)
     }
@@ -2665,7 +2701,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             learned: recentlyLearned.current(at: Date()),
             updateProgress: updates.progress,
             canCheckForUpdates: UpdateController.isConfigured,
-            features: MenuBarFeatures(settings),
+            features: menuBarFeatures(for: settings),
             shortcuts: settings.shortcuts,
             unarmedShortcuts: Set(unarmedShortcuts.keys),
             shortcutUnheard: shortcutUnheard,
@@ -2675,6 +2711,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             activation: settings.hotkeyActivation,
             speechModelBytes: SpeechModel.default.downloadBytes
         )
+    }
+
+    /// Uses the same stored, paused and per-application gate the suggestion coordinator uses.
+    private func menuBarFeatures(for settings: Settings, at moment: Date = Date()) -> MenuBarFeatures {
+        MenuBarFeatures(
+            settings, applicationBundleIdentifier: suggestionApplicationBundleIdentifier, at: moment)
+    }
+
+    private func updateSuggestionApplicationContext() {
+        suggestionApplicationBundleIdentifier = Self.suggestionApplicationContext(
+            previous: suggestionApplicationBundleIdentifier,
+            frontmost: NSWorkspace.shared.frontmostApplication?.bundleIdentifier)
+    }
+
+    nonisolated static func suggestionApplicationContext(
+        previous: String?, frontmost: String?
+    ) -> String? {
+        guard let frontmost,
+            !frontmost.hasPrefix(SuggestionCoordinator.uttrflowBundlePrefix)
+        else { return previous }
+        return frontmost
     }
 
     /// Carries out whatever the menu was asked for; internal so a test can choose an item.
@@ -2877,6 +2934,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private func keptLastTranscript() async -> String? {
         guard let text = lastTranscript, !text.isEmpty, let id = lastTranscriptID else { return nil }
         let generation = lastTranscriptGeneration
+        await historyWrite?.value
         let retention = Retention(days: settings.transcriptRetentionDays, now: Date())
         let kept = await history.records(keeping: retention).contains { $0.id == id }
         guard generation == lastTranscriptGeneration, id == lastTranscriptID else { return nil }
@@ -3172,6 +3230,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// The last answer each gate gave; absent means unchecked, which the pages draw as silence.
     private var knownPermissions: [PermissionKind: PermissionStatus] = [:]
+    /// Trust read while idle, so turning Accessibility off shows in Diagnostics without a dictation failing first.
+    private lazy var accessibilityTrust = PermissionWatcher(gate: AccessibilityPermissionGate()) {
+        [weak self] _ in self?.refreshMainWindow()
+    }
 
     /// Reads the account picture and redraws only when it changed.
     private func refreshPictureThenRedraw() async {
@@ -3283,6 +3345,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             actionNotice = nil
             mainWindow?.show(.dictionary)
             editWord(DictionaryDraft(pronunciation: written))
+        case .editWord(let id):
+            guard let entry = knownWords.first(where: { $0.id == id }) else { return }
+            editWord(
+                DictionaryDraft(editing: id, word: entry.word, pronunciation: entry.pronunciation ?? ""))
         case .cancelWordEdit:
             editWord(nil)
         case .saveWord(let word, let pronunciation):
@@ -3397,6 +3463,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case .flagDictation(let id):
             let retention = Retention(days: settings.transcriptRetentionDays, now: Date())
             act { try await self.history.toggleFlag(id, keeping: retention) }
+
+        case .flagDictationAs(let id, let reason):
+            let retention = Retention(days: settings.transcriptRetentionDays, now: Date())
+            act { try await self.history.flag(id, as: reason, keeping: retention) }
         }
     }
 
@@ -3516,6 +3586,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     message = "A dictionary word is longer than the import limit. Nothing was imported."
                 case .tooManyDictionaryEntries:
                     message = "The archive exceeds the dictionary word limit. Nothing was imported."
+                case .hiddenCharacters:
+                    message = "A word or trigger holds a hidden character. Nothing was imported."
                 case .unsupportedVersion, .invalidContents:
                     message = "The selected archive is not valid. Nothing was imported."
                 }
@@ -3651,6 +3723,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         settingsPage.synchronize(settings: updated)
         recordingSounds?.apply(updated)
+        chosenMicrophone.apply(updated)
         applyAppearance()
         applyLaunchAtLogin()
 
@@ -3668,7 +3741,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             followTheClipboardSwitch()
         }
         // The menu's ticks are these settings, so a change made in Settings redraws them.
-        if MenuBarFeatures(updated) != MenuBarFeatures(previous) {
+        let moment = Date()
+        if menuBarFeatures(for: updated, at: moment) != menuBarFeatures(for: previous, at: moment) {
             refreshMenuBar()
         }
         if updated.hotkeyActivation != previous.hotkeyActivation {
@@ -3748,6 +3822,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let activity: DictationActivity =
             switch state {
             case .idle, .failed: .idle
+            case .discarded: .discarded
             case .recording: .listening
             case .transcribing, .tidying, .inserting: .working
             case .inserted(let outcome):
@@ -3817,6 +3892,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             } else {
                 failureLingers
             }
+        // A Restore on offer stays as long as a failure's button; with nothing to offer it goes sooner.
+        case .discarded(let discard): discard.keptRecording == nil ? successLingers : failureLingers
         case .idle, .recording, .transcribing, .tidying, .inserting: nil
         }
     }
@@ -3901,6 +3978,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 carryOut(MainIntent.retryRecording(id))
             } else {
                 show(.main(.history))
+                Task { await pipeline?.acknowledge() }
+            }
+        case .restoreRecording:
+            // The same retry, run on the recording a cancel kept, so its words reach the clipboard.
+            if case .discarded(let discard) = lastDictationState, let id = discard.keptRecording {
+                carryOut(MainIntent.retryRecording(id))
+            } else {
                 Task { await pipeline?.acknowledge() }
             }
         }

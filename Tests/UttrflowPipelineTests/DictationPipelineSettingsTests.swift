@@ -216,6 +216,8 @@ struct DictationPipelineSettingsTests {
             earlyPoll: .seconds(60))
 
         await pipeline.startRecording()
+        // The abandoned read must be at the screen before the cancel, or the second dictation's read is the held one.
+        try await eventually { await context.reads == 1 }
         await pipeline.cancel()
         await pipeline.startRecording()
         // The second dictation reads its own screen; only then is the abandoned read let go.

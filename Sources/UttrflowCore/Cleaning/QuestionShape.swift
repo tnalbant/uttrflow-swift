@@ -160,7 +160,9 @@ public enum QuestionShape {
                 // A subject before the auxiliary names a thing; one after it completes the inversion.
                 if subjects.contains(word) { return offset > 0 && !opensExclamation(clause) }
                 // An adverb's question word takes no noun, so a determiner after it opens the clause's subject.
-                if offset == 0, adverbialQuestionWords.contains(first), determiners.contains(word) { return false }
+                if offset == 0, adverbialQuestionWords.contains(first), determiners.contains(word) {
+                    return false
+                }
                 if verbsBeforeSubject.contains(word) || pronounVerbs.contains(word) {
                     return true
                 }

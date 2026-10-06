@@ -24,6 +24,11 @@ public struct WordShape: Equatable, Sendable {
     /// Whether the word closes a clause or a sentence.
     public var endsClause: Bool { suffix.contains(where: { ",.;:!?".contains($0) }) }
 
+    /// Whether the word is a command option such as "-i" or "--force", whose letters are case-sensitive.
+    public var isOption: Bool {
+        (prefix == "-" || prefix == "--") && core.first.map { $0.isLetter || $0.isNumber } == true
+    }
+
     /// Whether the word is a spoken cut-off: letters left hanging on a bare hyphen.
     public var isCutOff: Bool { suffix == "-" && !core.isEmpty }
 
@@ -119,7 +124,7 @@ public struct WordShape: Equatable, Sendable {
 
     /// Whether the quotation the last word closes is speech: it opens its sentence, follows a verb of saying, or opens on a subject.
     private static func quotationIsSpeech(_ preceding: String) -> Bool {
-        let line = preceding.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).last ?? ""
+        let line = CaretStructure.caretLine(of: preceding)
         let words = WordTokens.words(line, .display).map(WordShape.init)
         guard let start = words.lastIndex(where: { $0.prefix.contains(where: openingQuotes.contains) }) else {
             return true
@@ -205,8 +210,11 @@ public struct WordShape: Equatable, Sendable {
 }
 
 extension Draft {
-    /// The shape of the word at `index`.
-    public func shape(at index: Int) -> WordShape { WordShape(words[index].text) }
+    /// The shape of the word at `index`, counted while a test has `wordsRead` bound.
+    public func shape(at index: Int) -> WordShape {
+        Self.wordsRead?.record()
+        return WordShape(words[index].text)
+    }
 
     /// The live positions from `position` to the end of the sentence it sits in, which one spoken phrase cannot run past.
     public func sentenceRun(from position: Int, in live: [Int]) -> Range<Int> {

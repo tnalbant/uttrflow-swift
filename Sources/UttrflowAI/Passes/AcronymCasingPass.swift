@@ -4,6 +4,7 @@ import UttrflowDictionary
 /// Writes an acronym, tool, language or file name in its known casing from the lexicon, dictionary and screen.
 public struct AcronymCasingPass: WholeTextCleaningPass {
     public static let id: PassID = .acronymCasing
+    public static let laws: Set<PassLaw> = Set(PassLaw.allCases)
 
     /// Each known written form, keyed by its lower-cased letters; an ordinary word is never a key.
     public let forms: [String: String]
