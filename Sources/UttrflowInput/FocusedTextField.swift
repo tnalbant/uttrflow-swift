@@ -67,6 +67,9 @@ public protocol AccessibilityFocus: Sendable {
     /// The focused element, secure or not, or `nil` when it cannot be told apart from another.
     func focusedFieldIdentity() -> FieldIdentity?
 
+    /// Whether the window server still has `windowNumber`, or `nil` when this reader cannot ask.
+    func windowIsOpen(_ windowNumber: UInt32) -> Bool?
+
     /// Whether macOS lets this process drive other apps, read when an insertion fails so the cause is named.
     func isTrusted() -> Bool
 
@@ -138,6 +141,9 @@ extension AccessibilityFocus {
 
     /// A reader that cannot tell one field from another cannot place a write.
     public func focusedFieldPlace() -> FieldPlace? { nil }
+
+    /// A reader with no window server behind it cannot say a window closed.
+    public func windowIsOpen(_ windowNumber: UInt32) -> Bool? { nil }
 
     /// A reader that cannot tell one field from another cannot refuse a write for being in another.
     public func focusedFieldIdentity() -> FieldIdentity? { nil }

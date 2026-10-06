@@ -15,6 +15,10 @@ public enum TextInsertion {
         _ destination: InsertionDestination?, focus: any AccessibilityFocus
     ) throws(TextInsertionError) {
         guard let destination else { return }
+        // The window the field was read in has closed, so whatever is focused now is not where the words were meant.
+        if let window = destination.field?.windowNumber, focus.windowIsOpen(window) == false {
+            throw .insertionFieldClosed
+        }
         guard let application = focus.focusedApplication(), destination.isSameApplication(as: application)
         else { throw .insertionTargetChanged }
         // A field that cannot be read now is not proof of a switch, so only a readable different field refuses.
