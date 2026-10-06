@@ -91,7 +91,9 @@ final class ParityDecoder: TextDecoding {
         let clock = ContinuousClock()
         let eot = held.tokenizer?.specialTokens.endToken ?? 0
         let sampler = { GreedyTokenSampler(temperature: 0, eotToken: eot, decodingOptions: options) }
-        let libraryFirst = order.withLock { $0.toggle(); return $0 }
+        let libraryFirst = order.withLock {
+            $0.toggle(); return $0
+        }
         var libraryResult: DecodingResult?
         var sessionResult: DecodingResult?
         var libraryTime = Duration.zero

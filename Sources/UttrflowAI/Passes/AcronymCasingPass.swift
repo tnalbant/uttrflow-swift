@@ -16,7 +16,9 @@ public struct AcronymCasingPass: WholeTextCleaningPass {
             .map { WordShape(String($0)).core }
         var forms: [String: String] = [:]
         // Later sources win: the user's spelling beats the screen's, and the screen's beats the lexicon's.
-        for form in lexicon.filter(Self.isOneWord) + sighted.filter(Self.isAcronym) + own.filter(Self.isOneWord) {
+        for form in lexicon.filter(Self.isOneWord) + sighted.filter(Self.isAcronym)
+            + own.filter(Self.isOneWord)
+        {
             let key = form.lowercased()
             guard !GeneralVocabulary.isOrdinary(key) else { continue }
             forms[key] = form

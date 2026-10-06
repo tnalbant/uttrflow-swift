@@ -78,7 +78,8 @@ struct EvidenceLedgerStoreTests {
         try await store.append([row, today], keeping: always)
         let oneDay = RetentionWindow(days: 1, now: now)
         #expect(await store.rows(keeping: oneDay) == [today])
-        #expect(await EvidenceLedgerStore(file: file, encryptedStore: encrypted).rows(keeping: always) == [today])
+        #expect(
+            await EvidenceLedgerStore(file: file, encryptedStore: encrypted).rows(keeping: always) == [today])
         #expect(await store.rows(keeping: RetentionWindow(days: 0, now: now)).isEmpty)
         #expect(!FileManager.default.fileExists(atPath: file.path))
     }

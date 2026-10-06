@@ -270,17 +270,25 @@ struct InsertionPointTests {
             ("send the\u{200E}", "send the", .midSentence),
             ("- \u{2066}", "- ", .startOfText),
         ])
-    func invisibleCharactersAreAbsent(preceding: String, visible: String, state: InsertionPoint.SentenceState) {
+    func invisibleCharactersAreAbsent(preceding: String, visible: String, state: InsertionPoint.SentenceState)
+    {
         #expect(InsertionPoint.visibleText(preceding) == visible)
         #expect(InsertionPoint.sentenceState(before: preceding) == state)
-        #expect(InsertionPoint(precedingText: preceding).isOnListItemLine == InsertionPoint(precedingText: visible).isOnListItemLine)
+        #expect(
+            InsertionPoint(precedingText: preceding).isOnListItemLine
+                == InsertionPoint(precedingText: visible).isOnListItemLine)
     }
 
     @Test("a trailing zero-width mark or attachment still gets the space a word would")
     func invisibleCharactersPad() {
-        #expect(InsertionPoint(precedingText: "word\u{200B}").paddedBoundary(for: "next", in: .document) == " next")
-        #expect(InsertionPoint(precedingText: "a\u{FFFC}").paddedBoundary(for: "next", in: .document) == " next")
-        #expect(InsertionPoint(precedingText: "a", followingText: "\u{FEFF}next").paddedBoundary(for: "b", in: .document) == " b ")
+        #expect(
+            InsertionPoint(precedingText: "word\u{200B}").paddedBoundary(for: "next", in: .document)
+                == " next")
+        #expect(
+            InsertionPoint(precedingText: "a\u{FFFC}").paddedBoundary(for: "next", in: .document) == " next")
+        #expect(
+            InsertionPoint(precedingText: "a", followingText: "\u{FEFF}next").paddedBoundary(
+                for: "b", in: .document) == " b ")
     }
 
     @Test("an emoji joined by a zero-width joiner keeps its joiner")

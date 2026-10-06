@@ -138,7 +138,9 @@ public struct TerminalStopPass: WholeTextCleaningPass {
 
     /// Whether text after the replacement already ends or continues the sentence.
     private var followingTextContinuesSentence: Bool {
-        guard let followingText = insertionPoint.followingText.map(InsertionPoint.visibleText) else { return false }
+        guard let followingText = insertionPoint.followingText.map(InsertionPoint.visibleText) else {
+            return false
+        }
         let leadingWhitespace = followingText.prefix(while: \.isWhitespace)
         guard !leadingWhitespace.contains(where: \.isNewline),
             let next = followingText.dropFirst(leadingWhitespace.count).first
