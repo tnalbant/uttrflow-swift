@@ -1007,6 +1007,10 @@ public actor DictationPipeline {
         else { return }
         // Read before the next await, since the next dictation may start once these words are on screen.
         let wasSecure = destinationIsSecure
+        // A snippet's caret moves only in the field that took the words, verified there; otherwise it stays at the end.
+        if delivery == .insert, let back = expanded.caretBack(inWritten: toWrite), back > 0 {
+            _ = await inserter.placeCaret(back: back)
+        }
 
         // An unconfirmed paste is not proof the words reached the user, so nothing is learnt from it yet.
         guard attempt.arrival != .unconfirmed else {
