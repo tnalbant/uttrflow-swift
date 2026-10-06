@@ -1576,7 +1576,7 @@ final class SuggestionCoordinator {
     static func acceptanceOutcome(for error: TextInsertionError) -> UttrflowPredict.AcceptanceOutcome {
         switch error {
         case .noFocusedTextField, .accessibilityDenied, .insertionRejected, .insertionNeedsCopy,
-            .insertionTargetChanged:
+            .insertionTargetChanged, .insertionFieldClosed:
             .refused
         case .clipboardUnavailable, .clipboardChanged, .insertionTimedOut, .insertionCancelled,
             .insertionUnconfirmed, .insertionInterrupted:

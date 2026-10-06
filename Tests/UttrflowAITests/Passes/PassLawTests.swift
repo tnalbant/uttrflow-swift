@@ -12,8 +12,10 @@ private let everyPass: [any CleaningPass] = {
         .afterModelPiece(digits: .thousands, situation: .unknown),
     ]
     var seen: Set<PassID> = []
-    // Code commands run only with the caret in code, and spoken emoji only when the user turns them on.
-    let offByDefault: [any CleaningPass] = [CodeEditorCommandsPass(), SpokenEmojiPass(destination: .plain)]
+    // Code commands run only with the caret in code, spoken emoji only when the user turns them on, at-mentions only in chat.
+    let offByDefault: [any CleaningPass] = [
+        CodeEditorCommandsPass(), SpokenEmojiPass(destination: .plain), AtMentionPass(precedingText: nil),
+    ]
     return (pipelines.flatMap(\.passes) + offByDefault).filter { seen.insert($0.id).inserted }
 }()
 
@@ -76,7 +78,7 @@ private func shrunk(_ words: [String], _ law: PassLaw, _ pass: any CleaningPass)
 struct PassLawTests {
     @Test("the suite covers every pass the shipped pipelines run")
     func coversEveryPass() {
-        #expect(everyPass.count == 22)
+        #expect(everyPass.count == 23)
     }
 
     @Test("each stated law holds on generated dictation", arguments: PassLaw.allCases)
