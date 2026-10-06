@@ -71,7 +71,7 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
             live.removeSubrange((position + 1)..<end)
             position += 1
         }
-        return Self.joinCodes(in: draft, initialisms: joined)
+        return Self.writingMeridiems(in: Self.joinCodes(in: draft, initialisms: joined))
     }
 
     private enum CodePiece {

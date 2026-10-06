@@ -727,7 +727,7 @@ struct RuleBasedTransformerTests {
             ("open from nine a m to five p m", "Open from nine AM to five PM."),
             ("from seven a m until three p m", "From seven AM until three PM."),
             ("call me at five a m tomorrow", "Call me at five AM tomorrow."),
-            ("we meet at six fifteen a m", "We meet at 6:15 AM."),
+            ("we meet at six fifteen a m", "We meet at 6:15 am."),
             ("it starts at seven am", "It starts at 7 am."),
             ("it starts at seven pm", "It starts at 7 pm."),
         ])
