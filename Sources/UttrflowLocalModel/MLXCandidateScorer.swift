@@ -663,7 +663,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
     }
 
     /// The log probability mass of a token prefix, accumulated without copying a vocabulary-sized row.
-    static func logMass(of tokens: [Int], in row: MLXArray) -> MLXArray? {
+    private static func logMass(of tokens: [Int], in row: MLXArray) -> MLXArray? {
         guard !tokens.isEmpty else { return nil }
         let indices = MLXArray(tokens.map(Int32.init))
         return row[indices].logSumExp()

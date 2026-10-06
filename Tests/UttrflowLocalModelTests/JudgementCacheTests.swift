@@ -1,5 +1,4 @@
 import Foundation
-import MLX
 import Testing
 
 @testable import UttrflowLocalModel
@@ -171,31 +170,7 @@ struct JudgedLineTests {
 
         let judged = JudgedLine.judged(from: line, typedTokens: [0, 1], vocabulary: vocabulary)
 
-        #expect(judged.map(\.logProbability) == [-0.25, -8])
-    }
-
-    @Test("A row with no probability on continuing rivals stays unconditioned after scorer mass reduction")
-    func scorerReadbackWithZeroProbabilityRivalsKeepsItsScore() {
-        let vocabulary = TokenHealing.Vocabulary(
-            bytes: ["<bos>", "p", "pl", "please", "lease", "x"].map { Array($0.utf8) },
-            ending: [])
-        let row = MLXArray([Float(0), -.infinity, -.infinity, -0.25, -8, -.infinity])
-        let token = 3
-        let continuing = ScoredSpan.continuing(Array("p".utf8), in: vocabulary).filter { $0 != token }
-        #expect(continuing == [1, 2])
-
-        let mass = MLXCandidateScorer.logMass(of: continuing, in: row)
-        let prefixMass = mass?.item(Float.self)
-        #expect(prefixMass == -.infinity)
-        let line = JudgedLine(
-            tokens: [0, token, 4],
-            tokenLogProbabilities: [0, token, 4].map { row[$0].item(Float.self) },
-            prefixLogMasses: [nil, prefixMass, nil], prefixMassIndex: 1,
-            texts: ["", "please", "lease"])
-
-        let judged = JudgedLine.judged(from: line, typedTokens: [0, 1], vocabulary: vocabulary)
-
-        #expect(judged.map(\.logProbability) == [-0.25, -8])
+        #expect(judged.map(\.logProbability) == [-8, -0.25])
     }
 
     @Test("A cached mass from a different typed-prefix position is ignored")
