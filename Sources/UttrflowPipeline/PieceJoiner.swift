@@ -219,6 +219,13 @@ enum PieceJoiner {
         return nil
     }
 
+    /// Whether the next piece opens with a mark name the words before it introduce, so the name is the sentence's object.
+    private static func namesMentionedMark(after text: String, in next: String) -> Bool {
+        let words = next.split(whereSeparator: \.isWhitespace)
+        guard spokenMark(at: words, fromStart: true) != nil else { return false }
+        return isMentionedSpokenMark(preceding: [text])
+    }
+
     /// Keeps a spoken mark as words when a nearby determiner introduces its name.
     private static func isMentionedSpokenMark(preceding pieces: ArraySlice<String>) -> Bool {
         let prior = pieces.flatMap {
@@ -229,8 +236,7 @@ enum PieceJoiner {
         if let lastSentenceEnd = prior.lastIndex(where: { [".", "?", "!"].contains($0) }) {
             return lastSentenceEnd == prior.index(before: prior.endIndex)
         }
-        return prior.suffix(2).first == "word"
-            && ["the", "a", "this", "that"].contains(prior.dropLast().last ?? "")
+        return previous == "word" && ["the", "a", "this", "that"].contains(prior.dropLast().last ?? "")
     }
 
     /// Finds a spoken mark from the shared registry at the start or end of a piece.
@@ -351,6 +357,7 @@ enum PieceJoiner {
     static func sentenceRunsOn(_ text: String, into next: String) -> Bool {
         SentenceBoundaryEvidence.sentenceRunsOn(text, into: next)
             || trailingTriggerDiscardsWords(in: text, before: next)
+            || namesMentionedMark(after: text, in: next)
     }
 
     /// The longest digit group or letter run a speaker says in one breath, as in a phone number's "555" or a code's "AB".

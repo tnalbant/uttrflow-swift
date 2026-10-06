@@ -587,7 +587,7 @@ struct PieceJoinerSeamTests {
             [piece("we shipped it."), piece("the word"), piece("full stop")],
             under: .standard(for: .messaging))
 
-        #expect(whole.cleaned.text == "We shipped it. The word full stop")
+        #expect(whole.cleaned.text == "we shipped it. the word full stop")
     }
 
     @Test("keeps a spoken mark name when it is mentioned across a piece boundary")
