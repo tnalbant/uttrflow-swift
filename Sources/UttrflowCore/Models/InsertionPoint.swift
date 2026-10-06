@@ -43,7 +43,8 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
     /// Whether the caret's line opens with a list marker, so added text stays an unfinished list item.
     public var isOnListItemLine: Bool {
         guard let precedingText else { return false }
-        return Self.listItemRemainder(in: CaretStructure.caretLine(of: Self.visibleText(precedingText))) != nil
+        return Self.listItemRemainder(in: CaretStructure.caretLine(of: Self.visibleText(precedingText)))
+            != nil
     }
 
     /// Reads the sentence state off the line the caret sits on, since a list marker is not a word.
@@ -116,7 +117,8 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
     /// Pads `text` with a space at each caret edge where it would otherwise join a neighbouring word in `destination`.
     public func paddedBoundary(for text: String, in destination: Destination) -> String {
         // A field that hides its preceding text gets the dictated text unchanged.
-        guard let preceding = precedingText.map(Self.visibleText), let first = text.first, let last = text.last,
+        guard let preceding = precedingText.map(Self.visibleText), let first = text.first,
+            let last = text.last,
             !text.allSatisfy(\.isWhitespace)
         else {
             return text

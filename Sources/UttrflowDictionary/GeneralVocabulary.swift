@@ -93,6 +93,7 @@ public enum GeneralVocabulary {
         via ever soon later things quite rather almost enough instead however therefore
         actually basically probably definitely hi hey bye cool nice mint receive separate address occurred
         monday tuesday wednesday thursday friday saturday sunday
+        rest arm ram
         """)
 
     /// Romanised Hindi and Hinglish glue, so a bilingual user does not end up with a dictionary of `nahi`.

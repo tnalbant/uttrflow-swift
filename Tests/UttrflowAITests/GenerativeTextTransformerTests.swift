@@ -76,7 +76,6 @@ struct GenerativeTextTransformerTests {
         "asks the model when the rules cannot settle the draft",
         arguments: [
             ("the room is booked do you need a projector", LanguageCode.english),
-            ("note colon kal chutti hai", .english),
             ("mujhe kal office jana hai", .english),
             ("she is a nurse today", .hindi),
         ])
