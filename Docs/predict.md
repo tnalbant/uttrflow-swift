@@ -289,6 +289,10 @@ application switch that arrives during a turn is kept and run afterwards.
   panel, disarms the keys and calls `SuggestionSession.invalidate`, so `resolve`,
   `resolveGenerated` and `expandGenerated` return nothing for a turn whose read began before it,
   and the coordinator draws only while `SuggestionSession.isCurrent`.
+- **Accessibility may report the previous caret briefly after a ghost-typed character.** The guard
+  accepts only that immediately previous position for 500 ms, then requires the advanced caret.
+  This covers the reported 300 ms terminal echo plus one 200 ms selection-poll interval; any other
+  caret position still withdraws the ghost.
 - **A timed-out selection read keeps the offer armed** for its next poll. A completed read that
   cannot identify a focused selection still withdraws it.
 - **A model line keeps the typed case**, so the ghost only adds to the line and Tab never re-cases
