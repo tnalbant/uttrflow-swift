@@ -432,8 +432,8 @@ public struct AXAccessibilityFocus: AccessibilityFocus {
 
     /// Asks the window server for that one window, which answers nothing once it has closed.
     public func windowIsOpen(_ windowNumber: UInt32) -> Bool? {
-        guard let windows = CGWindowListCopyWindowInfo(.optionIncludingWindow, CGWindowID(windowNumber)) as? [Any]
-        else { return nil }
+        let info = CGWindowListCopyWindowInfo(.optionIncludingWindow, CGWindowID(windowNumber))
+        guard let windows = info as? [Any] else { return nil }
         return !windows.isEmpty
     }
 
