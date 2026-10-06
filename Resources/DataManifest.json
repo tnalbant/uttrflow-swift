@@ -209,6 +209,15 @@
       "bytes": 1062
     },
     {
+      "path": "Sources/UttrflowCore/Resources/Tables/mark-spacing.json",
+      "origin": "authored",
+      "licence": "MIT",
+      "redistribution": true,
+      "note": "read through DataTable; see Docs/data-tables.md",
+      "sha256": "2e8a586ff7344649917cd5bece7bff1ee30073efd60f6fe06633b758d5d7b1f3",
+      "bytes": 1018
+    },
+    {
       "path": "Sources/UttrflowCore/Resources/Tables/number-cues.json",
       "origin": "authored",
       "licence": "MIT",
@@ -232,8 +241,8 @@
       "licence": "MIT",
       "redistribution": true,
       "note": "read through DataTable; see Docs/data-tables.md",
-      "sha256": "4fc7efaee28db020061e5e4b3005e42157fb2584f95a53bf37a0b9468158540a",
-      "bytes": 12450
+      "sha256": "6731089a7c929479ccc915b6e421c1a26a3fe6d25d27b02c5e5734e1b4ab46f2",
+      "bytes": 11860
     },
     {
       "path": "Sources/UttrflowCore/Resources/Tables/technical-lexicon.json",

@@ -1,6 +1,6 @@
 public import UttrflowCore
 
-/// Fixes a mark that arrived as its own word onto the word before it, splits a mark glued between two words, and collapses doubled clause marks.
+/// Fixes a mark that arrived as its own word onto the word before it when `MarkSpacing` says it goes there, splits a mark glued between two words, and collapses doubled clause marks.
 public struct SpacingPass: PieceCleaningPass {
     public static let id: PassID = .spacing
 
@@ -18,7 +18,7 @@ public struct SpacingPass: PieceCleaningPass {
         var previous: Int?
         for index in draft.presentIndices {
             let text = draft.words[index].text
-            if let previous, text.allSatisfy(Self.clauseMarks.contains) {
+            if let previous, text.allSatisfy(MarkSpacing.attachesBefore) {
                 let merged = Self.collapsed(draft.words[previous].text + text)
                 draft.replace(at: previous, with: merged, by: Self.id)
                 draft.remove(at: index, by: Self.id)
