@@ -249,7 +249,8 @@ enum BacktrackingPatterns {
         (?: api[_\-]?keys? | secret[_\-]?keys? | secrets? | tokens? | passwords? | passphrases? | passwd | pwd
             | pass | credentials? | private[_\-]?key | access[_\-]?key | auth[_\-]?token
             | client[_\-]?secret | encryption[_\-]?key | signing[_\-]?key | master[_\-]?key
-            | app[_\-]?key | jwt[_\-]?key )
+            | app[_\-]?key | jwt[_\-]?key | account[_\-]?key | storage[_\-]?key
+            | subscription[_\-]?key | auth[_\-]?key | sharedaccesssignature )
         \b["']? \s* [:=] \s*
         (?:
             (?<quoted> "(?:[^"\\\n]|\\.)+" | '(?:[^'\\\n]|\\.)+' )
