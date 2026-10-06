@@ -300,6 +300,7 @@ public enum SettingsPresenter {
                     id: "system",
                     title: "Sound & startup",
                     rows: [
+                        microphoneRow(settings, capabilities),
                         toggleRow(
                             .playsSoundWhenRecordingStarts,
                             label: "Play a sound when recording starts",
@@ -746,7 +747,7 @@ public enum SettingsPresenter {
             return SettingsBanner(
                 symbolName: "clock",
                 title: title,
-                message: "The model is being read into memory. This happens once per launch.")
+                message: "The model is being read into memory for AI suggestions.")
         case .releasedForMemory:
             return SettingsBanner(
                 symbolName: "memorychip",
@@ -884,12 +885,13 @@ public enum SettingsPresenter {
         _ settings: Settings
     ) -> SettingsRow {
         let identifier = application.bundleIdentifier
+        let title = SuggestionApplications.isOffByDefault(identifier) ? "Turn on" : "Remove"
         return SettingsRow(
             id: "suggestionsIn.\(identifier)",
             label: application.name,
             explanation: applicationSentence(preferences.state(of: identifier)),
             control: .action(
-                title: "Remove", change: .suggestionsHere(application: identifier, isOn: true)),
+                title: title, change: .suggestionsHere(application: identifier, isOn: true)),
             unavailability: settings.suggestions.isEnabled ? nil : SettingsEditor.suggestionsAreOff,
             icon: .application(bundleIdentifier: identifier, name: application.name))
     }
@@ -908,6 +910,7 @@ public enum SettingsPresenter {
         case .on: nil
         case .turnedOff: "You turned AI suggestions off here."
         case .offByDefault: "Off here by default (it has its own suggestions)"
+        case .offAsPrivate: "Off here by default (it holds private information)"
         }
     }
 
@@ -920,19 +923,10 @@ public enum SettingsPresenter {
         let identifier = application.bundleIdentifier
         let key = preferences.acceptKeys.key(forBundleIdentifier: identifier)
         let kind = DestinationClassifier.kind(for: AppContext(bundleIdentifier: identifier))
-        let explanation: String? =
-            if key == .tab,
-                kind == .spreadsheet || kind == .terminal || kind == .codeEditor
-                    || kind == .sqlEditor
-            {
-                "Tab also has a job in this app."
-            } else {
-                key.explanation
-            }
         return SettingsRow(
             id: "suggestionAcceptKey.\(identifier)",
             label: "Accept with",
-            explanation: explanation,
+            explanation: key.explanation(for: kind),
             control: .menu(
                 options: AcceptKey.allCases.map { offered in
                     SettingsOption(
@@ -1066,6 +1060,34 @@ public enum SettingsPresenter {
     public static let recordingsPromise =
         "Audio is deleted the moment it becomes text, and kept on this Mac for a day only "
         + "if some of it couldn’t be, so you can retry."
+
+    /// The menu id of following the system default input.
+    static let systemDefaultMicrophone = "system-default"
+
+    /// System default first, then every input present; a chosen device that is absent stays listed as missing.
+    static func microphoneRow(_ settings: Settings, _ capabilities: SettingsCapabilities) -> SettingsRow {
+        let present = capabilities.microphones.map { device in
+            SettingsOption(id: device.uid, title: device.name, change: .microphone(uid: device.uid))
+        }
+        let chosen = settings.microphoneUID
+        let absent =
+            chosen.flatMap { uid in
+                present.contains { $0.id == uid }
+                    ? nil
+                    : SettingsOption(
+                        id: uid, title: "Chosen microphone (not connected)", change: .microphone(uid: uid))
+            }
+        let systemDefault = SettingsOption(
+            id: systemDefaultMicrophone, title: "System default", change: .microphone(uid: nil))
+        return SettingsRow(
+            id: "microphone",
+            label: "Microphone",
+            explanation: "When the chosen one is not connected, dictation uses the system default.",
+            control: .menu(
+                options: [systemDefault] + present + [absent].compactMap(\.self),
+                selectedID: chosen ?? systemDefaultMicrophone),
+            icon: .symbol("mic", .dictation))
+    }
 
     /// The order the theme is offered in: following the Mac first, then the two fixed looks.
     static let offeredAppearances: [AppAppearance] = [.system, .light, .dark]

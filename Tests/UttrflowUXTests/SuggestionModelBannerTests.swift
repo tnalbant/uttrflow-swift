@@ -137,11 +137,12 @@ struct SuggestionModelBannerTests {
         #expect(bannerFor(.releasedForMemory, suggesting: false) == nil)
     }
 
-    @Test("loading is its own state, since it happens on every launch and no bytes move")
+    @Test("loading says what is happening without claiming it only occurs once")
     func loadingSaysSo() throws {
         let shown = try #require(bannerFor(.loading))
         #expect(shown.title == "Getting ready")
-        #expect(shown.message.contains("once per launch"))
+        #expect(shown.message == "The model is being read into memory for AI suggestions.")
+        #expect(!shown.message.contains("once per launch"))
     }
 
     @Test("a failure is shown rather than swallowed, and says what to do about it")

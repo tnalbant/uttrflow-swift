@@ -193,6 +193,23 @@ struct DictationPipelineRecordingTests {
 
     // MARK: Retrying
 
+    @Test("a retry with another engine hears the recording with it once, leaving the configured one")
+    func retryWithTheOtherEngine() async throws {
+        let recordings = FakeRecordingKeeper(current: recording, waiting: [recording])
+        let speech = FakeSpeechEngine(transcribeOutcome: .success(.fixture(text: "configured engine")))
+        let other = FakeSpeechEngine(transcribeOutcome: .success(.fixture(text: said)))
+        let clipboard = FakeTextInserter(.success(InsertionAttempt(.clipboard)))
+        let pipeline = makePipeline(speech: speech, clipboard: clipboard, recordings: recordings)
+
+        #expect(await pipeline.retry(recording.id, hearingWith: other))
+        #expect(clipboard.received == [said])
+        #expect(await other.transcribeCalls.count > 0)
+        #expect(await speech.transcribeCalls.isEmpty)
+
+        _ = await dictate(pipeline)
+        #expect(await speech.transcribeCalls.count > 0)
+    }
+
     @Test("the failure names its kept recording, so one press of the notice puts the words on the clipboard")
     func noticeRetryTakesOnePress() async throws {
         let recordings = FakeRecordingKeeper(current: recording, waiting: [recording])

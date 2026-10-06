@@ -114,7 +114,8 @@ the person can see; a command spoken without looking has to name the state it wa
 dictation still transcribing turns "stop" into a new start. Each command is judged against the
 state the queue finds and returns a `DictationCommandOutcome`: Start while listening and Stop or
 Cancel while idle change nothing and say so ("Already listening", "Nothing was recording"), and
-Cancel discards the words as Escape does.
+Cancel discards the words as Escape does. A cancel of a long recording is said, sounded and offered
+for Restore; see [recordings.md](recordings.md#cancelled-while-recording).
 
 ## The minimum hold
 

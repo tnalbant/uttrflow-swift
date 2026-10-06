@@ -43,6 +43,15 @@ struct EvidenceLedgerStoreTests {
             ])
     }
 
+    @Test("the ledger file is readable by its owner only")
+    func fileIsPrivate() async throws {
+        let file = try sandbox()
+        try await EvidenceLedgerStore(file: file, encryptedStore: EncryptedStore(keys: Keys()))
+            .append([row], keeping: always)
+        let attributes = try FileManager.default.attributesOfItem(atPath: file.path)
+        #expect((attributes[.posixPermissions] as? NSNumber)?.intValue == 0o600)
+    }
+
     @Test("reset deletes every row and resetting an absent ledger succeeds")
     func resetDeletesRows() async throws {
         let file = try sandbox()
