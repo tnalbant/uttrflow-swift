@@ -3287,10 +3287,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             editWord(nil)
         case .saveWord(let word, let pronunciation):
             saveWord(word, pronunciation: pronunciation)
-        case .forgetWord(let id):
-            act { try await self.dictionary.remove(id) }
-        case .restoreWord(let id):
-            act { try await self.dictionary.restore(id) }
+        case .forgetWords(let ids):
+            act { try await self.dictionary.remove(ids) }
+        case .restoreWords(let ids):
+            act { try await self.dictionary.restore(ids) }
         case .replaceWord(let id, let word, let pronunciation):
             replaceWord(id, with: word, pronunciation: pronunciation)
         case .mergeWords(let kept, let absorbed):

@@ -95,7 +95,7 @@ struct MainIntentWiringTests {
         let entry = DictionaryEntry(word: "Uttrflow", origin: .added, firstSeen: .now)
         try await store.add(entry)
 
-        app.carryOut(.forgetWord(entry.id))
+        app.carryOut(.forgetWords([entry.id]))
 
         await app.intentWork?.value
         #expect(await store.allEntries().isEmpty)
@@ -112,7 +112,7 @@ struct MainIntentWiringTests {
         try await store.add(entry)
         #expect(await store.allEntries().first?.isTrustworthy == false)
 
-        app.carryOut(.restoreWord(entry.id))
+        app.carryOut(.restoreWords([entry.id]))
 
         await app.intentWork?.value
         #expect(await store.allEntries().first?.isTrustworthy == true)
@@ -437,7 +437,7 @@ struct MainIntentWiringTests {
         try await store.add(entry)
 
         try await refusingWrites(under: sandbox.root) {
-            app.carryOut(.forgetWord(entry.id))
+            app.carryOut(.forgetWords([entry.id]))
             await app.intentWork?.value
         }
 
@@ -456,7 +456,7 @@ struct MainIntentWiringTests {
         try await store.add(entry)
 
         try await refusingWrites(under: sandbox.root) {
-            app.carryOut(.restoreWord(entry.id))
+            app.carryOut(.restoreWords([entry.id]))
             await app.intentWork?.value
         }
 
@@ -558,12 +558,12 @@ struct MainIntentWiringTests {
         try await store.add(entry)
 
         try await refusingWrites(under: sandbox.root) {
-            app.carryOut(.forgetWord(entry.id))
+            app.carryOut(.forgetWords([entry.id]))
             await app.intentWork?.value
         }
         #expect(app.actionNotice != nil)
 
-        app.carryOut(.forgetWord(entry.id))
+        app.carryOut(.forgetWords([entry.id]))
         await app.intentWork?.value
 
         #expect(app.actionNotice == nil)
@@ -581,7 +581,7 @@ struct MainIntentWiringTests {
         try await store.add(entry)
 
         try await refusingWrites(under: sandbox.root) {
-            app.carryOut(.forgetWord(entry.id))
+            app.carryOut(.forgetWords([entry.id]))
             await app.intentWork?.value
         }
         #expect(app.actionNotice != nil)

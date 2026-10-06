@@ -46,10 +46,10 @@ public enum MainIntent: Sendable, Equatable {
     case saveWord(word: String, pronunciation: String)
     /// Close the inline word editor unchanged.
     case cancelWordEdit
-    /// Delete a word from the dictionary.
-    case forgetWord(UUID)
-    /// Trust a word that retired itself, and let it start earning its place again.
-    case restoreWord(UUID)
+    /// Delete the named words from the dictionary in one write, refusing each one.
+    case forgetWords(Set<UUID>)
+    /// Trust the named retired words again, and let them start earning their place.
+    case restoreWords(Set<UUID>)
     /// Respell an existing word as typed in the editor, keeping its counters.
     case replaceWord(UUID, word: String, pronunciation: String)
     /// Fold the second spelling of one word into the first, summing their counters.
