@@ -80,7 +80,34 @@ public enum SecureField {
         let codes = ["otp", "cvv", "cvc", "csc", "pin", "ssn"]
         if codes.contains(where: wordSet.contains) { return true }
         let pieces = text.split { !$0.isLetter && !$0.isNumber }
-        return pieces.contains { piece in codes.contains { gluesCode($0, into: piece) } }
+        return pieces.contains { piece in
+            codes.contains { gluesCode($0, into: piece) || gluesLowercaseCode($0, into: piece) }
+        }
+    }
+
+    /// Words an all-lowercase field name puts after a short code, as `otpcode` and `ssnfield` do.
+    static let codeSuffixWords: Set<String> = [
+        "code", "field", "input", "number", "num", "no", "value", "entry", "box", "digits", "text",
+    ]
+
+    /// Words an all-lowercase field name puts before a short code, as `cardcvv`, `userotp` and `atmpin` do.
+    static let codePrefixWords: Set<String> = [
+        "user", "card", "atm", "account", "sms", "email", "phone", "my", "new", "current", "confirm",
+        "enter", "bank", "debit", "credit", "auth", "login", "your", "the", "verify", "mfa", "twofa",
+    ]
+
+    /// Whether an all-lowercase word is a short code glued to a whole field word, so `mapping` and a postal `pincode` are not.
+    static func gluesLowercaseCode(_ code: String, into word: Substring) -> Bool {
+        guard word.allSatisfy({ $0.isLowercase || $0.isNumber }), word.count > code.count else { return false }
+        if word.hasPrefix(code) {
+            let rest = String(word.dropFirst(code.count))
+            // A pin code is a postal code in India; a PIN is not named that way.
+            if codeSuffixWords.contains(rest), !(code == "pin" && rest == "code") { return true }
+        }
+        if word.hasSuffix(code) {
+            return codePrefixWords.contains(String(word.dropLast(code.count)))
+        }
+        return false
     }
 
     /// Whether a camelCase word opens or closes with a short code at a case boundary, as `otpField` or `userPin` do.
