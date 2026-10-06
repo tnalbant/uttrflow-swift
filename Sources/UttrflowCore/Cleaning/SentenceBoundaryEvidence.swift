@@ -8,7 +8,7 @@ public enum SentenceBoundaryEvidence {
         let previousKeys = previous.map(\.key)
         let followingKeys = following.map(\.key)
         if text.last == ".", subordinators.contains(previous[0].key) { return true }
-        if neverLast.contains(last.key) || opensWithAPhrase(following)
+        if neverLast.contains(last.key) || opensWithAPhrase(previous, following)
             || completesFinalPhrase(previous, following) || completesSeamPreposition(previous, following)
         {
             return true
@@ -24,11 +24,21 @@ public enum SentenceBoundaryEvidence {
         }
     }
 
-    private static func opensWithAPhrase(_ following: [WordShape]) -> Bool {
+    /// "failed. on the release branch" runs on; "taken. in the morning we moved it" is a fronted phrase opening a clause.
+    private static func opensWithAPhrase(_ previous: [WordShape], _ following: [WordShape]) -> Bool {
         guard following.count > 1,
-            neverFronted.contains(following[0].key) || seamPrepositions.contains(following[0].key)
+            determiners.contains(following[1].key) || following[1].core.first?.isUppercase == true
         else { return false }
-        return determiners.contains(following[1].key) || following[1].core.first?.isUppercase == true
+        if neverFronted.contains(following[0].key) { return true }
+        return seamPrepositions.contains(following[0].key) && isVerbless(following, after: previous)
+    }
+
+    /// Whether the words up to the next stop hold no verb, read in context with the words before them.
+    private static func isVerbless(_ following: [WordShape], after previous: [WordShape]) -> Bool {
+        let clauseEnd = following.firstIndex(where: \.endsSentence).map { $0 + 1 } ?? following.count
+        let tags = LexicalClass.tags(ofWords: (previous + following.prefix(clauseEnd)).map(\.core))
+            .dropFirst(previous.count)
+        return !tags.contains(.verb)
     }
 
     /// "on. A4 paper": a verbless fragment is the object of a preposition not closing a phrasal verb. See `Docs/cleanup.md`.
