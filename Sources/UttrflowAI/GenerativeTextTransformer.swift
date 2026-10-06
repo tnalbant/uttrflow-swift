@@ -65,12 +65,14 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
         // The passes go first, so fillers and self-corrections are gone before the model can rewrite them.
         let draft = pipeline.run(Draft(transcription: request.transcription))
         let spoken = draft.text
-        if let floor = try await Self.floorSettles(request, draft: draft, formatter: formatter, steps: steps)
+        // The sources answer in milliseconds and run beside each other, so the readings cost the call nothing.
+        let readings = await doubtful.spans(in: draft, for: request.situation)
+        // A run the recogniser scored low with a reading offered is the model's to choose, which the rules cannot do.
+        if !readings.contains(where: { $0.reason == .lowScore }),
+            let floor = try await Self.floorSettles(request, draft: draft, formatter: formatter, steps: steps)
         {
             return floor
         }
-        // The sources answer in milliseconds and run beside each other, so the readings cost the call nothing.
-        let readings = await doubtful.spans(in: draft, for: request.situation)
         let rewritten = try await model.rewrite(
             prompts.userPrompt(
                 for: request, spoken: spoken, doubtful: readings,
