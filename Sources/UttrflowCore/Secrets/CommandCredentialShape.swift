@@ -119,6 +119,15 @@ enum CommandCredentialShape {
             "sshpass": [("-p", .attachedOrNext)],
             "redis-cli": [("-a", .attachedOrNext)],
             "ssh-keygen": [("-N", .attachedOrNext), ("-P", .attachedOrNext)],
+            "mongosh": [("-p", .attachedOrNext)],
+            "mongo": [("-p", .attachedOrNext)],
+            "zip": [("-P", .attachedOrNext)],
+            "unzip": [("-P", .attachedOrNext)],
+            "7z": [("-p", .attached)],
+            "7za": [("-p", .attached)],
+            "rar": [("-p", .attached)],
+            "unrar": [("-p", .attached)],
+            "smbclient": [("-U", .userAndPassword), ("--user", .userAndPassword)],
         ]
         for program in [
             "mysql", "mariadb", "mysqldump", "mysqladmin", "mysqlimport", "mysqlshow", "mysqlcheck",
@@ -130,7 +139,9 @@ enum CommandCredentialShape {
     }()
 
     /// Long flags that carry a user and password together, for the programs that read them so.
-    private static let userFlags: [String: Set<String>] = ["curl": ["user", "proxy-user"]]
+    private static let userFlags: [String: Set<String>] = [
+        "curl": ["user", "proxy-user"], "smbclient": ["user"],
+    ]
 
     /// Programs whose `-p` is a password only under one subcommand, as `docker login -p` is and `docker run -p` is not.
     private static let passwordSubcommand: [String: String] = [
@@ -146,7 +157,7 @@ enum CommandCredentialShape {
         case attached
         /// Joined to the flag or in the next word.
         case attachedOrNext
-        /// `user:password`, joined or in the next word; a user alone asks for the password.
+        /// `user:password`, or `user%password` as smbclient reads it, joined or in the next word; a user alone asks for the password.
         case userAndPassword
     }
 
@@ -323,9 +334,9 @@ enum CommandCredentialShape {
         return last == "key" && parts.dropLast().last == "api"
     }
 
-    /// The password in `user:password`, or nothing when only a user is given.
+    /// The password in `user:password` or `user%password`, or nothing when only a user is given.
     private static func password(inUserPair value: String?) -> String? {
-        guard let value, let colon = value.firstIndex(of: ":") else { return nil }
+        guard let value, let colon = value.firstIndex(where: { $0 == ":" || $0 == "%" }) else { return nil }
         let password = value[value.index(after: colon)...]
         return password.isEmpty ? nil : String(password)
     }
