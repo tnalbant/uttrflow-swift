@@ -269,4 +269,32 @@ struct InsertionPointTests {
         #expect(point.vocabulary.followingText == "well-known co-op notes")
         #expect(InsertionPoint.unknown.vocabulary == .unknown)
     }
+
+    @Test("recognition keeps the last two sentences or lines before the caret, secrets out")
+    func recognitionContextKeepsTwoSentences() {
+        let point = InsertionPoint(
+            precedingText: "One. Two is here! Three uses key AKIAIOSFODNN7EXAMPLE now.  ")
+        #expect(point.recognitionContext == "Two is here! Three uses key  now.")
+        #expect(
+            InsertionPoint(precedingText: "Header\nfirst line\nsecond").recognitionContext
+                == "first line\nsecond")
+        #expect(InsertionPoint(precedingText: "Version 2.5 ships").recognitionContext == "Version 2.5 ships")
+        #expect(InsertionPoint(precedingText: " \n ").recognitionContext == nil)
+        #expect(InsertionPoint.unknown.recognitionContext == nil)
+    }
+
+    @Test("recognition text is capped and cut at a word")
+    func recognitionContextIsCapped() {
+        let long = (1...80).map { "Item \($0)," }.joined(separator: " ") + " and the last"
+        let kept = InsertionPoint(precedingText: long).recognitionContext ?? ""
+        #expect(kept.utf16.count <= InsertionPoint.recognitionLimit)
+        #expect(long.hasSuffix(" " + kept))
+        #expect(kept.hasSuffix("Item 80, and the last"))
+    }
+
+    @Test("a secure field gives recognition no text")
+    func secureFieldGivesNoRecognitionContext() {
+        #expect(AppContext(precedingText: "Hello there.", isSecure: true).recognitionContext == nil)
+        #expect(AppContext(precedingText: "Hello there.").recognitionContext == "Hello there.")
+    }
 }

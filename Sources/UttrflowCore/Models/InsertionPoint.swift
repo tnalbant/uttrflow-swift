@@ -31,6 +31,43 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
             followingText: followingText.map(SecretShapes.vocabulary(of:)))
     }
 
+    /// The most sentences before the caret offered to recognition and its scorer.
+    public static let recognitionSentences = 2
+    /// The most UTF-16 units of those sentences kept, cut at a word.
+    public static let recognitionLimit = 200
+
+    /// The last sentence or two before the caret, secret-shaped runs out; `nil` when nothing is written there.
+    public var recognitionContext: String? {
+        guard let text = vocabulary.precedingText else { return nil }
+        var body = Substring(text)
+        while let last = body.last, last.isWhitespace { body.removeLast() }
+        var start = body.startIndex
+        var boundaries = 0
+        var index = body.endIndex
+        while index > body.startIndex {
+            let before = body.index(before: index)
+            let isBoundary =
+                body[before].isNewline
+                || (index < body.endIndex && body[index].isWhitespace
+                    && SentenceMarks.ends.contains(body[before]))
+            if isBoundary {
+                boundaries += 1
+                if boundaries == Self.recognitionSentences {
+                    start = index
+                    break
+                }
+            }
+            index = before
+        }
+        var kept = body[start...].drop(while: \.isWhitespace)
+        if kept.utf16.count > Self.recognitionLimit {
+            while kept.utf16.count > Self.recognitionLimit { kept = kept.dropFirst() }
+            // A word cut by the limit is dropped whole, so the recogniser never reads half a word.
+            kept = kept.drop(while: { !$0.isWhitespace }).drop(while: \.isWhitespace)
+        }
+        return kept.isEmpty ? nil : String(kept)
+    }
+
     /// The insertion point of a field that says nothing about itself.
     public static let unknown = InsertionPoint()
 

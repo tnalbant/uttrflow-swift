@@ -107,7 +107,7 @@ consumer names.
 |---|---|---|
 | Leading and trailing space padding | `caretEdges` | 2 units each side |
 | Sentence state, list item, line suggestions | `caretLine` | `ValueWindow.unitsBefore`, `ValueWindow.unitsAfter` |
-| Recogniser prompt, correction evidence | `insertionSides` | `InsertionPoint.precedingLimit`, `InsertionPoint.followingLimit` |
+| Recogniser prompt, correction evidence; `AppContext.recognitionContext` keeps the last `InsertionPoint.recognitionSentences` sentences, at most `InsertionPoint.recognitionLimit` units, none from a secure field | `insertionSides` | `InsertionPoint.precedingLimit`, `InsertionPoint.followingLimit` |
 | Selection kept in the turn's window | `selectionStart` | `ValueWindow.selectionLimit` |
 | Prompt describer | selection, cut after the read | 120 characters (`AppContextDescriber.selectionLimit`) |
 | `MacContextEngine` selection | selection, its own ranged read | 512 characters (`selectedTextLimit`) |

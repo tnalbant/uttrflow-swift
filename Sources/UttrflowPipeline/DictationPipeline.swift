@@ -1086,13 +1086,18 @@ public actor DictationPipeline {
         // The default profile detects each piece; a Hindi-only profile pins each piece to Hindi. See `Docs/speech-engines.md`.
         let policy = dictationContext?.listening ?? ListeningLanguages(profile: runningProfile)
         let language = policy.hint(afterFirstPiece: nil)
+        // The dictation's one read, so every piece is conditioned on the same caret. See `Docs/context-budget.md`.
+        let preceding = dictationContext?.app.recognitionContext
         let speaks = VoiceActivity.speechRange(in: slice.samples, sampleRate: slice.sampleRate) != nil
         let heard = try await metrics.measuringInTime(.transcription, clock: clock) {
             try await withStageTimeout(StageTimeout.transcription, clock: clock) {
                 [speech] () async throws -> Heard in
                 do {
                     let transcription = try await speech.transcribe(
-                        slice, options: TranscriptionOptions(languageHint: language, vocabulary: words))
+                        slice,
+                        options: TranscriptionOptions(
+                            languageHint: language, vocabulary: words,
+                            precedingText: preceding))
                     await metrics.recordVocabularyPrompt(transcription.vocabularyPrompt)
                     await metrics.recordConditioning(transcription.conditioning)
                     // A piece mostly in a script neither language is written in is a recognition failure, not words.
