@@ -146,6 +146,7 @@ public struct FirstWordPass: WholeTextCleaningPass {
         case .fromInsertionPoint:
             guard state == .midSentence, !Self.keepsCapital(word),
                 !(capitaliseCalendarWords && Self.isCalendarWord(word)),
+                !(capitaliseCalendarWords && Self.isMonthOpeningAPiece(word)),
                 !Self.isProperName(word, in: text),
                 !Self.looksLikeName(word, in: [text] + onScreen)
             else { return WordShape.capitalised(word) }
@@ -265,6 +266,12 @@ public struct FirstWordPass: WholeTextCleaningPass {
     /// Whether a word names a weekday or an unambiguous month.
     static func isCalendarWord(_ text: String) -> Bool {
         calendarWords.contains(WordShape(text).key.lowercased())
+    }
+
+    /// Whether a piece opens on "March" the recogniser capitalised: the month, since the verb rarely opens one, while "May" stays a modal.
+    static func isMonthOpeningAPiece(_ word: String) -> Bool {
+        let core = WordShape(word).core
+        return core.first?.isUppercase == true && core.lowercased() == "march"
     }
 
     private static let calendarWords: Set<String> = [
