@@ -1166,9 +1166,9 @@ INJECTIONS = (
         "Sources/UttrflowLocalModel/MLXCandidateScorer.swift",
         "            // Only a call that reaches the model holds the process-wide cache; an unloaded scorer never does.\n"
         "            beginPass()\n            defer { endPass() }\n"
-        "            let judged = await container.perform { loaded in\n",
-        "            let judged = await container.perform { loaded in\n"
-        "            beginPass()\n            defer { endPass() }\n",
+        "            let result = await container.perform {",
+        "            let result = await container.perform {\n"
+        "            beginPass()\n            defer { endPass() }\n           ",
         "cache",
     ),
     (
