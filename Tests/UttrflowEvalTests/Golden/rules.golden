@@ -155,6 +155,7 @@ dictation-keeps-markdown-words-heading-two	Add a heading two for the results sec
 dictation-keeps-markdown-words-inline-code	The guide shows inline code in a grey box.
 dictation-keeps-markdown-words-italic	The title goes in italic in the reference list.
 dictation-keeps-markdown-words-italics	Put the book names in italics please.
+document-at-name-stays	At Sam, can you take a look?
 document-bullet-caret-capitalises	The migration finished overnight
 document-list-only-when-spoken	What's left to pack\n- The tent\n- The stove\n- The first aid kit
 document-number-one-after-a-sentence-not-an-item	The build failed. Number 1 is broken.
@@ -341,6 +342,9 @@ lowercase-start-after-complete-sentence-pronoun	Please send it today. I will che
 lowercase-start-after-complete-sentence-she	He is here. She is not.
 lowercase-start-after-complete-sentence-that	The price is 5 dollars. That is cheap.
 lowercase-start-after-complete-sentence-vitals	The patient is stable. Vitals are normal.
+message-at-home-stays	I'm at home
+message-at-mention	@Sam, can you take a look?
+message-at-possessive-stays	Let's meet at sam's place
 message-dialect-he-come	He come by yesterday
 message-dialect-i-seen	I seen it yesterday
 message-dialect-they-was	They was at the shop

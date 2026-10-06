@@ -2532,6 +2532,49 @@ public enum EvaluationCorpus {
             mustBeginWith: "Leaving",
             mustEndWith: "cafe"
         ),
+        // "at" and a name opening a chat message is a mention; inside a clause or before a possessive it stays a word.
+        .init(
+            id: "message-at-mention", category: .contextual,
+            spoken: "at Sam can you take a look",
+            expected: "@Sam, can you take a look?",
+            mustKeep: ["@Sam", "look"],
+            context: AppContext(
+                applicationName: "Messages", bundleIdentifier: DestinationRules.messages, documentName: "Dev"),
+            destination: .messaging,
+            mustBeginWith: "@Sam",
+            addedFor: 2264
+        ),
+        .init(
+            id: "message-at-possessive-stays", category: .contextual,
+            spoken: "let's meet at Sam's place",
+            expected: "Let's meet at Sam's place",
+            mustKeep: ["at", "place"],
+            context: AppContext(
+                applicationName: "Messages", bundleIdentifier: DestinationRules.messages, documentName: "Dev"),
+            mustNotAdd: ["@"],
+            destination: .messaging,
+            addedFor: 2264
+        ),
+        .init(
+            id: "message-at-home-stays", category: .contextual,
+            spoken: "I'm at home",
+            expected: "I'm at home",
+            mustKeep: ["at", "home"],
+            context: AppContext(
+                applicationName: "Messages", bundleIdentifier: DestinationRules.messages, documentName: "Dev"),
+            mustNotAdd: ["@"],
+            destination: .messaging,
+            addedFor: 2264
+        ),
+        .init(
+            id: "document-at-name-stays", category: .contextual,
+            spoken: "at Sam can you take a look",
+            expected: "At Sam, can you take a look?",
+            mustKeep: ["At", "look"],
+            mustNotAdd: ["@"],
+            destination: .document,
+            addedFor: 2264
+        ),
         // Full stops either side of a paragraph break, which the rules are asked to pass and do.
         .init(
             id: "email-two-paragraphs", category: .contextual,

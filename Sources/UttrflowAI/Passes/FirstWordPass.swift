@@ -295,6 +295,8 @@ public struct FirstWordPass: WholeTextCleaningPass {
     /// Whether a word keeps its case mid-sentence: "I" and its contractions, an acronym, or a technical token.
     static func keepsCapital(_ word: String) -> Bool {
         let core = WordShape(word).core
+        // A mention or an address is written as its owner spells it.
+        if word.contains("@") { return true }
         if core == "I" || core.hasPrefix("I'") || core.hasPrefix("I\u{2019}") { return true }
         let letters = core.filter(\.isLetter)
         if core.contains(where: \.isNumber) && letters.contains(where: \.isUppercase) { return true }

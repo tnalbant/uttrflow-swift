@@ -100,9 +100,12 @@ extension CleaningPipeline {
     ) -> CleaningPipeline {
         let casing = AcronymCasingPass(
             destination: formatter.destination, vocabulary: vocabulary, onScreen: situation.app.textOnScreen)
+        // Only a chat takes "at Sam" as a mention; everywhere else it is a word.
+        let mentions: [any WholeTextCleaningPass] =
+            formatter.destination == .messaging
+            ? [AtMentionPass(precedingText: situation.insertion.precedingText)] : []
         return CleaningPipeline(
-            wholeText: initialisms(steps: steps) + [
-                casing,
+            wholeText: initialisms(steps: steps) + [casing] + mentions + [
                 SentenceBoundaryPass(),
                 FirstWordPass(
                     policy: formatter.firstWord, state: situation.insertion.sentenceState,
