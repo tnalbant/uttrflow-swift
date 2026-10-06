@@ -91,6 +91,13 @@ struct CommandCredentialTests {
             "machine example.com login u password hunter2x9",
             "machine example.com\nlogin u\naccount acct\npassword hunter2x9",
             "machine example.com\nmacdef init\npassword ordinary\n\nmachine next.example\nlogin u\npassword hunter2x9",
+            "machine example.com login u password abc|def9x",
+            "machine example.com login u password abc&def9x",
+            "machine example.com login u password abc;def9x",
+            "machine example.com login u password #hunter2x9",
+            "machine example.com\nlogin u\npassword #hunter2x9",
+            "machine example.com\nlogin u\npassword abc&def9x",
+            "machine example.com\nlogin u\npassword Pa$$w0rd9x",
         ])
     func multilineNetrc(_ text: String) {
         #expect(SecretShapes.matches(text))
@@ -104,9 +111,31 @@ struct CommandCredentialTests {
         #expect(!SecretShapes.matches(text))
     }
 
-    @Test("Password in ordinary prose is not a netrc credential")
-    func prosePassword() {
-        #expect(!SecretShapes.hasCommandCredential("Please enter your password on the next line."))
-        #expect(!SecretShapes.matches("Please enter your password on the next line."))
+    @Test(
+        "An empty netrc password or a placeholder is not a credential",
+        arguments: [
+            "machine example.com\npassword",
+            "machine example.com\npassword $TOKEN",
+            "machine example.com\npassword ${token}",
+            "machine example.com\npassword \"$(token)\"",
+            "machine example.com\npassword {token}",
+            "machine example.com\npassword <token>",
+            "machine example.com\npassword \"\"",
+        ])
+    func netrcPlaceholder(_ text: String) {
+        #expect(!SecretShapes.hasCommandCredential(text))
+        #expect(!SecretShapes.matches(text))
+    }
+
+    @Test(
+        "Password in ordinary prose after a blank line is not a netrc credential",
+        arguments: [
+            "Please enter your password on the next line.",
+            "machine example.com\n\npassword reset required",
+            "machine learning\n\nlogin page\npassword reset",
+        ])
+    func prosePassword(_ text: String) {
+        #expect(!SecretShapes.hasCommandCredential(text))
+        #expect(!SecretShapes.matches(text))
     }
 }
