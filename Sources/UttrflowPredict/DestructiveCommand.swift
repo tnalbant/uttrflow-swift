@@ -474,8 +474,10 @@ public enum DestructiveCommand {
     }
 
     /// The flags a `docker exec` / `docker run` line takes within its subcommand, whose values the parser must skip.
+    /// Single-letter flags are matched as written, since `-p` takes a port and `-P` takes nothing.
     private static let containerSubcommandValued: Set<String> = [
         "-u", "--user", "-w", "--workdir", "-e", "--env", "--env-file",
+        "-v", "-m", "-l", "-h", "-a", "-p", "-c", "--attach", "--cpu-shares", "--index",
         "--cap-add", "--cap-drop", "--cgroup-parent", "--device", "--device-cgroup-rule",
         "--dns", "--dns-opt", "--dns-search", "--domainname", "--entrypoint",
         "--expose", "--group-add", "--health-cmd", "--health-interval", "--health-retries",
@@ -493,52 +495,63 @@ public enum DestructiveCommand {
         "-c", "--container", "-p", "--pod", "--filename",
     ]
 
-    /// The text of the command `docker exec [opts] container [cmd]`, `docker run [opts] image [cmd]` or `kubectl exec [opts] pod -- cmd` runs, or nil.
+    /// Whether a flag as written is in a valued set: a single-letter flag by its exact case, a long one by its lowercase.
+    private static func takesValue(_ flag: String, in valued: Set<String>) -> Bool {
+        flag.hasPrefix("--") ? valued.contains(flag.lowercased()) : valued.contains(flag)
+    }
+
+    /// The text of the command `docker exec [opts] container [cmd]`, `docker run [opts] image [cmd]`, their
+    /// `container` and `compose` forms, or `kubectl exec [opts] pod -- cmd` runs, or nil.
     private static func verbToolSubcommandCarrier(command: String, arguments: [String]) -> String? {
-        let subcommands: Set<String>
         let valued: Set<String>
         let globalValued: Set<String>
-        let operands: Int
         let terminator: String?
+        var isCompose = command == "docker-compose" || command == "podman-compose"
         switch command {
-        case "docker", "podman":
-            subcommands = ["exec", "run"]
+        case "docker", "podman", "docker-compose", "podman-compose":
             valued = containerSubcommandValued
-            globalValued = containerGlobalFlags
-            operands = 1
+            globalValued = isCompose ? composeValued : containerGlobalFlags
             terminator = nil
         case "kubectl":
-            subcommands = ["exec"]
             valued = kubectlExecValued
             globalValued = kubectlGlobalFlags
-            operands = 1
             terminator = "--"
         default:
             return nil
         }
-        var rest = arguments
+        var rest = arguments[...]
         // Skip the tool's global flags that can appear in front of the subcommand.
-        while let head = rest.first, head.hasPrefix("-"), head.count > 1, head != "--" {
-            rest.removeFirst()
-            if globalValued.contains(head), !rest.isEmpty { rest.removeFirst() }
+        func skipFlags(_ flags: Set<String>, caseExact: Bool) {
+            while let head = rest.first, head.hasPrefix("-"), head.count > 1, head != "--" {
+                rest.removeFirst()
+                let takes = caseExact ? takesValue(head, in: flags) : flags.contains(head.lowercased())
+                if takes, !rest.isEmpty { rest.removeFirst() }
+            }
         }
-        guard rest.count >= operands + 1, subcommands.contains(rest[0]) else { return nil }
+        skipFlags(globalValued, caseExact: false)
+        if terminator == nil, !isCompose, let group = rest.first?.lowercased(),
+            group == "container" || group == "compose"
+        {
+            rest.removeFirst()
+            isCompose = group == "compose"
+            if isCompose { skipFlags(composeValued, caseExact: false) }
+        }
+        let subcommands: Set<String> = terminator == nil ? ["exec", "run"] : ["exec"]
+        guard rest.count >= 2, let verb = rest.first?.lowercased(), subcommands.contains(verb) else {
+            return nil
+        }
         rest.removeFirst()
         // Skip the subcommand's valued flags and their values.
-        while let head = rest.first, head.hasPrefix("-"), head.count > 1, head != "--" {
-            rest.removeFirst()
-            if valued.contains(head), !rest.isEmpty { rest.removeFirst() }
-        }
-        // Skip the required operand (container, image, or pod).
-        guard rest.count >= operands else { return nil }
-        rest.removeFirst(operands)
+        skipFlags(valued, caseExact: true)
+        // Skip the required operand (container, service, image, or pod).
+        guard !rest.isEmpty else { return nil }
+        rest.removeFirst()
         if let term = terminator {
             // The carried command begins after the `--` terminator.
             guard let termIndex = rest.firstIndex(of: term) else { return nil }
-            rest = Array(rest.dropFirst(termIndex + 1))
-            return rest.isEmpty ? nil : shellQuoted(rest)
+            rest = rest[(termIndex + 1)...]
         }
-        return rest.isEmpty ? nil : shellQuoted(rest)
+        return rest.isEmpty ? nil : shellQuoted(rest.map { $0.lowercased() })
     }
 
     /// Parsed words joined back into a line the parser reads as the same words, so a quoted script stays one argument.
@@ -583,7 +596,7 @@ public enum DestructiveCommand {
             let pipArguments = Array(lowered.dropFirst(module + 2))
             if pipUninstall(positionals(pipArguments, valued: pipValued), pipArguments) { return true }
         }
-        if let carrier = verbToolSubcommandCarrier(command: command, arguments: lowered) {
+        if let carrier = verbToolSubcommandCarrier(command: command, arguments: arguments) {
             if matches(carrier, failClosedOnUnresolved: failClosedOnUnresolved) { return true }
         }
         if let tool = verbTools[command], tool.destroys(positionals(lowered, valued: tool.valued), lowered) {

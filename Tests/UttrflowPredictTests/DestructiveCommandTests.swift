@@ -958,6 +958,16 @@ struct DestructiveCommandTests {
             "sudo docker exec db rm -rf /var/lib/postgresql/data",
             "podman exec db rm -rf /data",
             "podman run --rm app rm -rf /tmp/work",
+            "docker run -v /data:/d alpine rm -rf /d",
+            "docker run -p 8080:80 -m 512m -l role=db -h db -a stdout alpine rm -rf /d",
+            "docker run -P alpine rm -rf /d",
+            "docker container exec db rm -rf /data",
+            "docker container run --rm app rm -rf /data",
+            "docker compose exec svc rm -rf x",
+            "docker compose -f prod.yml exec -u root svc rm -rf x",
+            "docker compose run --rm -v /data:/d svc rm -rf /d",
+            "docker-compose exec svc rm -rf x",
+            "podman compose exec svc rm -rf x",
         ])
     func containerExecCarryingDestructive(_ line: String) {
         #expect(
@@ -973,6 +983,9 @@ struct DestructiveCommandTests {
             "docker run --rm app ls /data",
             "podman exec db bash",
             "podman run --rm app env",
+            "docker run -v /data:/d alpine ls /d",
+            "docker compose exec svc bash",
+            "docker container exec db psql",
         ])
     func containerExecWithOrdinaryCommandsIsOrdinary(_ line: String) {
         #expect(
