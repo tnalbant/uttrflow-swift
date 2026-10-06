@@ -272,15 +272,17 @@ fmt-token-web-address	The page is at docs.example.com/setup.
 full-stop-new-paragraph	The build is green.\n\nThanks everyone.
 function-name	Call get_user with the id and check the response.
 greeting-kept	Hey sarah just checking in on the design review.
-hindi-translation-refused	Meeting chaar baje hai, nahi nahi, paanch baje hai.
+hindi-translation-refused	Meeting 4 baje hai, nahi nahi, 5 baje hai.
 hindi-worked-example-refused	Matlab main kal aayega, haan, accha to phir milte hain.
 hinglish-apology-kept	Main late hoon sorry main abhi aata hoon.
-hinglish-correction-nahi-nahi	Meeting paanch baje hai.
+hinglish-correction-nahi-nahi	Meeting 5 baje hai.
 hinglish-false-start	Yaar wo wo bug bahut weird hai mujhe samajh nahi aa raha.
 hinglish-kaunsa-question	Kaunsa option better hai?
 hinglish-kya-hua-question	Kya hua?
-hinglish-late	Main meeting ke liye bees minute late ho jaunga.
+hinglish-late	Main meeting ke liye 20 minute late ho jaunga.
+hinglish-mera-matlab-kept	Aap samjhe mera matlab.
 hinglish-na-question-tag	Tum kal aa rahe ho na?
+hinglish-nahi-nahi-answer-kept	Kya aap thak gaye ho nahi main bilkul theek hoon?
 hinglish-negation-kept	Mujhe yeh build thik nahi lag raha.
 hinglish-question	Kya tum aaj ka PR review kar sakte ho?
 hinglish-question-after-verb	Report bhej di kya?

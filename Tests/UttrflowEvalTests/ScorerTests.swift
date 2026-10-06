@@ -697,17 +697,16 @@ struct CorpusIndependenceTests {
         }
     }
 
-    /// Rules cannot change alphabet, so romanised references measure clean-up rather than doing nothing.
+    /// Hindi is spoken into the corpus in either alphabet, and every reference is written in the Latin one.
     @Test("expects Hindi written in the Latin alphabet")
     func hindiReferencesAreRomanised() {
+        let devanagari: (Character) -> Bool = { ("\u{0900}"..."\u{097F}").contains($0) }
         for testCase in EvaluationCorpus.cases(for: .hindi) {
-            #expect(
-                testCase.expected.allSatisfy { !("\u{0900}"..."\u{097F}").contains($0) },
-                "\(testCase.id) still expects Devanagari")
-            #expect(
-                testCase.spoken.contains { ("\u{0900}"..."\u{097F}").contains($0) },
-                "\(testCase.id) has nothing to romanise")
+            #expect(!testCase.expected.contains(where: devanagari), "\(testCase.id) still expects Devanagari")
         }
+        #expect(
+            EvaluationCorpus.cases(for: .hindi).contains { $0.spoken.contains(where: devanagari) },
+            "no Hindi case has Devanagari to romanise")
     }
 }
 

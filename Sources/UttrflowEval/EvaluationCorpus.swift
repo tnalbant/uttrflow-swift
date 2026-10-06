@@ -1358,8 +1358,8 @@ public enum EvaluationCorpus {
         .init(
             id: "hindi-translation-refused", category: .multilingual, language: .hindi,
             spoken: "मीटिंग चार बजे है, नहीं नहीं, पांच बजे है.",
-            expected: "Meeting chaar baje hai, nahi nahi, paanch baje hai.",
-            mustKeep: ["nahi", "paanch"],
+            expected: "Meeting 4 baje hai, nahi nahi, 5 baje hai.",
+            mustKeep: ["nahi", "5"],
             mustNotAdd: ["o'clock"]
         ),
         .init(
@@ -1372,7 +1372,7 @@ public enum EvaluationCorpus {
         .init(
             id: "hinglish-late", category: .multilingual, language: .hindi,
             spoken: "मैं meeting के लिए बीस मिनट late हो जाऊंगा",
-            expected: "Main meeting ke liye bees minute late ho jaunga.",
+            expected: "Main meeting ke liye 20 minute late ho jaunga.",
             mustKeep: ["meeting", "late"]
         ),
         // A trailing English clause must stay English rather than be rewritten into Hinglish.
@@ -1391,8 +1391,20 @@ public enum EvaluationCorpus {
         .init(
             id: "hinglish-correction-nahi-nahi", category: .multilingual, language: .hindi,
             spoken: "मीटिंग चार बजे है नहीं नहीं पाँच बजे है",
-            expected: "Meeting paanch baje hai.",
-            mustKeep: ["paanch"]
+            expected: "Meeting 5 baje hai.",
+            mustKeep: ["5"]
+        ),
+        .init(
+            id: "hinglish-nahi-nahi-answer-kept", category: .multilingual, language: .hindi,
+            spoken: "kya aap thak gaye ho nahi nahi main bilkul theek hoon",
+            expected: "Kya aap thak gaye ho? Nahi nahi, main bilkul theek hoon.",
+            mustKeep: ["nahi", "theek"]
+        ),
+        .init(
+            id: "hinglish-mera-matlab-kept", category: .multilingual, language: .hindi,
+            spoken: "aap samjhe mera matlab",
+            expected: "Aap samjhe mera matlab?",
+            mustKeep: ["mera", "matlab"]
         ),
         .init(
             id: "hinglish-request", category: .multilingual, language: .hindi,
