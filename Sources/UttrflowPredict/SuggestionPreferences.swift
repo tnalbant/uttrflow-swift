@@ -206,12 +206,11 @@ public struct SuggestionPreferences: Sendable, Equatable, Codable {
         chosenAcceptKeys[ApplicationKey.of(bundleIdentifier)] = key
     }
 
-    /// Removes per-application overrides, keeping shipped opt-outs on only when explicitly removed.
+    /// Removes the per-application off override and keeps the chosen accept key.
     public mutating func removePreferences(for bundleIdentifier: String) {
         let identifier = ApplicationKey.of(bundleIdentifier)
         turnedOff.remove(identifier)
         turnedOn.remove(identifier)
-        chosenAcceptKeys[identifier] = nil
         if SuggestionApplications.isOffByDefault(identifier) {
             turnedOn.insert(identifier)
         }

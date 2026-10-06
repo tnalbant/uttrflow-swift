@@ -17,6 +17,9 @@ document editors such as Word, Pages, and TextEdit, notes apps such as Notes, No
 Bear, Numbers or Excel, and browser-based Google Sheets, Docs and Excel when the window title
 identifies them. The user can override any application
 (Settings → AI suggestions → **Accept with**), and the override wins over the kind.
+When a known app kind has a native Tab action, the explanation names that action or says that
+choosing Tab replaces it. When Right arrow accepts, it also says that Escape no longer dismisses
+suggestions.
 
 There is one table of application kinds: the terminal, code editor, query editor, document editor,
 spreadsheet and notes rows of `DestinationRules.standard` in `UttrflowCore`, the same rows that

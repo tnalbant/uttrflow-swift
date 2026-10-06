@@ -177,30 +177,48 @@ struct SettingsAcceptKeyGuidanceTests {
                 }
             ).explanation
         }
-        #expect(try explanation("com.apple.Terminal") == "Tab also has a job in this app.")
-        #expect(try explanation("com.apple.dt.Xcode") == "Tab also has a job in this app.")
-        #expect(try explanation("com.tinyapp.TablePlus") == "Tab also has a job in this app.")
-        #expect(try explanation("com.microsoft.Excel") == "Tab also has a job in this app.")
-        #expect(try explanation("com.apple.Notes") == nil)
+        #expect(
+            try explanation("com.apple.Terminal") == "Tab accepts suggestions instead of shell completion.")
+        #expect(
+            try explanation("com.apple.dt.Xcode")
+                == "Tab accepts suggestions instead of indentation and editor completion.")
+        #expect(
+            try explanation("com.tinyapp.TablePlus")
+                == "Tab accepts suggestions instead of indentation and SQL completion.")
+        #expect(
+            try explanation("com.microsoft.Excel") == "Tab accepts suggestions instead of cell navigation.")
+        #expect(
+            try explanation("com.apple.Notes")
+                == "Tab accepts suggestions instead of the notes app's own behavior.")
         #expect(try explanation("com.example.unknown") == nil)
     }
 
-    @Test("preserves the alternate key descriptions")
-    func alternateKeyDescriptionsRemain() throws {
+    @Test("describes the selected key for this app and explains the Right arrow Escape behavior")
+    func alternateKeyDescriptionsFitTheApplication() throws {
         var settings = Settings.default
         settings.suggestions.set("com.apple.Terminal", isOn: true)
         settings.suggestions.set("com.apple.dt.Xcode", isOn: true)
+        settings.suggestions.set("com.apple.Notes", isOn: true)
+        settings.suggestions.set("com.example.unknown", isOn: true)
         settings.suggestions.setAcceptKey(.rightArrow, in: "com.apple.Terminal")
+        settings.suggestions.setAcceptKey(.rightArrow, in: "com.apple.Notes")
         settings.suggestions.setAcceptKey(.optionTab, in: "com.apple.dt.Xcode")
+        settings.suggestions.setAcceptKey(.optionTab, in: "com.example.unknown")
 
         let pane = SettingsPresenter.pane(for: .suggestions, settings: settings)
         let rows = Dictionary(uniqueKeysWithValues: pane.groups.flatMap(\.rows).map { ($0.id, $0) })
         #expect(
             rows["suggestionAcceptKey.com.apple.terminal"]?.explanation
-                == "Leaves Tab to the shell's own completion.")
+                == "Leaves Tab to the shell's own completion. Escape will not dismiss suggestions.")
         #expect(
             rows["suggestionAcceptKey.com.apple.dt.xcode"]?.explanation
-                == "Leaves Tab to indent, and to the editor's own completion.")
+                == "Leaves Tab to indentation and editor completion.")
+        #expect(
+            rows["suggestionAcceptKey.com.apple.notes"]?.explanation
+                == "Leaves Tab to the notes app's own behavior. Escape will not dismiss suggestions.")
+        #expect(
+            rows["suggestionAcceptKey.com.example.unknown"]?.explanation
+                == "Leaves Tab available in this app.")
     }
 }
 

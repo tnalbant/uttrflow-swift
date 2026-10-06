@@ -37,13 +37,15 @@ The rest of the screen (`SettingsPresenter.suggestions`):
 |---|---|
 | **Only suggest when it is sure** | Draws a single completion and never a list (`SuggestionPreferences.isQuiet`) |
 | **Pause for a while** → **Pause 30 min** | Stops suggestions everywhere for `SuggestionPreferences.pause`, 30 minutes, then lifts itself |
-| **Not used in these apps** | Every application suggestions are off in, each with **Remove**; **Add an app to leave alone** adds one |
+| **Not used in these apps** | Every application suggestions are off in; user-added opt-outs have **Remove**, and shipped opt-outs have **Turn on**; **Add an app to leave alone** adds one |
 | **Used in these apps** | Every application suggestions run in that has a choice or a corpus to show, with **Leave Alone** and **Accept with** |
 | **Forget what it learned here** | Beside an application that has taught at least one line; deletes that application's lines |
 
 Two editors ship switched off because they have suggestions of their own
 (`SuggestionApplications.offByDefault`: Cursor and Visual Studio Code). They are always listed, so
-a switch that ships off can be found and turned on.
+a switch that ships off can be found and turned on. The accept-key explanation follows the app's
+destination kind, including the native action Tab keeps or replaces and, for Right arrow, that
+Escape no longer dismisses suggestions.
 
 ## The pieces
 

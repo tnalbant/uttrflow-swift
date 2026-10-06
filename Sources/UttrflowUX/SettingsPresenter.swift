@@ -884,12 +884,13 @@ public enum SettingsPresenter {
         _ settings: Settings
     ) -> SettingsRow {
         let identifier = application.bundleIdentifier
+        let title = SuggestionApplications.isOffByDefault(identifier) ? "Turn on" : "Remove"
         return SettingsRow(
             id: "suggestionsIn.\(identifier)",
             label: application.name,
             explanation: applicationSentence(preferences.state(of: identifier)),
             control: .action(
-                title: "Remove", change: .suggestionsHere(application: identifier, isOn: true)),
+                title: title, change: .suggestionsHere(application: identifier, isOn: true)),
             unavailability: settings.suggestions.isEnabled ? nil : SettingsEditor.suggestionsAreOff,
             icon: .application(bundleIdentifier: identifier, name: application.name))
     }
@@ -920,19 +921,10 @@ public enum SettingsPresenter {
         let identifier = application.bundleIdentifier
         let key = preferences.acceptKeys.key(forBundleIdentifier: identifier)
         let kind = DestinationClassifier.kind(for: AppContext(bundleIdentifier: identifier))
-        let explanation: String? =
-            if key == .tab,
-                kind == .spreadsheet || kind == .terminal || kind == .codeEditor
-                    || kind == .sqlEditor
-            {
-                "Tab also has a job in this app."
-            } else {
-                key.explanation
-            }
         return SettingsRow(
             id: "suggestionAcceptKey.\(identifier)",
             label: "Accept with",
-            explanation: explanation,
+            explanation: key.explanation(for: kind),
             control: .menu(
                 options: AcceptKey.allCases.map { offered in
                     SettingsOption(
