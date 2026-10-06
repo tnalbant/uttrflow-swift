@@ -205,8 +205,11 @@ public struct WordShape: Equatable, Sendable {
 }
 
 extension Draft {
-    /// The shape of the word at `index`.
-    public func shape(at index: Int) -> WordShape { WordShape(words[index].text) }
+    /// The shape of the word at `index`, counted while a test has `wordsRead` bound.
+    public func shape(at index: Int) -> WordShape {
+        Self.wordsRead?.record()
+        return WordShape(words[index].text)
+    }
 
     /// The live positions from `position` to the end of the sentence it sits in, which one spoken phrase cannot run past.
     public func sentenceRun(from position: Int, in live: [Int]) -> Range<Int> {
