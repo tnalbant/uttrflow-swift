@@ -8,6 +8,8 @@ public import struct Foundation.UUID
 public actor DictationPipeline {
     private let capture: any AudioCaptureEngine
     private let speech: any SpeechEngine
+    /// The engine a retry asked for in place of `speech`, for that one retry only.
+    private var retrySpeech: (any SpeechEngine)?
     /// A `var` so a clean-up step switched off takes effect on the next dictation rather than the next launch.
     private var cleaner: any TranscriptCleaning
     private let context: any ContextEngine
@@ -405,9 +407,9 @@ public actor DictationPipeline {
         return Task { await process(audio, mine, delivery: delivery) }
     }
 
-    /// Runs a kept recording through the same stages to the clipboard; false when it never ran or was abandoned.
+    /// Runs a kept recording to the clipboard, heard by `engine` if given; false when it never ran or was abandoned.
     @discardableResult
-    public func retry(_ recording: UUID) async -> Bool {
+    public func retry(_ recording: UUID, hearingWith engine: (any SpeechEngine)? = nil) async -> Bool {
         guard !isBusy else { return false }
         // Held while the file is read, so a dictation cannot open the microphone underneath the retry.
         hasTurn = true
@@ -445,6 +447,8 @@ public actor DictationPipeline {
         cleaningRecords = []
         openRecording = recording
         forgetTheLastAttempt()
+        retrySpeech = engine
+        defer { retrySpeech = nil }
         await process(audio, mine, delivery: .copy)
         return true
     }
@@ -882,7 +886,7 @@ public actor DictationPipeline {
                         biasedTowards: await vocabulary(mine, seeing: earlyContext ?? AppContext()),
                         recording: tally, skippingAMiss: true, for: mine)
                 } catch {
-                    failure = Self.failure(error, in: audio, speechEngineKind: speech.kind)
+                    failure = Self.failure(error, in: audio, speechEngineKind: (retrySpeech ?? speech).kind)
                     tidying.cancelAll()
                     return
                 }
@@ -1100,6 +1104,7 @@ public actor DictationPipeline {
         // The dictation's one read, so every piece is conditioned on the same caret. See `Docs/context-budget.md`.
         let preceding = dictationContext?.app.recognitionContext
         let speaks = VoiceActivity.speechRange(in: slice.samples, sampleRate: slice.sampleRate) != nil
+        let speech = retrySpeech ?? speech
         let heard = try await metrics.measuringInTime(.transcription, clock: clock) {
             try await withStageTimeout(StageTimeout.transcription, clock: clock) {
                 [speech] () async throws -> Heard in
