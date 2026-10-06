@@ -45,6 +45,9 @@ public enum SettingsEditor {
         case .appearance(let appearance):
             // No capability to check: every Mac can draw itself light or dark.
             updated.appearance = appearance
+        case .microphone(let uid):
+            // An absent device is kept: capture falls back to the default until it is plugged in again.
+            updated.microphoneUID = uid
         case .handsFreeDoubleTap(let milliseconds):
             guard Settings.handsFreeDoubleTapChoices.contains(milliseconds) else {
                 throw SettingsRejection(reason: "Choose a listed hands-free interval.")

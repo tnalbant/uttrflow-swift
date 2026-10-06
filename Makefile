@@ -137,6 +137,10 @@ range-test: ## Prove the disclosure audit reads every revision range the pre-pus
 hits-test: ## Prove the disclosure audit counts every same-line match, not just the first per pattern. Needs no build.
 	@python3 Scripts/disclosure_hits_test.py
 
+.PHONY: live-tally-test
+live-tally-test: ## Prove a skipped live-model suite is counted as skipped, not run. Needs no build.
+	@python3 Scripts/live_model_tally_test.py
+
 .PHONY: pre-push-test
 pre-push-test: ## Prove the pre-push hook uses the disclosure audit paired with the hook, not the worktree's copy. Needs no build.
 	@python3 Scripts/pre_push_hook_test.py

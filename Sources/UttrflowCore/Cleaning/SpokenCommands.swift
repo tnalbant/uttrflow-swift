@@ -63,7 +63,7 @@ public struct SpokenCommand: DataTableRow, Equatable {
     public let action: Action
     /// The text it writes.
     public let text: String
-    /// Where a mark goes relative to its name; trailing when the row does not say.
+    /// Where a mark goes relative to its name: the row's own when it says, otherwise the mark's row in `MarkSpacing`, otherwise trailing.
     public let placement: SpokenMarkKind
     /// Whether the command writes a list item, so it applies only where lists are laid out.
     public let requiresLists: Bool
@@ -85,7 +85,9 @@ public struct SpokenCommand: DataTableRow, Equatable {
         words = try container.decode([String].self, forKey: .words)
         action = try container.decode(Action.self, forKey: .action)
         text = try container.decode(String.self, forKey: .text)
-        placement = try container.decodeIfPresent(SpokenMarkKind.self, forKey: .placement) ?? .trailing
+        placement =
+            try container.decodeIfPresent(SpokenMarkKind.self, forKey: .placement)
+            ?? (text.count == 1 ? text.first.flatMap(MarkSpacing.kind(of:)) : nil) ?? .trailing
         requiresLists = try container.decodeIfPresent(Bool.self, forKey: .requiresLists) ?? false
         destinations = try container.decodeIfPresent(Set<Destination>.self, forKey: .destinations)
         reach = try container.decodeIfPresent(Reach.self, forKey: .reach) ?? .clause

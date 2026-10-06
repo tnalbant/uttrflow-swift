@@ -875,6 +875,23 @@ struct NumberWordsTests {
         #expect(NumberWords.render(1_234_567, grouping: .none) == "1234567")
     }
 
+    @Test(
+        "converts an English amount with lakh or crore whole, never half in words",
+        arguments: [
+            ("one lakh fifty thousand rupees", .thousands, "150,000 rupees"),
+            ("two lakh rupees", .thousands, "200,000 rupees"),
+            ("twenty five lakh rupees", .thousands, "2,500,000 rupees"),
+            ("one crore twenty lakh", .thousands, "12,000,000"),
+            ("it costs one hundred fifty thousand rupees", .thousands, "it costs 150,000 rupees"),
+            ("one lakh fifty thousand rupees", .indian, "1,50,000 rupees"),
+            ("one crore twenty lakh", .indian, "1,20,00,000"),
+            ("three lac rupees", .indian, "3,00,000 rupees"),
+        ] as [(String, DigitGrouping, String)]
+    )
+    func indianScaleWords(input: String, grouping: DigitGrouping, expected: String) {
+        #expect(cleaned(input, by: NumberFormsPass(policy: .always, digits: grouping)) == expected)
+    }
+
     @Test("groups by lakh and crore when the number style says Indian")
     func indianGrouping() {
         #expect(NumberWords.render(10_000, grouping: .indian) == "10,000")
