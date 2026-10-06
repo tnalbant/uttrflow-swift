@@ -6,7 +6,7 @@ public import Foundation
 public enum ConsentDecision: Sendable, Equatable, CaseIterable {
     /// The user has opted in, so this application may be learned from.
     case proceed
-    /// Nothing has been asked yet, so nothing is learned and the user is asked once.
+    /// Nothing has been asked yet, so capture waits for the user's answer.
     case refuseAndAsk
     /// The user said no, so nothing is learned and nothing is said about it again.
     case refuseQuietly

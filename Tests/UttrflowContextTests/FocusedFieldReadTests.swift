@@ -94,6 +94,16 @@ struct FocusedFieldReadTests {
         #expect(ContextNeed.caretEdges.union(.caretEdges) == .caretEdges)
     }
 
+    @Test func turnReadsNoWiderThanItsWidestConsumer() {
+        let consumers = ContextNeed.dictationConsumers
+        #expect(ContextNeed.turn.unitsBefore == consumers.map(\.unitsBefore).max())
+        #expect(ContextNeed.turn.unitsAfter == consumers.map(\.unitsAfter).max())
+        #expect(ContextNeed.turn.selectionUnits == consumers.map(\.selectionUnits).max())
+        #expect(ContextNeed.turn.unitsBefore == ValueWindow.unitsBefore)
+        #expect(ContextNeed.turn.unitsAfter == ValueWindow.unitsAfter)
+        #expect(ContextNeed.turn.selectionUnits == ValueWindow.selectionLimit)
+    }
+
     @Test func namesAreAskedTogetherAndReadInOrder() {
         let node = Self.field([
             "AXRole": .value("AXTextField"), "AXPlaceholderValue": .value("Password"),
@@ -115,5 +125,38 @@ struct FocusedFieldReadTests {
         #expect(classify(-25204) == .cannotComplete)
         #expect(classify(-25204, elapsed: 2) == .timedOut)
         #expect(classify(-25205) == .unsupported)
+    }
+
+    @Test func selectionIsReadByRangeNoLongerThanTheWindow() {
+        let long = String(repeating: "a", count: 1_000_000)
+        let log = MessageLog()
+        let node = Self.field(["AXValue": .value(long)])
+        let selected = FocusedFieldRead.selectedText(
+            of: node, in: FakeTree(root: node, messages: log), at: NSRange(location: 0, length: 1_000_000))
+        #expect(selected?.utf16.count == FocusedFieldRead.selectionReadUnits)
+        #expect(log.asked == ["AXStringForRange"])
+        #expect(log.ranges.allSatisfy { $0.length <= FocusedFieldRead.selectionReadUnits })
+        let kept = selected.map(MacContextEngine.truncated)
+        #expect(kept?.hasSuffix(MacContextEngine.truncationMarker) == true)
+    }
+
+    @Test(arguments: [FieldAnswer.noValue, .unsupported, .cannotComplete, .timedOut])
+    func refusedSelectionRangeIsUnknownNotTheWholeValue(refusal: FieldAnswer) {
+        let long = String(repeating: "a", count: 1_000_000)
+        let log = MessageLog()
+        let node = Self.field(["AXValue": .value(long), "AXStringForRange": refusal])
+        let selected = FocusedFieldRead.selectedText(
+            of: node, in: FakeTree(root: node, messages: log), at: NSRange(location: 0, length: 1_000_000))
+        #expect(selected == nil)
+        #expect(log.asked == ["AXStringForRange"])
+    }
+
+    @Test func emptyOrUnknownSelectionAsksNothing() {
+        let log = MessageLog()
+        let node = Self.field(["AXValue": .value("hello")])
+        let tree = FakeTree(root: node, messages: log)
+        #expect(FocusedFieldRead.selectedText(of: node, in: tree, at: nil) == nil)
+        #expect(FocusedFieldRead.selectedText(of: node, in: tree, at: NSRange(location: 2, length: 0)) == nil)
+        #expect(log.asked.isEmpty)
     }
 }

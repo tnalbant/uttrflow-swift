@@ -28,7 +28,8 @@ public struct DictationExplanation: Sendable, Equatable {
         _ request: TransformationRequest, through cleaner: any TranscriptCleaning
     ) async throws(TransformationError) -> DictationExplanation {
         let draft = CleaningPipeline.beforeModel(
-            for: .standard(for: request.situation), situation: request.situation
+            for: .standard(for: request.situation), situation: request.situation,
+            pauses: request.profile.pauses
         ).run(Draft(transcription: request.transcription))
         let doubtful = await DoubtfulWords.standard.spans(in: draft, for: request.situation)
         let result = try await cleaner.clean(request)
@@ -72,6 +73,7 @@ public struct DictationExplanation: Sendable, Equatable {
         }
             + record.engineFailures.map { Self.row("failed", "\($0.engine): \($0.failureClass.rawValue)") }
             + record.refusals.map { Self.row("refused", "\($0.engine): \($0.reason)") }
+            + record.modelAnswers.map { Self.row("model said", $0.replacingOccurrences(of: "\n", with: "⏎")) }
             + record.changes.map {
                 Self.row(
                     "step",

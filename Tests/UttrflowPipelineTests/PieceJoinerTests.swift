@@ -422,6 +422,18 @@ struct PieceJoinerRestatementTests {
             joined(["We ship on the third.", "No, sorry, on the fourth."], .document)
                 == "We ship on the fourth.")
     }
+
+    /// A middle piece that is only a restatement word should not crash the joiner when the next piece opens with a number.
+    @Test("does not crash when the middle piece is only a restatement word before a number")
+    func restatementWordAsOnlyMiddlePiece() {
+        let pieces = [
+            piece("Lets meet at two."),
+            piece("actually"),
+            piece("three."),
+        ]
+        let whole = PieceJoiner.join(pieces, under: .standard(for: .document))
+        #expect(whole.cleaned.text == "Lets meet at three.")
+    }
 }
 
 @Suite("PieceJoiner whole")
@@ -930,5 +942,31 @@ struct PieceJoinerSeamTests {
         }
 
         #expect(kept.isEmpty)
+    }
+}
+
+@Suite("Seam stops around a snippet expansion")
+struct SeamSnippetInputTests {
+    private let input = SeamSnippetInput(
+        text: "W1 X. W2 X. W3 X", removableStops: [4, 10], source: "W1 X. W2 X. W3 X")
+
+    @Test("an expansion that changed nothing leaves the seam stops where they were")
+    func unchangedExpansionKeepsStops() {
+        let unchanged = ExpandedTranscript.unchanged(input.removingSeamStops())
+        #expect(input.restoringUnconsumedStops(in: unchanged).text == "W1 X. W2 X. W3 X")
+    }
+
+    @Test("a stop whose seam is still a gap after the expansion comes back in place")
+    func gapKeepsItsStop() {
+        let expanded = ExpandedTranscript(text: "W1 X W2 X W3 Y", snippets: [])
+        #expect(input.restoringUnconsumedStops(in: expanded).text == "W1 X. W2 X. W3 Y")
+    }
+
+    @Test("a snippet's caret moves with the stops restored before it")
+    func caretFollowsRestoredStops() {
+        let expanded = ExpandedTranscript(text: "W1 X W2 X W3 Y", snippets: [], caret: 6)
+        let restored = input.restoringUnconsumedStops(in: expanded)
+        #expect(restored.text == "W1 X. W2 X. W3 Y")
+        #expect(restored.caret == "W1 X. W".utf16.count)
     }
 }

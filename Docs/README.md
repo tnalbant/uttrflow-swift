@@ -29,6 +29,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [silence.md](silence.md) | Silence, and why it has to be caught before the recogniser |
 | [speech-engines.md](speech-engines.md) | The speech engines, and what WhisperKit does when nobody is looking |
 | [decoder-evidence.md](decoder-evidence.md) | What WhisperKit can say about a doubtful word |
+| [decode-session.md](decode-session.md) | The decode loop the repository owns, and its parity with WhisperKit's |
 | [speech-vocabulary-prompt.md](speech-vocabulary-prompt.md) | Conditioning Whisper on the user's own words |
 | [speech-model-install.md](speech-model-install.md) | Installing a speech model, one component at a time |
 | [early-transcription.md](early-transcription.md) | Working ahead while the key is held |
@@ -39,6 +40,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [context-accessibility.md](context-accessibility.md) | What applications actually answer |
 | [chat-mail-probe.md](chat-mail-probe.md) | What the dictation read gets from a chat composer or a mail body |
 | [web-field-probe.md](web-field-probe.md) | What the dictation read gets from a web field |
+| [terminal-probe.md](terminal-probe.md) | What the dictation read gets from a terminal |
 | [accessibility-private-api.md](accessibility-private-api.md) | Accessibility private API |
 | [accessibility-controls.md](accessibility-controls.md) | Every control, its accessible name and its keyboard status |
 | [compatibility.md](compatibility.md) | What each kind of application actually does with the words |
@@ -52,6 +54,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | Page | What it covers |
 |---|---|
 | [cleanup.md](cleanup.md) | What the tidier may do to your words |
+| [closed-phrase-marks.md](closed-phrase-marks.md) | Recogniser commas and stops after a closed-class word, measured |
 | [lexical-class.md](lexical-class.md) | Reading a word's class, and how far the tagger holds on bare recogniser text |
 | [cleanup-design.md](cleanup-design.md) | Clean-up: the low-level design |
 | [dictation-trace.md](dictation-trace.md) | Explaining one dictation, stage by stage |
@@ -62,7 +65,9 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [adding-a-pass.md](adding-a-pass.md) | Adding a cleaning pass, step by step |
 | [adding-a-destination.md](adding-a-destination.md) | Adding a destination, step by step |
 | [data-tables.md](data-tables.md) | Word tables as data: the one loader, its checks and its fallback |
+| [lexicon.md](lexicon.md) | Adding a technical term: the entry, what is rejected, the check |
 | [data-manifest.md](data-manifest.md) | Origin, licence and digest of every bundled resource file, and the check |
+| [ngram-sources.md](ngram-sources.md) | Pinned text sources for the shipped n-gram table, the licence allowlist, and the check |
 | [data-asset-delivery.md](data-asset-delivery.md) | Bundled or downloaded data assets: sizes, load time and update path |
 | [ai-model-output.md](ai-model-output.md) | What a small model does to dictation, and the guards that catch it |
 | [ai-context-line.md](ai-context-line.md) | The context line, measured |
@@ -132,6 +137,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [account-keychain.md](account-keychain.md) | The refresh token in the Keychain: what `KeychainTokenStore` promises |
 | [account-transport.md](account-transport.md) | The transport: why `URLSessionTransport` has no cache |
 | [crash-reporting.md](crash-reporting.md) | Crash and hang reporting |
+| [account-server-data.md](account-server-data.md) | Account data on the server: what is kept, for how long, and how it is deleted |
 | [account-telemetry.md](account-telemetry.md) | Telemetry: what leaves the Mac, and why a dictation never waits for it |
 | [core-history-decoding.md](core-history-decoding.md) | Decoding a stored history: one unreadable change costs one change |
 | [core-history-undo.md](core-history-undo.md) | Undoing a correction: how the words are found and when they are left alone |
@@ -163,6 +169,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [measuring-accuracy.md](measuring-accuracy.md) | Measuring speech accuracy |
 | [core-word-error-rate.md](core-word-error-rate.md) | Word error rate |
 | [eval-methodology.md](eval-methodology.md) | How `uttrflow-eval transcribe` measures a recogniser |
+| [disfluency-deletion.md](disfluency-deletion.md) | Disfluency removal scored by the words deleted, per class |
 | [eval-context-cases.md](eval-context-cases.md) | The Hinglish and context cases in the evaluation corpus |
 | [eval-profiling.md](eval-profiling.md) | Reading memory and processor use from inside the process |
 | [performance.md](performance.md) | What Uttrflow costs a Mac |
@@ -184,6 +191,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [ui-tests.md](ui-tests.md) | Driving the real app |
 | [packaging.md](packaging.md) | Packaging Uttrflow.app |
 | [releasing.md](releasing.md) | Releasing Uttrflow |
+| [rollback.md](rollback.md) | Rolling back a release |
 | [operator-runbook.md](operator-runbook.md) | Operator runbook |
 | [definition-of-done.md](definition-of-done.md) | Definition of done |
 | [preferences-suites.md](preferences-suites.md) | Temporary `UserDefaults` suites in tests |

@@ -276,7 +276,7 @@ public enum MenuBarIntent: Sendable, Equatable {
     case copyClip(id: UUID)
     /// Removes and refuses a learned word, named by its entry so a redraw cannot change which.
     case undoLearnedWord(id: UUID)
-    case open(Destination)
+    case open(AppLocation)
     /// Opens the clipboard panel, which is otherwise reachable only by a shortcut nothing mentions.
     case openClipboard
     /// Move one of the three switches, naming the one it moves so the other two cannot follow.

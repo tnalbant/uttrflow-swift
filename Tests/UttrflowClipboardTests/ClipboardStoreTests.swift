@@ -46,6 +46,26 @@ struct ClipboardStoreTests {
         #expect(persisted.isEmpty)
     }
 
+    /// A picture clip carries empty text, and the launch reclassifier must not overwrite its kind.
+    @Test("keeps a picture clip's kind as image on relaunch")
+    func pictureKindSurvivesRelaunch() async throws {
+        let folder = try TemporaryFolder()
+        let noticed = NoticedClip(
+            clip: Clip(text: "", kind: .image, copiedAt: Date()),
+            picture: (ClipImageTests.bytes, 1024, 768))
+        _ = try await folder.store.record(noticed, keeping: folder.retention)
+        let file = folder.url.appending(path: "clipboard.json", directoryHint: .notDirectory)
+
+        let next = ClipboardStore(file: file)
+        let clips = await next.clips(keeping: folder.retention)
+
+        let picture = try #require(clips.first?.image)
+        #expect(clips.first?.kind == .image)
+        let persisted = try JSONDecoder().decode([Clip].self, from: Data(contentsOf: file))
+        #expect(persisted.first?.kind == .image)
+        #expect(persisted.first?.image == picture)
+    }
+
     /// Arrival order, not clock order, so a Mac whose clock jumped cannot shuffle the list.
     @Test("orders by arrival, not by the timestamp it was handed")
     func arrivalOrder() async throws {
@@ -528,22 +548,59 @@ struct ClipboardStoreTests {
         #expect(try await store.setAlias(nil, of: subject.id, keeping: week())[0].alias == nil)
     }
 
-    @Test("restoring a deleted clip does not reclaim an alias assigned to another clip")
-    func restoringDeletedClipDoesNotDuplicateAlias() async throws {
+    @Test(
+        "undoing a delete keeps the newer clip's alias and restores the older clip unnamed",
+        .bug(id: 3750))
+    func undoingDeleteDoesNotTakeAliasFromNewerClip() async throws {
         let file = TemporaryFile()
         let store = ClipboardStore(file: file.url)
-        let deleted = clip("first", alias: "x")
+        // The clip that will take the name already exists; assigning an alias does not make it more recently used.
         let renamed = clip("second")
-        try await store.record(deleted, keeping: week())
-        try await store.delete(deleted.id, keeping: week())
         try await store.record(renamed, keeping: week())
+        let source = clip("first", alias: "x")
+        let recorded = try await store.record(source, keeping: week())
+        let deleted = try #require(recorded.first { $0.id == source.id })
+        try await store.delete(deleted.id, keeping: week())
         try await store.setAlias("x", of: renamed.id, keeping: week())
 
-        let restored = try await store.record(deleted, keeping: week())
+        _ = try await store.restore(deleted, keeping: week())
+        let restored = await store.clips(keeping: week())
 
         #expect(restored.first { $0.id == renamed.id }?.alias == "x")
         #expect(restored.first { $0.id == deleted.id }?.alias == nil)
         #expect(restored.compactMap(\.alias) == ["x"])
+        let reopened = await ClipboardStore(file: file.url).clips(keeping: week())
+        #expect(reopened.first { $0.id == renamed.id }?.alias == "x")
+        #expect(reopened.first { $0.id == deleted.id }?.alias == nil)
+    }
+
+    @Test(
+        "undoing a duplicate does not give its name to the newer copy when another clip holds it",
+        .bug(id: 3750))
+    func undoingDuplicateDoesNotTakeAliasFromAnotherClip() async throws {
+        let file = TemporaryFile()
+        let store = ClipboardStore(file: file.url)
+        let deleted = clip("same text", at: -60, alias: "x", category: "Work")
+        try await store.record(deleted, keeping: week())
+        try await store.delete(deleted.id, keeping: week())
+
+        let newer = clip("same text")
+        let aliasHolder = clip("another text", alias: "x")
+        try await store.record(newer, keeping: week())
+        try await store.record(aliasHolder, keeping: week())
+
+        let result = try await store.restoreReportingAliasConflict(deleted, keeping: week())
+        let restoredDuplicate = try #require(result.clips.first { $0.text == "same text" })
+
+        #expect(result.aliasWasAlreadyInUse)
+        #expect(restoredDuplicate.id == newer.id)
+        #expect(restoredDuplicate.copiedAt == newer.copiedAt)
+        #expect(restoredDuplicate.alias == nil)
+        #expect(restoredDuplicate.category == "Work")
+        #expect(result.clips.first { $0.id == aliasHolder.id }?.alias == "x")
+        let reopened = await ClipboardStore(file: file.url).clips(keeping: week())
+        #expect(reopened.first { $0.id == newer.id }?.alias == nil)
+        #expect(reopened.first { $0.id == aliasHolder.id }?.alias == "x")
     }
 
     @Test("refuses to assign an alias already held by another clip")

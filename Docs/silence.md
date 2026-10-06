@@ -174,3 +174,71 @@ doubtful-word repair for that piece. One representation cannot disagree with its
 
 With only markers left, the mapped transcript is blank, so the pipeline treats it as nothing heard
 and refuses insertion ([`pipeline.md`](pipeline.md)).
+
+## Measuring what still gets through
+
+`uttrflow-eval nonspeech` (`Sources/uttrflow-eval/NonSpeechProbe.swift`) runs a generated
+non-speech corpus through `BackedSpeechEngine`, the same voice-activity check, trim and loop repair
+a dictation goes through, so it reports the residual rather than raw decoder behaviour. Every clip
+is synthetic and repeatable from its seed (`NonSpeechKind`, `Sources/UttrflowEval/NonSpeech.swift`):
+
+| Kind | Signal, 5 s |
+|---|---|
+| `silence` | digital zero |
+| `roomTone` | low-passed noise at −60 dBFS RMS |
+| `hiss` | white noise at −30 dBFS RMS |
+| `keyboard` | 15 ms decaying bursts, jittered round one every 0.18 s |
+| `breath` | low-passed noise near −40 dBFS rising and falling every 2.5 s |
+| `music` | a three-note chord changing every 0.5 s, at −20 dBFS RMS |
+
+Each kind is also appended, `--tail-seconds` long (default 4), after each `SpokenClips` sentence
+read by `say`, which is the trailing pause after real speech.
+
+| Rate | Counted per clip | Rule |
+|---|---|---|
+| insertion rate | the transcript holds words after the last spoken word that were not said; for a clip with no speech, any word | `NonSpeechScore.insertedWords` |
+| repetition-loop rate | one phrase of at least 3 words follows itself at least 3 times | `NonSpeechScore.looped` |
+
+Both are gated: the command exits non-zero when either rate is above `--max-insertion-rate` or
+`--max-loop-rate`, both 0 by default. `nothingHeard` counts as nothing typed.
+
+## Trim error against known speech boundaries
+
+Probed with `VoiceActivityOnsetGridTests` (`swift test --filter VoiceActivityOnsetGridTests`, one
+`ONSETGRID` line per cell). Each clip is one second of white room noise, two synthetic words
+150 ms apart, and one second of room, so the speech boundaries are exact. A word is an onset, a
+300 ms vowel (a 150 Hz tone) at the speech level, and the onset reversed as its coda. Onsets: a
+vowel (none), a plosive (10 ms burst 6 dB down, then a 40 ms gap), a nasal (80 ms of 220 Hz,
+12 dB down) and a fricative (100 ms of noise, 20 dB down).
+
+Each cell is the signed error of the start and end of `speechRange`, in milliseconds: a negative
+start and a positive end keep audio outside the speech; the reverse would clip it.
+
+| Speech | Floor | vowel | plosive | nasal | fricative |
+|---|---|---|---|---|---|
+| −45 dBFS | −70 / −60 | −200 / +210 | −160 / +150 | −200…−120 / +210…+130 | −100 / +110 |
+| −45 dBFS | −50 to −35 | **rejected** | **rejected** | **rejected** | **rejected** |
+| −35 dBFS | −70 to −50 | −200 / +210 | −160 / +150 | −200…−120 / +210…+130 | −200…−100 / +210…+110 |
+| −35 dBFS | −40 / −35 | **rejected** | **rejected** | **rejected** | **rejected** |
+| −25 dBFS | −70 to −35 | −200 / +210…+190 | −160…−140 / +150 | −200…−120 / +210…+110 | −200…−100 / +210…+90 |
+| −15 dBFS | −70 to −35 | −200 / +210 | −160 / +150 | −200…−120 / +210…+130 | −200…−100 / +210…+110 |
+
+No cell clips a speech sample. A quiet onset or coda that stays under the threshold is
+covered by `margin`, and what is left of the margin is 200 ms minus the length of the part the
+threshold missed: 100 ms for a fricative at its worst, 40 ms of plosive gap and burst. An onset
+longer than `margin` and more than `signalToNoise` below its vowel would be clipped; none here is.
+
+Every refused cell has speech 5 dB or less above the floor, under the three-to-one
+(about 9.5 dB) comparison, so the whole dictation is refused as nothing heard. The constant
+that decides those cells is `signalToNoise`; it stays as it is until a real-speech grid shows
+what lowering it admits from steady room tone.
+
+## Telling the person while they speak
+
+`InputSilence` (`Sources/UttrflowCore/Support/InputSilence.swift`) reads the dock's 20 Hz level
+during a recording and compares it with `VoiceActivity.absoluteFloor`, the same constant the
+refusal applies afterwards. Once every reading has stayed below it for `patience` (2 s), the dock
+shows a second line, "Can't hear you. Check the microphone.", and VoiceOver says it once; the
+recording carries on, and the line clears on the first reading that reaches the floor. A quiet
+room sits near −55 dBFS, far above the −90 dBFS floor, so a natural pause never trips it, and
+neither does quiet speech. Only a muted, zeroed or dead input does. Too-loud input is not its job.

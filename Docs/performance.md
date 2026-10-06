@@ -33,7 +33,8 @@ Every figure was taken on one machine:
 **Three headlines, in the order they matter.**
 
 **A dictation is nearly free, and it is free in the surprising direction.** A fifteen-second
-dictation costs **0.76 processor-seconds** and finishes in 2.4 s. It never holds even half a core,
+dictation costs **0.76 processor-seconds** and finished in 2.4 s in the historical profile
+(commit `8b07c12e9`, 2026-08-29; current latency is [below](#latency-budget-per-stage)). It never holds even half a core,
 because the work is on the Neural Engine and the app spends most of a dictation waiting. So the
 answer to "what Mac does this need" is not about cores or clock speed.
 
@@ -205,7 +206,10 @@ model is released, reloaded and kept off a Mac under pressure is in
 The speech model fits inside the first two lines with room to spare, so it stays loaded between
 dictations. `AppDelegate` lets the recogniser go under memory pressure unless a dictation is under
 way; the next key-down loads it again, which costs 2–9 s with the Neural Engine compile cached,
-and the app shows the model as loading until it is ready.
+and the app shows the model as loading until it is ready. A critical reading always releases it.
+A warning releases it only once the last reload has held for the wait of the same
+`ModelMemoryPressure` policy the suggestion model uses (120 s, doubling to 1,800 s while reloads
+keep being followed by pressure), so frequent warnings cannot make every dictation pay a reload.
 
 The suggestion model is what the budget is about: on an 8 GB Mac its 3 GB is close to half of all
 memory, so nothing loads it for somebody who never asked, and turning the feature off gives it
@@ -223,8 +227,9 @@ no build, no model and no window, and reads the source for the ways a budget can
 | priority | the suggestion and local-model modules ask for more than utility priority, detach a task without one, or the app uses the suggestion model outside a `Discretionary` wrapper |
 | motion | a `TimelineView`, `repeatForever`, phase or keyframe animator or repeating symbol effect reads neither `MotionBudget` nor `WindowAttention`, is paused by a literal, or never reads `WindowAttention` outside the dock and menu bar panels, which never become key |
 | cache | a model pass (`perform`, `generate`, `TokenIterator`, `ChatSession`) sits in no function that caps MLX's cache and clears it on exit, a `release()` does not clear it, or the cap is over 256 MB |
-| counters | `ResourceBudget`'s limits differ from the table above |
+| counters | `ResourceBudget`'s limits differ from the memory or disk budget table |
 | suggestions | the key-path limits above differ from what `SuggestionCoordinator` and `SuggestionPanelController` do |
+| latency | the table under "Latency budget per stage" has no rows, or a row whose budget is not its p95 plus 20% |
 
 `--self-test` injects one violation per check into the tree as read and fails unless the audit
 catches it, so a rule that has stopped matching the code is found rather than trusted. A known
@@ -248,8 +253,62 @@ Memory can only be read with the models loaded, so `make perf-budget-models` run
 `uttrflow-bakeoff gpu-memory --passes 12 --release` and `uttrflow-bakeoff profile --dictations 10`,
 and each exits non-zero when a reading is over its line: every settled moment of a profile against
 the idle line, its peak against a dictation's, each pass's peak and settled footprint against the
-suggestion lines, and the footprint a second after a release against the idle line.
-`ResourceBudget` is the one judge both use.
+suggestion lines, and the footprint a second after a release against the idle line. The profile
+also reads the support folder against the disk budget. `ResourceBudget` is the one judge both use.
+
+## Latency budget per stage
+
+Each stage's budget is its measured p95 plus 20%: `LATENCY_HEADROOM` in
+`Scripts/perf_budget_audit.py` is the one place that figure lives, and the source audit fails a row
+whose budget is not its p95 times it. A run comes from `uttrflow-dev bench` with the shipping tidier,
+clean audio, played at speaking pace (`rt`), and is judged by the same `percentile` that
+`Scripts/dictation_bench.py score` prints.
+
+| stage | what it times |
+|---|---|
+| `wait:<category>` | key release to the words being ready, one row per dictation length; insertion is not in it |
+| `asr:<field>` | one piece's recognition and its sub-stages, from the `asr` events `bench` writes |
+| `clean` | one tidy by the shipping tidier |
+
+This is the current latency of the app; every other latency figure in these pages is historical
+and is labelled with the commit that recorded it. A re-measurement replaces both tables below and
+names its commit, which the source audit requires.
+
+| measured at | hardware | build | load average | mode |
+|---|---|---|---|---|
+| commit `cfb11bf73` | Apple M5 Pro, 48 GB | Release | 225–374 | real time, early transcription, clean audio, shipping tidier, 2 repeats of `dur5`, `dur30`, `dur120` |
+
+**These numbers were measured on a loaded Mac and are to be re-measured on an idle one.** The load
+came from other builds, so they are several times the quiet-Mac waits recorded earlier in
+[`performance-dictation.md`](performance-dictation.md#the-wait).
+
+| stage | p95 s | budget s | samples |
+|---|---|---|---|
+| `asr:decodeSeconds` | 8.269 | 9.923 | 78 |
+| `asr:decoderSetupSeconds` | 0.031 | 0.038 | 78 |
+| `asr:encodeSeconds` | 0.637 | 0.765 | 78 |
+| `asr:melSeconds` | 0.574 | 0.689 | 78 |
+| `asr:recognitionSeconds` | 11.813 | 14.176 | 78 |
+| `asr:wordTimingSeconds` | 0.574 | 0.689 | 78 |
+| `clean` | 5.557 | 6.669 | 75 |
+| `wait:dur120` | 38.950 | 46.740 | 6 |
+| `wait:dur30` | 13.985 | 16.782 | 6 |
+| `wait:dur5` | 9.518 | 11.422 | 6 |
+
+The source audit checks only the table. Timing needs the models and a quiet Mac, so it is not in
+`make verify` or CI; a release candidate runs it, and `--measure` prints the rows above for a new run:
+
+```
+python3 Scripts/dictation_bench.py jobs --mode rt --clean-only --cleaners shipping \
+    --categories dur5,dur30,dur120 --repeat 2 > .build/bench/jobs-rt.tsv
+.build/release/uttrflow-dev bench .build/bench/jobs-rt.tsv > .build/bench/run.out
+python3 Scripts/perf_budget_audit.py --measure .build/bench/run.out
+make perf-budget-latency RUN=.build/bench/run.out
+```
+
+It exits 1 when any stage's p95 is over its budget or has fewer than 3 samples. `--self-test`
+proves a run within budget passes, the same run 50% slower fails every stage, and a budget loosened
+past its p95 plus headroom fails the table check.
 
 ## Processor
 
@@ -277,7 +336,8 @@ it would mean the times and the counters disagree.
 
 ### A slower processor barely matters
 
-`taskpolicy -b` runs the profile at background priority, which confines it to the efficiency
+**Historical, recorded by commit `8b07c12e9` (2026-08-29).** `taskpolicy -b` runs the profile at
+background priority, which confines it to the efficiency
 cores. The implied clock falls from **4.10 GHz to 1.87 GHz**, and the instruction counts come back
 identical to three significant figures (3.5, 8.8, 35.1 G against 3.5, 8.8, 35.0 G), so the same
 work ran on a slower processor.
@@ -318,6 +378,26 @@ regular files summed the way `Profile.bytes(under:)` sums them (`FileManager` re
 symlinks excluded) — mostly the 57.9 MB executable and the 3.8 MB MLX Metal library. All three are
 decimal MB (10^6 bytes). A fresh install is therefore **713.3 MB**: the speech model is downloaded
 on first launch, the application ships in the bundle, and the total is both added together.
+
+### The disk budget
+
+The support folder grows with use, so each part of it has a line. `ResourceBudget` holds the same
+numbers, and `make perf-budget-models` prints every part's size beside its line and fails when one
+is over. Each store entry in `LocalStoreInventory` counts against exactly one part, so a new store
+cannot go unbudgeted. These are binary MB (2^20 bytes), like the memory budget.
+
+| part | line | why that line |
+|---|---|---|
+| speech model, on disk | ≤ 768 MB | the installed model is 618 MB; a superseded revision or a staged download beside it is over |
+| recordings waiting for a retry | ≤ 256 MB | the cap `RecordingStore` prunes to, about 33 recordings of 240 s as 16-bit WAV |
+| dictation history | ≤ 64 MB | 1,000 records at most |
+| clipboard, with its pictures | ≤ 1024 MB | the pictures' own cap is 10^9 bytes, plus the list, saved clips and preferences |
+| diagnostics | ≤ 16 MB | the speech model's load log and the 30-day network ledger |
+| other stores | ≤ 64 MB | the dictionary, snippets, predictions, consent, key and lock |
+
+Read from the support folder of an Apple M5 Pro in daily use: speech model 618 MB, clipboard 9 MB
+(8.5 MB of it pictures), other stores 5 MB (the prediction database and its write-ahead log),
+history 0.1 MB, recordings 0 MB, diagnostics 0 MB.
 
 ## Delivery budget
 

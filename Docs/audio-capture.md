@@ -44,8 +44,9 @@ comments. [`microphone.md`](microphone.md) covers the hardware moving under the 
 
 ## Resampler fidelity
 
-`AudioResampler` leaves the converter's sample-rate quality and prime method at their
-defaults. `AudioResamplerFidelityTests` measures what that does to a signal: a 0.5 amplitude
+`AudioResampler` sets the converter's sample-rate quality to `AVAudioQuality.max` and leaves
+the prime method at its default. `AudioResamplerFidelityTests` measures what each quality does
+to a signal: a 0.5 amplitude
 sine on channel 0 of a one-second buffer, passband tones at 100 Hz, 1, 4 and 7 kHz, and
 stopband tones at 9, 10, 12, 16 and 20 kHz (each only where the input rate can carry it).
 Gain and alias are the RMS of the middle half of the output, relative to the input's RMS.
@@ -71,9 +72,10 @@ Measured on an Apple M5 Pro, macOS 26.5; the converter fed in the same 2048-fram
 - CPU, 60 s of 48 kHz mono in 4096-frame blocks: about 1.5 ms per audio second at the default
   and 3.5 ms at the highest quality.
 
-The default is kept. Changing it requires the corpus WER (`make bakeoff`) at both settings,
-which needs the quality to be selectable on the production path, and an audio-thread budget to
-compare the CPU cost with; neither exists yet.
+The highest quality is used: it removes the -20 dB alias at the rates microphones deliver for
+about 2 ms more CPU per audio second, 0.35% of one core. `AudioResamplerFidelityTests` holds
+the production path to the highest-quality alias figures per rate, so a fall back to the
+default fails.
 
 ## Microphone access is read before the engine
 
@@ -133,7 +135,8 @@ buffer ended (`CaptureTimeline`):
 - A hole up to 100 ms is filled with silence of the same length, pushed in the same block as the
   buffer after it, from zeros allocated once per engine, so word timings stay on the real clock.
 - A longer hole sets a flag the handoff's thread takes before delivering the next block, and the
-  session reports it as `CaptureInterruption.began`, the refusal a device change already takes.
+  session reports it as `CaptureInterruption.began`, which marks a discontinuity exactly as a
+  device change does (see [`microphone.md`](microphone.md)).
 - A lost buffer leaves the expected start where it was, so it reappears as the hole before the next
   one; lost buffers, holes and total hole length are counted on the timeline.
 
@@ -216,6 +219,23 @@ stop returns 1,365 more canonical samples than an undrained one, which is 85.3 m
 at 4096 frames and 48 kHz, resampled to 16 kHz. What the converter keeps back is a separate and much
 smaller loss: `AudioResampler` reuses one stateful `AVAudioConverter` across calls, so its delay line
 is emitted on the next call and only the final residual is lost.
+
+## Timing the drain on a device
+
+`TapDrain.wait` returns what it found: how long it slept, whether a block arrived inside the
+window, and how many converted samples the latest block carried. The microphone source keeps the
+latest one with the tap size and device rate as `lastDrain`, and `uttrflow-dev record` prints it
+after each stop, so repeated records on one input give the drain time per device:
+
+```bash
+uttrflow-dev record --seconds 3
+```
+
+The last block's sample count shows whether the device honoured the tap size: at 4096 frames and
+48 kHz a block converts to about 1,365 samples at 16 kHz, and a larger count means the engine
+delivered a larger block than asked. **Not measured:** drain p50 and p95 per device and the
+delivered block length at 1024 and 2048 frames, which need a person speaking into each input, and
+the CPU cost of a smaller tap.
 
 ## A key released before the last word ends
 

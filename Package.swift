@@ -163,7 +163,6 @@ let package = Package(
         .target(
             name: "UttrflowClipboard",
             dependencies: ["UttrflowCore"],
-            resources: [.process("Resources")],
             swiftSettings: sharedSwiftSettings
         ),
 

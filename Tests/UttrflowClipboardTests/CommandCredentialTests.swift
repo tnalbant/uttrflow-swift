@@ -3,6 +3,7 @@
 import Testing
 
 @testable import UttrflowClipboard
+@testable import UttrflowCore
 
 /// Every password and token below is invented.
 @Suite("A credential handed to a command or a header")

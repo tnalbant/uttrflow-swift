@@ -6,6 +6,17 @@ import CryptoKit
 import Security
 private import Synchronization
 
+/// The settled clipboard after undo and whether the restored alias conflicts.
+public struct ClipboardRestoreResult: Sendable, Equatable {
+    public let clips: [Clip]
+    public let aliasWasAlreadyInUse: Bool
+
+    package init(clips: [Clip], aliasWasAlreadyInUse: Bool) {
+        self.clips = clips
+        self.aliasWasAlreadyInUse = aliasWasAlreadyInUse
+    }
+}
+
 /// Counts the files a store writes while this is bound to `ClipboardStore.writes`.
 package final class StoreWriteTally: Sendable {
     private let files = Mutex(0)
@@ -155,16 +166,34 @@ public actor ClipboardStore {
     public func restore(
         _ clip: Clip, keeping retention: ClipRetention
     ) throws(ClipboardStoreError) -> [Clip] {
+        try restoreReportingAliasConflict(clip, keeping: retention).clips
+    }
+
+    /// Restores a deleted clip and reports whether its former name was already in use.
+    public func restoreReportingAliasConflict(
+        _ clip: Clip, keeping retention: ClipRetention
+    ) throws(ClipboardStoreError) -> ClipboardRestoreResult {
         let existing = loaded()
         guard !existing.contains(where: { $0.id == clip.id }) else {
-            return retained(existing, keeping: retention)
+            return ClipboardRestoreResult(
+                clips: retained(existing, keeping: retention), aliasWasAlreadyInUse: false)
         }
-        guard let matching = Self.previous(for: clip, in: existing) else {
-            return try settled([clip] + existing, keeping: retention)
+        let matching = Self.previous(for: clip, in: existing)
+        let aliasConflict =
+            clip.alias.map { alias in
+                existing.contains { $0.id != matching?.id && $0.alias == alias }
+            } ?? false
+        var deleted = clip
+        if aliasConflict { deleted.alias = nil }
+
+        guard let matching else {
+            let clips = try settled([deleted] + existing, keeping: retention)
+            return ClipboardRestoreResult(clips: clips, aliasWasAlreadyInUse: aliasConflict)
         }
-        let restored = restoring(clip, over: matching)
+        let restored = restoring(deleted, over: matching)
         let updated = existing.map { $0.id == matching.id ? restored : $0 }
-        return try settled(updated, keeping: retention)
+        let clips = try settled(updated, keeping: retention)
+        return ClipboardRestoreResult(clips: clips, aliasWasAlreadyInUse: aliasConflict)
     }
 
     /// Moves a used clip to the top of its history or saved pool; the disk hears of it with the next write.
@@ -303,7 +332,8 @@ public actor ClipboardStore {
 
     /// Where the pictures live: a folder beside the clipboard file, never inside that whole-file rewrite.
     public var imagesFolder: URL {
-        file.deletingLastPathComponent().appending(path: "Images", directoryHint: .isDirectory)
+        file.deletingLastPathComponent().appending(
+            path: LocalStoreEntry.clipboardImages.name, directoryHint: .isDirectory)
     }
 
     /// Records a noticed copy, writing its picture first so a clip never points at a file that is missing.
@@ -742,7 +772,7 @@ public actor ClipboardStore {
     /// Where saved clips are kept: beside the history and never in it. See `Docs/clipboard-store.md`.
     var savedFile: URL {
         file.deletingLastPathComponent()
-            .appending(path: "saved.v1.json", directoryHint: .notDirectory)
+            .appending(path: LocalStoreEntry.savedClips.name, directoryHint: .notDirectory)
     }
 
     /// The list, read from disk the first time and from memory thereafter.
@@ -824,9 +854,13 @@ public actor ClipboardStore {
     private func reclassifyStoredClips(_ clips: [Clip], at url: URL) -> [Clip] {
         guard reclassifiedFiles.insert(url).inserted, !hasUnreadableIndex, !unreplaceable.contains(url)
         else { return clips }
-        guard !LocalStore.hasSetAside(url) else { unreplaceable.insert(url); return clips }
+        // A set-aside copy is left for the user to recover; it never makes this file unwritable.
+        guard !LocalStore.hasSetAside(url) else { return clips }
+        // A picture's kind is decided by the bytes it carries, never by the empty text next to it.
         let updated = clips.map { clip in
-            clip.reclassified(as: ClipKindDetector.classification(of: clip.text))
+            clip.image == nil
+                ? clip.reclassified(as: ClipKindDetector.classification(of: clip.text))
+                : clip
         }
         guard updated != clips else { return clips }
         // A secret clip's picture is removed only after its replacement index is safely written.

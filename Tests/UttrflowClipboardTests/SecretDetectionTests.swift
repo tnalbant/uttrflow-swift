@@ -5,6 +5,7 @@ import Testing
 import UttrflowTestSupport
 
 @testable import UttrflowClipboard
+@testable import UttrflowCore
 
 /// The one detection rule with a cost attached to being wrong; every credential below is invented.
 @Suite("What must not be legible on a shared screen")
@@ -818,7 +819,7 @@ struct SecretDetectionTests {
             "123456789012",
             "123e4567-e89b-12d3-a456-426614174000",
             "com.uttrflow.clipboard.watcher.queue1",
-            "/Users/naveen/Library/Application1",
+            "/Users/avery/Library/Application1",
             "~/Developer/uttrflow/Sources/Clipboard2",
             "https://example.com/a/verylongpathsegment12345",
             "The quick brown fox jumps over the lazy dog again and again for 24 chars.",

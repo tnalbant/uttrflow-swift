@@ -366,11 +366,14 @@ public enum SettingsChange: Sendable, Equatable {
     case anchor(DockAnchor)
     case shortcut(ShortcutAction, HotkeyBinding)
     case tidying(SettingsTidyingLevel)
-    case transcription(SettingsTranscriptionQuality)
     case spokenLanguage(LanguageCode, isSpoken: Bool)
+    /// How long the user pauses while speaking.
+    case pauses(PauseLength)
     case retention(days: Int)
     case appearance(AppAppearance)
     case handsFreeDoubleTap(milliseconds: Int)
+    /// How long a press may last and still count as a tap.
+    case handsFreeHold(milliseconds: Int)
 
     /// Switch one clean-up step on or off; a step nobody offers is refused.
     case cleaningStep(PassID, isOn: Bool)

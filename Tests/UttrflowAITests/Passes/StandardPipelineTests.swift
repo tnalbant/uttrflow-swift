@@ -10,7 +10,8 @@ struct StandardPipelineTests {
         #expect(
             CleaningPipeline.standard.ids == [
                 "fillers", "repeatedPhrase", "stammers", "selfCorrection", "spokenPunctuation", "layoutWords",
-                "numberForms", "contractions", "spacing", "spelledInitialism", "sentenceBoundary",
+                "numberForms", "contractions", "spacing", "pauseStop", "spelledInitialism", "acronymCasing",
+                "sentenceBoundary",
                 "firstWord",
                 "terminalStop",
             ])
@@ -20,13 +21,16 @@ struct StandardPipelineTests {
     func beforeModel() {
         #expect(
             CleaningPipeline.beforeModel(for: .standard(for: .plain), situation: .unknown).ids
-                == Array(CleaningPipeline.standard.ids.dropLast(3)))
+                == Array(CleaningPipeline.standard.ids.dropLast(4)))
     }
 
     @Test("joins spoken initialisms after the whole message is assembled")
     func wholeTextInitialisms() {
         let pipeline = CleaningPipeline.message(for: .standard(for: .plain), situation: .unknown)
-        #expect(pipeline.ids == [.spelledInitialism, SentenceBoundaryPass.id, .firstWord, .terminalStop])
+        #expect(
+            pipeline.ids == [
+                .spelledInitialism, .acronymCasing, SentenceBoundaryPass.id, .firstWord, .terminalStop,
+            ])
         #expect(pipeline.run(Draft(text: "the a p i is down")).text == "The API is down.")
     }
 
@@ -218,12 +222,12 @@ struct StandardPipelineTests {
         #expect(CleaningPipeline.standard.run(Draft(text: input)).text == expected)
     }
 
-    @Test("splits fillers glued to their neighbours by pause ellipses")
-    func splitsGluedFillers() {
+    @Test("removes fillers glued to their neighbours by pause ellipses, keeping the ellipses between words")
+    func removesGluedFillers() {
         #expect(
             CleaningPipeline.standard.run(
                 Draft(text: "Ah...the...um...the invoice is...ah...overdue")
-            ).text == "The invoice is overdue."
+            ).text == "The...the invoice is...overdue."
         )
     }
 
