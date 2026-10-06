@@ -229,6 +229,7 @@ final class SuggestionCoordinator {
     private let ownBundleIdentifier = Bundle.main.bundleIdentifier
     /// Called when the user turns the feature off everywhere, so the choice is persisted and can be undone.
     var onTurnedOffEverywhere: (() -> Void)?
+    var onConsentPersistenceFailure: ((any Error) -> Void)?
     /// Tells the menu bar why suggestion input is paused.
     var onSecureInputBlockingChanged: ((Bool) -> Void)?
     var onTapRestChanged: ((Result<Void, any Error>?) -> Void)?
@@ -288,13 +289,9 @@ final class SuggestionCoordinator {
             withdraw()
         }
         // One switch, two stores: what may be suggested in is what may be learned from. See `Docs/predict.md`.
-        Task { [capture] in
-            for application in preferences.turnedOff.subtracting(before.turnedOff) {
-                try? await capture.record(.declined, for: application)
-            }
-            for application in preferences.turnedOn.subtracting(before.turnedOn) {
-                try? await capture.record(.allowed, for: application)
-            }
+        Task { [capture, onConsentPersistenceFailure] in
+            await SuggestionConsentPersistence.recordChanges(
+                from: before, to: preferences, using: capture, onFailure: onConsentPersistenceFailure)
         }
     }
 
