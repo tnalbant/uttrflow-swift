@@ -115,18 +115,21 @@ def findings(base_cases, head_cases, newly_ledgered):
     return problems
 
 
-def resolve_base():
+def resolve_base(run=git):
     if os.environ.get("CORPUS_EDIT_BASE"):
         return os.environ["CORPUS_EDIT_BASE"]
+    head = run("rev-parse", "HEAD").stdout.strip()
     for ref in ("origin/main", "main"):
-        found = git("merge-base", "HEAD", ref, check=False)
+        found = run("merge-base", "HEAD", ref, check=False)
         if found.returncode == 0 and found.stdout.strip():
+            # The first ref that exists decides; a stale local main never stands in for it.
             base = found.stdout.strip()
-            if base != git("rev-parse", "HEAD").stdout.strip():
+            if base != head:
                 return base
-    # A pull-request checkout is one shallow merge commit; its first parent is the base.
-    git("fetch", "--quiet", "--deepen=1", check=False)
-    parent = git("rev-parse", "--verify", "--quiet", "HEAD^1", check=False)
+            break
+    # HEAD is on main, or a pull-request checkout is one shallow merge commit: its first parent is the base.
+    run("fetch", "--quiet", "--deepen=1", check=False)
+    parent = run("rev-parse", "--verify", "--quiet", "HEAD^1", check=False)
     return parent.stdout.strip() or None
 
 
