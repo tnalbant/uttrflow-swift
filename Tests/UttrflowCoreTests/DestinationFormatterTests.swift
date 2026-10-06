@@ -190,4 +190,11 @@ struct DestinationFormatterTests {
         #expect(subject.terminalStop == .never)
         #expect(subject.layout == .preserveNewlines)
     }
+
+    @Test("a statement in source takes its first word as spoken, while a comment keeps the caret's capital")
+    func statementFirstWordAsSpoken() {
+        #expect(Self.codeEditor(document: "Limits.swift", before: "    ").firstWord == .asSpoken)
+        #expect(Self.codeEditor(document: "Limits.swift", before: "    // ").firstWord == .fromInsertionPoint)
+        #expect(Self.codeEditor(document: "README.md", before: "").firstWord == .fromInsertionPoint)
+    }
 }

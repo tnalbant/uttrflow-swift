@@ -1,1 +1,2 @@
 # One line per changed or removed evaluation case: <case id> <reason>.
+code-editor-large-number-ungrouped The code editor writes a spoken "equals" as "=", as code-editor-spoken-equals expects; the reference kept the word.
