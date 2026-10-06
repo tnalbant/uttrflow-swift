@@ -319,8 +319,10 @@ struct DictationPipelineRecoveryTests {
 
         #expect(state.insertedOutcome?.text == "Email me the PaymentSheet Kind regards, Avery.")
         let measurements = await recorder.measurements
-        // Every stage but the drain, which only a dictation long enough to work ahead ever waits for.
-        #expect(measurements.map(\.stage) == PipelineStage.allCases.filter { $0 != .drain })
+        // Every stage but the drain a long dictation waits for and a modifier press's early capture.
+        #expect(
+            measurements.map(\.stage)
+                == PipelineStage.allCases.filter { ![.drain, .keyDownToAudio].contains($0) })
         #expect(
             measurements.allSatisfy { $0.succeeded && $0.duration > .zero },
             "every stage spent real time and none of it is missing")
