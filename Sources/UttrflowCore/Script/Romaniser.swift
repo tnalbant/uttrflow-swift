@@ -76,9 +76,10 @@ public enum Romaniser {
         return String(String.UnicodeScalarView(scalars))
     }
 
-    /// A romanised word folded so its common spelling variants meet: "theek" and "thik", "woh" and "wo".
+    /// A romanised word folded so its common spelling variants meet: a listed spelling by the word it is typed for ("bohot" is "bahut"), any other by its letters ("theek" and "thik", "woh" and "wo").
     public static func soundKey(_ word: String) -> String {
-        var folded = word.lowercased().filter { $0.isASCII && ($0.isLetter || $0.isNumber) }
+        let lowered = word.lowercased()
+        var folded = (RomanisedVariants.word(of: lowered) ?? lowered).filter { $0.isASCII && ($0.isLetter || $0.isNumber) }
         for (from, to) in [("ph", "f"), ("w", "v"), ("q", "k"), ("ee", "i"), ("oo", "u"), ("ein", "en")] {
             folded = folded.replacingOccurrences(of: from, with: to)
         }
