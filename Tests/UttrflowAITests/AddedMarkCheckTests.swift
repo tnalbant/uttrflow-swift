@@ -51,7 +51,10 @@ struct AddedMarkCheckTests {
         let model = FakeCleanupModel { _ in "Well, I want to go to. The shop. Do you need a projector?" }
         let sut = GenerativeTextTransformer(kind: .foundationModels, model: model)
         let request = TransformationRequest(
-            transcription: .fixture(text: "well i want to go to the shop do you need a projector", language: .english))
-        #expect(try await sut.transform(request).text == "Well, I want to go to the shop. Do you need a projector?")
+            transcription: .fixture(
+                text: "well i want to go to the shop do you need a projector", language: .english))
+        #expect(
+            try await sut.transform(request).text
+                == "Well, I want to go to the shop. Do you need a projector?")
     }
 }

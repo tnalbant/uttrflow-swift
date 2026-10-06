@@ -176,7 +176,9 @@ struct HandsFreeSessionProbeTests {
         steps.append(await probe.step("correct"))
 
         for step in steps {
-            print("hands-free keyboard probe: \(step.name) keyPresses=\(step.keyPresses) said=\(step.announcements)")
+            print(
+                "hands-free keyboard probe: \(step.name) keyPresses=\(step.keyPresses) said=\(step.announcements)"
+            )
         }
         #expect(steps.map(\.keyPresses) == [2, 0, 2, 1])
         #expect(steps.map(\.keyPresses).reduce(0, +) == 5)

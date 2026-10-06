@@ -220,7 +220,8 @@ struct BackedSpeechEngineTests {
         let engine = BackedSpeechEngine(kind: .whisperKit, backend: backend)
 
         _ = try await engine.transcribe(
-            audio(seconds: 1), options: TranscriptionOptions(vocabulary: ["Uttrflow"], precedingText: "Run the"))
+            audio(seconds: 1),
+            options: TranscriptionOptions(vocabulary: ["Uttrflow"], precedingText: "Run the"))
         _ = try await engine.transcribe(audio(seconds: 1), options: .automatic)
 
         #expect(backend.calls.map(\.precedingText) == ["Run the", nil])

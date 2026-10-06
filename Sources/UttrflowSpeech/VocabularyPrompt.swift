@@ -57,7 +57,8 @@ public enum VocabularyPrompt {
             guard !piece.isEmpty else {
                 continue
             }
-            guard opening.count + body.count + piece.count + closing.count + lead.count <= maximumTokens else {
+            guard opening.count + body.count + piece.count + closing.count + lead.count <= maximumTokens
+            else {
                 continue
             }
             body += piece
@@ -115,7 +116,9 @@ public enum VocabularyPrompt {
             // Keeps a window from starting where Whisper invents words; the backend's floor follows it.
             windowClipTime: windowClipTime,
             // Re-forced for every 30-second window, so a long dictation is biased throughout.
-            promptTokens: tokenizer.flatMap { packing(for: vocabulary, after: precedingText, using: $0).tokens },
+            promptTokens: tokenizer.flatMap {
+                packing(for: vocabulary, after: precedingText, using: $0).tokens
+            },
             prefixTokens: nil,
             suppressBlank: false,
             suppressTokens: [],

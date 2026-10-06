@@ -222,8 +222,10 @@ public struct LayoutWordsPass: PieceCleaningPass {
         if before.endsClause && (!before.endsSentence || WordShape.trailsOff(before.suffix)) { return true }
         if draft.shape(at: live[position + found.length - 1]).endsClause { return true }
         return live.indices.contains { other in
-            other != position && mark(at: other, in: live, of: draft).map { $0.isList && $0.length == found.length }
-                == true && draft.shape(at: live[other]).key != Self.numbering
+            other != position
+                && mark(at: other, in: live, of: draft).map { $0.isList && $0.length == found.length }
+                    == true
+                && draft.shape(at: live[other]).key != Self.numbering
         }
     }
 
@@ -289,7 +291,9 @@ public struct LayoutWordsPass: PieceCleaningPass {
             draft.spells($0.words, at: position, in: live) && (allowsLists || !$0.requiresLists)
         }) {
             // At the head of the text an item has no line to break from.
-            let text = position == 0 && found.requiresLists ? String(found.text.drop(while: \.isNewline)) : found.text
+            let text =
+                position == 0 && found.requiresLists
+                ? String(found.text.drop(while: \.isNewline)) : found.text
             return (found.words.count, text, found.requiresLists)
         }
         guard draft.shape(at: live[position]).key == Self.numbering, position + 1 < live.count,

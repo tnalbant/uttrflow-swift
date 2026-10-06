@@ -266,7 +266,6 @@ struct VocabularyPromptTests {
         #expect(VocabularyPrompt.decodingOptions(languageHint: nil).chunkingStrategy == nil)
     }
 
-
     // MARK: The text before the caret
 
     @Test("the text before the caret follows the vocabulary sentence, so the decoder continues from it")
@@ -312,7 +311,8 @@ struct VocabularyPromptTests {
     @Test("blank or absent text before the caret changes nothing")
     func blankPrecedingTextChangesNothing() throws {
         let plain = try encoded(
-            VocabularyPrompt.decodingOptions(languageHint: .english, vocabulary: ["Uttrflow"], tokenizer: tokenizer))
+            VocabularyPrompt.decodingOptions(
+                languageHint: .english, vocabulary: ["Uttrflow"], tokenizer: tokenizer))
         for text: String? in [nil, "", "  \n "] {
             let options = VocabularyPrompt.decodingOptions(
                 languageHint: .english, vocabulary: ["Uttrflow"], precedingText: text, tokenizer: tokenizer)
