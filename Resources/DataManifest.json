@@ -178,8 +178,8 @@
       "licence": "MIT",
       "redistribution": true,
       "note": "read through DataTable; see Docs/data-tables.md",
-      "sha256": "cad11353bc39acc371ba3c42ab75b7cc26ae2c2050ec2e22d433ef96b000b78a",
-      "bytes": 1659
+      "sha256": "7bec1f556946f1c2173c7e74747c2f02cdaf32b0a181e35b648582eff1bd4a06",
+      "bytes": 1872
     },
     {
       "path": "Sources/UttrflowCore/Resources/Tables/function-words.json",

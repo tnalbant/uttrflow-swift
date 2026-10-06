@@ -108,7 +108,7 @@ public enum Restatement {
         }
         guard !isReportedAnswer(triggerWords, before: trigger, in: live, of: draft) else { return nil }
         let through = standsAlone(trigger, before: restart, in: live, of: draft)
-        if NumberWords.isNumber(firstAfter) {
+        if isHindiOrDigitNumber(firstAfter) {
             guard let end = numberEnd(before: trigger, after: restart, in: live, of: draft) else {
                 return nil
             }
@@ -262,12 +262,12 @@ public enum Restatement {
     ) -> Int? {
         let unit = trigger - 1
         let unitKey = draft.shape(at: live[unit]).key
-        if NumberWords.isNumber(unitKey) { return unit }
-        guard unit > 0, NumberWords.isNumber(draft.shape(at: live[unit - 1]).key),
+        if isHindiOrDigitNumber(unitKey) { return unit }
+        guard unit > 0, isHindiOrDigitNumber(draft.shape(at: live[unit - 1]).key),
             !endsSentence(unit - 1, in: live, of: draft)
         else { return nil }
         var next = restart
-        while next < live.count, NumberWords.isNumber(draft.shape(at: live[next]).key) {
+        while next < live.count, isHindiOrDigitNumber(draft.shape(at: live[next]).key) {
             // A unit past a stop belongs to the next sentence, not to this restatement.
             guard !endsSentence(next, in: live, of: draft) else { return nil }
             next += 1
@@ -283,11 +283,11 @@ public enum Restatement {
         var start = end
         while start > earliest, !endsSentence(start - 1, in: live, of: draft) {
             let key = draft.shape(at: live[start - 1]).key
-            guard NumberWords.isNumber(key) || NumberWords.spokenDigit(key) != nil else { break }
+            guard isHindiOrDigitNumber(key) || NumberWords.spokenDigit(key) != nil else { break }
             start -= 1
         }
         // An "oh" before every digit is an exclamation rather than a zero.
-        while start < end, !NumberWords.isNumber(draft.shape(at: live[start]).key) { start += 1 }
+        while start < end, !isHindiOrDigitNumber(draft.shape(at: live[start]).key) { start += 1 }
         return start
     }
 
