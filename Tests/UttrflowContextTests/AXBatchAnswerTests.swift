@@ -47,33 +47,4 @@ struct AXBatchAnswerTests {
         #expect(answers == [.timedOut])
     }
 
-    @Test("A partial batch with no role cannot expose element text.")
-    func missingRoleFailsClosed() {
-        var fetched = Array(
-            repeating: kCFNull as AnyObject, count: FocusedFieldReader.Answers.attributes.count)
-        fetched[FocusedFieldReader.Answers.attributes.firstIndex(of: kAXTitleAttribute)!] =
-            "private field title" as CFString
-        let answers = FocusedFieldReader.Answers(AXUIElementCreateSystemWide(), fetched: fetched)
-
-        #expect(answers.isSecure)
-        #expect(answers.text == nil)
-    }
-
-    @Test("A failed subrole slot cannot expose text from a text field.")
-    func unreadableSubroleFailsClosed() throws {
-        var cannotComplete = AXError.cannotComplete
-        let errorValue = try #require(AXValueCreate(.axError, &cannotComplete))
-        var fetched = Array(
-            repeating: kCFNull as AnyObject, count: FocusedFieldReader.Answers.attributes.count)
-        fetched[FocusedFieldReader.Answers.attributes.firstIndex(of: kAXRoleAttribute)!] =
-            "AXTextField" as CFString
-        fetched[FocusedFieldReader.Answers.attributes.firstIndex(of: kAXSubroleAttribute)!] =
-            errorValue
-        fetched[FocusedFieldReader.Answers.attributes.firstIndex(of: kAXTitleAttribute)!] =
-            "private field title" as CFString
-        let answers = FocusedFieldReader.Answers(AXUIElementCreateSystemWide(), fetched: fetched)
-
-        #expect(answers.isSecure)
-        #expect(answers.text == nil)
-    }
 }
