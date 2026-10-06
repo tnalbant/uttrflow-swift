@@ -1,6 +1,5 @@
 // The text-free table a fit reads, committed so a fitted artifact can be rebuilt without the recordings.
 public import Foundation
-private import CryptoKit
 
 /// Whether the candidate a row describes was the right one; a closed class, never a word.
 public enum FitLabelClass: String, Sendable, Equatable, CaseIterable, Codable {
@@ -135,13 +134,5 @@ public struct FitTable: Sendable, Equatable, Codable {
     /// Fits the linear scorer this table reproduces.
     public func fitLinearScorer() -> LinearScorer {
         LinearScorer.fit(developmentRows)
-    }
-}
-
-extension LinearScorer {
-    /// A digest of the weights at full precision, so a reproduced fit can be compared to a committed one.
-    public var digest: String {
-        let text = ([bias] + weights).map { String(format: "%.17g", $0) }.joined(separator: "\n")
-        return "sha256:" + SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 }

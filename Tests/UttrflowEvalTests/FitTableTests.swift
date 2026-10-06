@@ -8,7 +8,7 @@ import Testing
 struct FitTableTests {
     static let url = URL(filePath: #filePath).deletingLastPathComponent()
         .appending(path: "FitTables/invented-linear.json")
-    static let committedDigest = "sha256:040fb143279166067a0af971419b0a188c2303b9f4dca75150ac2061e5db0c2b"
+    static let committedDigest = "cea62c4bbfd6e1b5010fd91d2224fc87d3528b2197b884f8c65c72257182e80b"
 
     static func row(_ extra: String) -> Data {
         Data(

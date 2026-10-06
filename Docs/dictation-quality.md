@@ -150,7 +150,7 @@ its closed set, rows of different widths, and any table over 5 MB. Only developm
 fitted.
 
 ```bash
-uttrflow-eval fit --from-table <table.json> --expect <sha256:...>   # exits 1 when the digest differs
+uttrflow-eval fit --from-table <table.json> --expect <digest>   # exits 1 when the digest differs
 ```
 
 `Tests/UttrflowEvalTests/FitTables/invented-linear.json` is an invented 240-row table
