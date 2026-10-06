@@ -974,7 +974,8 @@ public actor DictationPipeline {
                             insertionContext.precedingText, insertionContext.followingText,
                         ].compactMap { $0 }, heard: whole.heard.text,
                         capitaliseCalendarWords: formatter.firstWord == .fromInsertionPoint
-                            && formatter.destination != .codeEditor
+                            && formatter.destination != .codeEditor,
+                        vocabulary: dictationContext?.vocabulary ?? dictationWords ?? []
                     )
                     .apply(Draft(keepingLineBreaks: output)).text
             }
