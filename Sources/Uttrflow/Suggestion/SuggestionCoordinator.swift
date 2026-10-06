@@ -1002,7 +1002,7 @@ final class SuggestionCoordinator {
             let ready = await generator?.isReady ?? false
             guard turns.isCurrent(number) else { return }
             panel.statusMessage =
-                generator != nil && !ready
+                SuggestionEnergyStatus.shouldAnnouncePause(for: generator)
                 ? "Suggestions are paused while Low Power Mode or thermal pressure is active."
                 : nil
             Self.log.debug(

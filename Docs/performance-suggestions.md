@@ -185,7 +185,9 @@ the app hands `SuggestionCoordinator` its model wrapped in `DiscretionaryGenerat
 - runs every pass in a utility task, resumed through a continuation so the awaiting turn does not
   raise the pass back to its own priority, with the caller's cancellation passed on;
 - reports itself not ready, and starts no pass, while `EnergyConditions.current()` says the Mac is
-  in Low Power Mode or at serious or critical thermal pressure.
+  in Low Power Mode or at serious or critical thermal pressure. It also reports this energy hold
+  separately from model readiness, so VoiceOver does not mistake a load or unavailable model for
+  an energy pause.
 
 Scoring a remembered candidate is left at its own priority: it is one forward pass raced against a
 deadline, and slowing it would turn a slow answer into a refused candidate.
