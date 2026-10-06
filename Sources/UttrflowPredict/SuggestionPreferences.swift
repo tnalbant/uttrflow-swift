@@ -150,6 +150,11 @@ public struct SuggestionPreferences: Sendable, Equatable, Codable {
         return pausedUntil.timeIntervalSince(moment)
     }
 
+    /// Whether the feature is globally available, before an application's choice is applied.
+    public func isEnabled(at moment: Date) -> Bool {
+        isEnabled && !isPaused(at: moment)
+    }
+
     /// Why suggestions do or do not run in one application, the master switch aside.
     public func state(of bundleIdentifier: String) -> SuggestionApplicationState {
         let identifier = ApplicationKey.of(bundleIdentifier)
@@ -160,7 +165,7 @@ public struct SuggestionPreferences: Sendable, Equatable, Codable {
 
     /// Whether anything may be drawn in one application right now, which is the whole rule.
     public func isEnabled(in bundleIdentifier: String, at moment: Date) -> Bool {
-        isEnabled && !isPaused(at: moment) && state(of: bundleIdentifier).isOn
+        isEnabled(at: moment) && state(of: bundleIdentifier).isOn
     }
 
     /// The accept keys in force: the shipped answer with the user's choices on top.

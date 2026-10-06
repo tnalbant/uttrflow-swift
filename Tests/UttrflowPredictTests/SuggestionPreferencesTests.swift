@@ -74,6 +74,19 @@ struct SuggestionPreferencesTests {
 
 @Suite("The half-hour pause")
 struct SuggestionPauseTests {
+    @Test("Global availability combines the master switch and the current pause.")
+    func globalAvailability() {
+        let enabled = SuggestionPreferences(isEnabled: true)
+        let paused = SuggestionPreferences(
+            isEnabled: true, pausedUntil: moment.addingTimeInterval(60))
+        let off = SuggestionPreferences(isEnabled: false)
+
+        #expect(enabled.isEnabled(at: moment))
+        #expect(!paused.isEnabled(at: moment))
+        #expect(!off.isEnabled(at: moment))
+        #expect(paused.isEnabled(at: moment.addingTimeInterval(60)))
+    }
+
     @Test("Lasts half an hour from the moment it was started.")
     func lastsHalfAnHour() {
         var preferences = SuggestionPreferences(isEnabled: true)

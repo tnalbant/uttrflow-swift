@@ -90,6 +90,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     private let menuBar = MenuBarController()
     private let dock = DockPanelController()
+    /// The last external app the user was typing in, retained while the menu itself is frontmost.
+    private var suggestionApplicationBundleIdentifier: String?
     private var recents = RecentDictations()
     /// The newest clips as the popover last read them, resolved by identity when a row is chosen.
     private var menuClips: [Clip] = []
@@ -1404,15 +1406,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private func wireInterface() {
         guard let pipeline else { return }
 
+        updateSuggestionApplicationContext()
         menuBar.onCommand = { [weak self] intent in self?.carryOut(intent) }
         menuBar.onMenuWillOpen = { [weak self] in
             self?.checkSecureInput()
+            self?.refreshMenuBar()
             self?.refreshMenuClips()
         }
         secureInputObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.checkSecureInput() }
+            MainActor.assumeIsolated {
+                self?.updateSuggestionApplicationContext()
+                self?.checkSecureInput()
+                self?.refreshMenuBar()
+            }
         }
 
         // Submitted, not handled: the controller queues gestures so press and release cannot interleave.
@@ -2665,7 +2673,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             learned: recentlyLearned.current(at: Date()),
             updateProgress: updates.progress,
             canCheckForUpdates: UpdateController.isConfigured,
-            features: MenuBarFeatures(settings),
+            features: menuBarFeatures(for: settings),
             shortcuts: settings.shortcuts,
             unarmedShortcuts: Set(unarmedShortcuts.keys),
             shortcutUnheard: shortcutUnheard,
@@ -2675,6 +2683,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             activation: settings.hotkeyActivation,
             speechModelBytes: SpeechModel.default.downloadBytes
         )
+    }
+
+    /// Uses the same stored, paused and per-application gate the suggestion coordinator uses.
+    private func menuBarFeatures(for settings: Settings, at moment: Date = Date()) -> MenuBarFeatures {
+        MenuBarFeatures(
+            settings, applicationBundleIdentifier: suggestionApplicationBundleIdentifier, at: moment)
+    }
+
+    private func updateSuggestionApplicationContext() {
+        suggestionApplicationBundleIdentifier = Self.suggestionApplicationContext(
+            previous: suggestionApplicationBundleIdentifier,
+            frontmost: NSWorkspace.shared.frontmostApplication?.bundleIdentifier)
+    }
+
+    nonisolated static func suggestionApplicationContext(
+        previous: String?, frontmost: String?
+    ) -> String? {
+        guard let frontmost,
+            !frontmost.hasPrefix(SuggestionCoordinator.uttrflowBundlePrefix)
+        else { return previous }
+        return frontmost
     }
 
     /// Carries out whatever the menu was asked for; internal so a test can choose an item.
@@ -3668,7 +3697,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             followTheClipboardSwitch()
         }
         // The menu's ticks are these settings, so a change made in Settings redraws them.
-        if MenuBarFeatures(updated) != MenuBarFeatures(previous) {
+        let moment = Date()
+        if menuBarFeatures(for: updated, at: moment) != menuBarFeatures(for: previous, at: moment) {
             refreshMenuBar()
         }
         if updated.hotkeyActivation != previous.hotkeyActivation {
