@@ -189,6 +189,8 @@ public struct DiagnosticsSnapshot: Sendable, Equatable {
     public let machine: String?
     /// How each kept dictation's words arrived, one per History record; `nil` predates the field.
     public let arrivals: [RecordedArrival?]
+    /// Which quality layers the running pipeline was built with.
+    let qualityLayers: QualityLayers
 
     /// Builds a snapshot; everything defaults to not yet checked.
     public init(
@@ -209,7 +211,8 @@ public struct DiagnosticsSnapshot: Sendable, Equatable {
         suggestionModel: SuggestionModelReadiness = .notAsked,
         version: AppVersion = .unknown,
         machine: String? = nil,
-        arrivals: [RecordedArrival?] = []
+        arrivals: [RecordedArrival?] = [],
+        qualityLayers: QualityLayers = QualityLayers()
     ) {
         self.engines = engines
         self.speechInUse = speechInUse
@@ -229,6 +232,7 @@ public struct DiagnosticsSnapshot: Sendable, Equatable {
         self.version = version
         self.machine = machine
         self.arrivals = arrivals
+        self.qualityLayers = qualityLayers
     }
 }
 
@@ -275,6 +279,8 @@ public struct DiagnosticsPresentation: Sendable, Equatable {
     public let cleanUp: [DiagnosticsRow]
     /// The exact dictionary words included in the latest recogniser prompt.
     public let vocabularyPrompt: DiagnosticsRow
+    /// One row per quality layer, saying whether it runs and whether that is its default.
+    public let qualityLayers: [DiagnosticsRow]
     /// One row per permission, granted or not.
     public let permissions: [DiagnosticsRow]
     /// Whether the shortcut and input device can start dictation.
@@ -300,6 +306,7 @@ public struct DiagnosticsPresentation: Sendable, Equatable {
         engines: [DiagnosticsRow],
         cleanUp: [DiagnosticsRow],
         vocabularyPrompt: DiagnosticsRow,
+        qualityLayers: [DiagnosticsRow] = [],
         permissions: [DiagnosticsRow],
         availability: [DiagnosticsRow],
         storage: [DiagnosticsRow],
@@ -318,6 +325,7 @@ public struct DiagnosticsPresentation: Sendable, Equatable {
         self.engines = engines
         self.cleanUp = cleanUp
         self.vocabularyPrompt = vocabularyPrompt
+        self.qualityLayers = qualityLayers
         self.permissions = permissions
         self.availability = availability
         self.storage = storage
@@ -366,6 +374,7 @@ public enum DiagnosticsPresenter {
                     ? "No dictionary words in the last prompt"
                     : snapshot.vocabularyPrompt.joined(separator: ", "),
                 state: .unknown),
+            qualityLayers: qualityLayerRows(for: snapshot.qualityLayers),
             permissions: permissions,
             availability: availability,
             storage: storage,
@@ -774,6 +783,18 @@ public enum DiagnosticsPresenter {
         record.changes.filter { CleaningSteps.isOffered($0.step) }
     }
 
+    /// One row per quality layer in declaration order: on or off, and whether a local override set it.
+    static func qualityLayerRows(for layers: QualityLayers) -> [DiagnosticsRow] {
+        QualityLayer.allCases.map { layer in
+            let on = layers.isOn(layer)
+            let state = on ? "On" : "Off"
+            return DiagnosticsRow(
+                title: layer.rawValue,
+                detail: on == layer.defaultOn ? state : "\(state), overridden",
+                state: on == layer.defaultOn ? .good : .attention)
+        }
+    }
+
     /// One row per step that changed something, then every step that is off, naming the words rather than counting them.
     static func cleanUpRows(for record: CleaningRecord?) -> [DiagnosticsRow] {
         guard let record else {
@@ -807,8 +828,16 @@ public enum DiagnosticsPresenter {
                 title: "Engine failed", detail: "\($0.engine): \($0.failureClass.rawValue)", state: .attention
             )
         }
-        guard changed.isEmpty, off.isEmpty, refused.isEmpty, unavailable.isEmpty, failures.isEmpty else {
-            return unavailable + failures + refused + changed + off
+        // A stage that gave up is why a correction or snippet is missing, and nothing else says so.
+        let skipped = record.skippedStages.map {
+            DiagnosticsRow(
+                title: "Stage skipped", detail: "\($0.stage.rawValue): \($0.reason.rawValue)",
+                state: .attention)
+        }
+        guard changed.isEmpty, off.isEmpty, refused.isEmpty, unavailable.isEmpty, failures.isEmpty,
+            skipped.isEmpty
+        else {
+            return skipped + unavailable + failures + refused + changed + off
         }
         return [
             DiagnosticsRow(
@@ -838,6 +867,7 @@ public enum DiagnosticsPresenter {
                 "  engine skipped (\($0.engine)): \($0.reason.diagnosticDescription)"
             }
             + record.engineFailures.map { "  engine failed (\($0.engine)): \($0.failureClass.summary)" }
+            + record.skippedStages.map { "  stage skipped (\($0.stage.rawValue)): \($0.reason.rawValue)" }
     }
 
     // MARK: - Permissions
