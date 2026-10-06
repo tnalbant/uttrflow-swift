@@ -27,6 +27,10 @@ bare-host-keeps-path-case	example.com/Docs
 bare-host-port	localhost:8080
 bare-host-port-path	localhost:3000/api
 bare-ipv4	10.0.0.1
+bare-number-email	4096
+bare-number-message	4,096
+bare-phone-digits	415 555 0100
+bare-phone-digits-plain	415 555 0100
 bare-subdomain	docs.example.org
 bare-subdomain-message	docs.example.org
 bare-url	https://example.com

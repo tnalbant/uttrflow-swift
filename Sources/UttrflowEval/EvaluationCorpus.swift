@@ -3927,6 +3927,23 @@ public enum EvaluationCorpus {
             addedFor: 4066
         ),
         .init(
+            id: "bare-phone-digits", category: .bareLiteral, spoken: "415 555 0100", expected: "415 555 0100",
+            destination: .document, expectedExact: "415 555 0100", addedFor: 4066
+        ),
+        .init(
+            id: "bare-phone-digits-plain", category: .bareLiteral, spoken: "415 555 0100",
+            expected: "415 555 0100",
+            destination: .plain, expectedExact: "415 555 0100", addedFor: 4066
+        ),
+        .init(
+            id: "bare-number-email", category: .bareLiteral, spoken: "4096", expected: "4096",
+            destination: .email, expectedExact: "4096", addedFor: 4066
+        ),
+        .init(
+            id: "bare-number-message", category: .bareLiteral, spoken: "4,096", expected: "4,096",
+            destination: .messaging, expectedExact: "4,096", addedFor: 4066
+        ),
+        .init(
             id: "literal-prose-host-is-down", category: .bareLiteral, spoken: "example dot com is down",
             expected: "example.com is down.",
             destination: .document, expectedExact: "example.com is down.", addedFor: 4066

@@ -190,7 +190,17 @@ public struct TerminalStopPass: WholeTextCleaningPass {
 
     /// Whether every word of a paragraph is a literal, such as an address, a path or digits, which is not a sentence.
     private static func isLiteral(_ paragraph: [Int], in draft: Draft) -> Bool {
-        !paragraph.isEmpty && paragraph.allSatisfy { TechnicalToken.classify(draft.words[$0].text) != nil }
+        !paragraph.isEmpty
+            && paragraph.allSatisfy {
+                let text = draft.words[$0].text
+                return TechnicalToken.classify(text) != nil || isDigits(text)
+            }
+    }
+
+    /// A numeral written in digits only, such as "4096" or the "0100" of a phone number; "4th" and "10%" are words.
+    private static func isDigits(_ text: String) -> Bool {
+        text.first?.isNumber == true && text.last?.isNumber == true
+            && text.allSatisfy { $0.isNumber || $0 == "," }
     }
 
     /// Whether a paragraph is an email opener or a final closing with a name.
