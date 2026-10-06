@@ -37,7 +37,9 @@ struct AccentProbe: AsyncParsableCommand {
     func run() async throws {
         let model =
             try modelVariant.map { name in
-                guard let found = SpeechModel.named(name) else { throw ValidationError("Unknown model '\(name)'.") }
+                guard let found = SpeechModel.named(name) else {
+                    throw ValidationError("Unknown model '\(name)'.")
+                }
                 return found
             } ?? .default
         let store = FileSystemSpeechModelStore.whisperKit()
@@ -47,12 +49,15 @@ struct AccentProbe: AsyncParsableCommand {
         let installed = SayVoiceCatalogue().installedVoiceNames()
         let missing = voices.filter { !installed.contains($0) }
         guard missing.isEmpty else {
-            throw CleanExit.message("Not installed: \(missing.joined(separator: ", ")); `say -v ?` lists those that are.")
+            let names = missing.joined(separator: ", ")
+            throw CleanExit.message("Not installed: \(names); `say -v ?` lists those that are.")
         }
-        let speech = SpeechEngineFactory.make(kind: .whisperKit, model: model, modelFolder: store.location(of: model))
+        let speech = SpeechEngineFactory.make(
+            kind: .whisperKit, model: model, modelFolder: store.location(of: model))
         try await speech.prepare()
         print("Engine: whisperKit \(model.variant) weights \(model.weightsRevision)")
-        print("Voices: \(voices.joined(separator: ", ")); Hindi hint also for \(hindiVoices.joined(separator: ", "))")
+        let hindiNames = hindiVoices.joined(separator: ", ")
+        print("Voices: \(voices.joined(separator: ", ")); Hindi hint also for \(hindiNames)")
 
         let items = AccentProbeCorpus.items
         let directory = URL(fileURLWithPath: clipsPath)
@@ -70,8 +75,8 @@ struct AccentProbe: AsyncParsableCommand {
                 }
                 let audio = try AudioFileReader.read(contentsOf: clip)
                 for hint in hints {
-                    let text = try await speech.transcribe(audio, options: .init(languageHint: LanguageCode(hint)))
-                        .text
+                    let options = TranscriptionOptions(languageHint: LanguageCode(hint))
+                    let text = try await speech.transcribe(audio, options: options).text
                     rows.append(
                         AccentRow(
                             voice: voice, hint: hint, item: item, heard: Self.heard(in: text, around: item),
@@ -104,8 +109,12 @@ private struct AccentRow {
     let transcript: String
 
     var isRight: Bool { reach?.isSameSpelling ?? false }
-    var reach: SoundAlikeReach? { heard.flatMap { $0.isEmpty ? nil : SoundAlikeReach(heard: $0, meant: item.word) } }
-    var line: String { [voice, hint, item.accentClass, item.word, heard ?? "<too short>", transcript].joined(separator: "\t") }
+    var reach: SoundAlikeReach? {
+        heard.flatMap { $0.isEmpty ? nil : SoundAlikeReach(heard: $0, meant: item.word) }
+    }
+    var line: String {
+        [voice, hint, item.accentClass, item.word, heard ?? "<too short>", transcript].joined(separator: "\t")
+    }
 }
 
 /// Per class: misses, and the share of misses each gate would carry to the word meant.

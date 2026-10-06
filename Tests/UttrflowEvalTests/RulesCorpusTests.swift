@@ -22,7 +22,8 @@ struct RulesCorpusTests {
 
     /// Destination cases only the model can pass: a spelling off the screen, or a question mark from a sentence's shape.
     static let modelOnly: Set<String> = [
-        "sql-editor-identifier-from-screen", "code-editor-identifier-from-screen", "doubtful-word-from-window",
+        "sql-editor-identifier-from-screen", "code-editor-identifier-from-screen",
+        "doubtful-word-from-window",
     ]
 
     /// Probe cases the rules still fail, a baseline that only shrinks: a case that starts passing must leave it.
@@ -31,9 +32,11 @@ struct RulesCorpusTests {
         "probe-sql-join", "probe-regex-pattern", "probe-yaml-keys", "probe-todo-comment", "probe-log-call",
         "probe-version-bump", "probe-dockerfile-from", "probe-git-commands", "probe-stack-frame",
         "probe-protocol-names", "probe-bug-title", "probe-git-commit-flags",
-        "probe-docker-build-no-cache", "probe-support-email", "probe-laugh-then-question", "probe-meeting-notes",
+        "probe-docker-build-no-cache", "probe-support-email", "probe-laugh-then-question",
+        "probe-meeting-notes",
         "probe-revenue-figures", "probe-apology-message", "probe-cover-letter", "probe-meeting-time-zones",
-        "probe-flight-details", "probe-hashtag-and-handle", "probe-phone-and-address", "probe-hinglish-status",
+        "probe-flight-details", "probe-hashtag-and-handle", "probe-phone-and-address",
+        "probe-hinglish-status",
         "probe-quote-unquote", "terminal-spoken-new-line-stays-on-one-line",
         "terminal-spoken-new-paragraph-stays-on-one-line",
     ]

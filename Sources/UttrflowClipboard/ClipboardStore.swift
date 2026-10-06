@@ -980,7 +980,8 @@ public actor ClipboardStore {
 
         // Every clip reaches its new file before leaving its old one, so a refusing disk never loses one.
         let bridge = Self.bridging(persistable, from: wasSaved, into: nowHistory)
-        if bridge != wasSaved {
+        // The bridge only has to hold every clip somewhere; the same clips in another order are already on disk.
+        if !Self.holdsTheSameClips(bridge, as: wasSaved) {
             try persist(bridge, to: savedFile)
             savedOnDisk = bridge
         }
@@ -1005,6 +1006,13 @@ public actor ClipboardStore {
         guard !leaving.isEmpty else { return clips.filter(\.isKept) }
         let old = Dictionary(wasSaved.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         return clips.compactMap { $0.isKept ? $0 : leaving.contains($0.id) ? old[$0.id] : nil }
+    }
+
+    /// Whether two lists hold exactly the same clips, whatever their order.
+    private static func holdsTheSameClips(_ one: [Clip], as other: [Clip]) -> Bool {
+        guard one.count == other.count else { return false }
+        let byID = Dictionary(other.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return byID.count == other.count && one.allSatisfy { byID[$0.id] == $0 }
     }
 
     /// Writes a whole list atomically, or removes its file when nothing is left to keep.

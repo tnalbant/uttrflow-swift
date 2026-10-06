@@ -376,6 +376,8 @@ enum PieceJoiner {
     private static func isSpokenGroup(_ core: String) -> Bool {
         guard core.count <= longestSpokenGroup else { return false }
         if core.allSatisfy(\.isASCII) && core.allSatisfy(\.isNumber) { return !core.isEmpty }
+        // A digit word, as in "two two four four", is a one-digit group.
+        if let digit = NumberWords.value(of: core.lowercased()), (0...9).contains(digit) { return true }
         return core.count > 1 && core.allSatisfy { $0.isASCII && $0.isUppercase }
     }
 

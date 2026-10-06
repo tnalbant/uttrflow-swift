@@ -15,6 +15,21 @@ struct EncryptedStoreTests {
         func key(createIfMissing: Bool) throws -> SymmetricKey { value }
     }
 
+    @Test("a keyed digest matches equal input, differs by key and purpose, and is never the input")
+    func keyedDigestIsKeyed() throws {
+        let store = EncryptedStore(keys: Keys(value: SymmetricKey(size: .bits256)))
+        let other = EncryptedStore(keys: Keys(value: SymmetricKey(size: .bits256)))
+        let line = Data("git commit -m example".utf8)
+
+        let digest = try store.keyedDigest(of: line, purpose: "one")
+
+        #expect(digest.count == 32)
+        #expect(try store.keyedDigest(of: line, purpose: "one") == digest)
+        #expect(try store.keyedDigest(of: line, purpose: "two") != digest)
+        #expect(try other.keyedDigest(of: line, purpose: "one") != digest)
+        #expect(Data(SHA256.hash(data: line)) != digest)
+    }
+
     private struct MissingKey: StoreKeyProviding {
         func key(createIfMissing: Bool) throws -> SymmetricKey {
             throw StoreKeyError.unavailable(Int32(errSecItemNotFound))
