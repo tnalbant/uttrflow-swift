@@ -465,6 +465,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         wireInterface()
         CGEventKeystrokeSender.startObservingLayout()
         startWatchingForTheShortcut()
+        accessibilityTrust.start()
         startWatchingTheClipboard()
         startCompletingWhatIsTyped()
         pressureSource.start { [weak self] in self?.memoryPressureChanged(to: $0) }
@@ -3172,6 +3173,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// The last answer each gate gave; absent means unchecked, which the pages draw as silence.
     private var knownPermissions: [PermissionKind: PermissionStatus] = [:]
+    /// Trust read while idle, so turning Accessibility off shows in Diagnostics without a dictation failing first.
+    private lazy var accessibilityTrust = PermissionWatcher(gate: AccessibilityPermissionGate()) {
+        [weak self] _ in self?.refreshMainWindow()
+    }
 
     /// Reads the account picture and redraws only when it changed.
     private func refreshPictureThenRedraw() async {
