@@ -96,9 +96,11 @@ public enum SecureField {
         "enter", "bank", "debit", "credit", "auth", "login", "your", "the", "verify", "mfa", "twofa",
     ]
 
-    /// Whether an all-lowercase word is a short code glued to a whole field word, so `mapping` and a postal `pincode` are not.
+    /// Whether a lowercase word glues a short code to a whole field word; `mapping` and a postal `pincode` do not.
     static func gluesLowercaseCode(_ code: String, into word: Substring) -> Bool {
-        guard word.allSatisfy({ $0.isLowercase || $0.isNumber }), word.count > code.count else { return false }
+        guard word.allSatisfy({ $0.isLowercase || $0.isNumber }), word.count > code.count else {
+            return false
+        }
         if word.hasPrefix(code) {
             let rest = String(word.dropFirst(code.count))
             // A pin code is a postal code in India; a PIN is not named that way.
