@@ -215,7 +215,7 @@ struct DictationStageTimeoutTests {
     }
 
     private func waitForCall(_ calls: CallLog<Void>) async {
-        while await calls.count == 0 { await Task.yield() }
+        while !Task.isCancelled, await calls.count == 0 { await Task.yield() }
     }
 
     @Test("a recogniser that never answers ends the dictation instead of wedging it")
@@ -361,9 +361,9 @@ struct DictationStageTimeoutTests {
             clipboard: NeverAnsweringClipboard(),
             clock: clock)
 
-        let retrying = Task { await pipeline.retry(recording.id) }
-        await expire(.seconds(2), at: .inserting(into: nil), of: pipeline, on: clock)
-        _ = await retrying.value
+        let retrying = Task { _ = await pipeline.retry(recording.id) }
+        await expire(StageTimeout.insertion, at: .inserting(into: nil), of: pipeline, on: clock)
+        await settle(retrying)
 
         guard case .failed(let failure) = await pipeline.currentState else {
             Issue.record("expected the copy to fail, got \(await pipeline.currentState)")
@@ -448,7 +448,18 @@ struct DictationStageTimeoutTests {
         await pipeline.startRecording()
         await waitForCall(context.calls)
         await expire(StageTimeout.screenRead, at: .recording, of: pipeline, on: clock)
-        await pipeline.finishRecording()
+        // Every later read of the same hung screen runs out too, or the finish waits on a clock nobody moves.
+        let finishing = Task { await pipeline.finishRecording() }
+        let finished = Mutex(false)
+        let watching = Task {
+            await finishing.value
+            finished.withLock { $0 = true }
+        }
+        while !Task.isCancelled, !finished.withLock({ $0 }) {
+            clock.advanceIfSomethingIsWaiting(exactly: StageTimeout.screenRead)
+            await Task.yield()
+        }
+        await settle(watching)
 
         #expect(inserter.inserted == ["Tidied."])
         guard case .inserted(let outcome) = await pipeline.currentState else {
