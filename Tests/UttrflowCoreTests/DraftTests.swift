@@ -398,6 +398,7 @@ struct DraftTests {
 /// Upper-cases every present word.
 private struct ShoutPass: PieceCleaningPass {
     static let id: PassID = "shout"
+    static let laws: Set<PassLaw> = []
     func apply(_ draft: Draft) -> Draft {
         var draft = draft
         for index in draft.presentIndices {
@@ -410,6 +411,7 @@ private struct ShoutPass: PieceCleaningPass {
 /// Removes the first present word.
 private struct DropFirstPass: PieceCleaningPass {
     static let id: PassID = "dropFirst"
+    static let laws: Set<PassLaw> = []
     func apply(_ draft: Draft) -> Draft {
         var draft = draft
         if let first = draft.presentIndices.first { draft.remove(at: first, by: Self.id) }

@@ -197,6 +197,12 @@ struct SnippetEditorView: View {
                     }
                 }
             }
+            if let caution = editor.caution {
+                Text(caution)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(PagePalette.text)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             PageEditorFooter(
                 problem: editor.problem, cancel: editor.cancel, save: save,
                 canSave: editor.canSave, onIntent: onIntent)
