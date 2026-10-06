@@ -1058,10 +1058,13 @@ public actor DictationPipeline {
             whole
             ? audio
             : AudioSamples(samples: Array(audio.samples[window]), sampleRate: audio.sampleRate) ?? .empty
-        var heard = try await decode(slice, whole: whole, biasedTowards: words, recording: metrics)
-        // The second decode goes without the vocabulary, which is the one input a retry can change.
+        // The dictation's one read, so every piece is conditioned on the same caret. See `Docs/context-budget.md`.
+        let preceding = dictationContext?.app.recognitionContext
+        var heard = try await decode(
+            slice, whole: whole, biasedTowards: words, after: preceding, recording: metrics)
+        // The second decode goes without the prompt, which is the one input a retry can change.
         if case .missed = heard {
-            heard = try await decode(slice, whole: whole, biasedTowards: [], recording: metrics)
+            heard = try await decode(slice, whole: whole, biasedTowards: [], after: nil, recording: metrics)
         }
         switch heard {
         case .words(let transcription):
@@ -1080,14 +1083,12 @@ public actor DictationPipeline {
 
     /// One decode of a slice, telling words, silence and speech that produced no words apart.
     private func decode(
-        _ slice: AudioSamples, whole: Bool, biasedTowards words: [String],
+        _ slice: AudioSamples, whole: Bool, biasedTowards words: [String], after preceding: String?,
         recording metrics: any MetricsRecording
     ) async throws -> Heard {
         // The default profile detects each piece; a Hindi-only profile pins each piece to Hindi. See `Docs/speech-engines.md`.
         let policy = dictationContext?.listening ?? ListeningLanguages(profile: runningProfile)
         let language = policy.hint(afterFirstPiece: nil)
-        // The dictation's one read, so every piece is conditioned on the same caret. See `Docs/context-budget.md`.
-        let preceding = dictationContext?.app.recognitionContext
         let speaks = VoiceActivity.speechRange(in: slice.samples, sampleRate: slice.sampleRate) != nil
         let heard = try await metrics.measuringInTime(.transcription, clock: clock) {
             try await withStageTimeout(StageTimeout.transcription, clock: clock) {
