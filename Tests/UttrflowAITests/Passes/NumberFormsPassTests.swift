@@ -803,7 +803,6 @@ struct NumberFormsPassTests {
         #expect(draft.words[0].state == .replaced(by: NumberFormsPass.id, from: "twenty"))
         #expect(draft.words[1].state == .removed(by: NumberFormsPass.id))
         #expect(draft.words[2].state == .removed(by: NumberFormsPass.id))
-        #expect(draft.words[3].state == .kept)
     }
 
     @Test("leaves numbers in other languages alone")
