@@ -538,7 +538,9 @@ struct DictationPipelineStateTests {
         await pipeline.prepare()
 
         #expect(
-            await pipeline.currentState == .failed(DictationFailure(SpeechEngineError.modelNotInstalled)),
+            await pipeline.currentState
+                == .failed(
+                    DictationFailure(SpeechEngineError.modelNotInstalled, speechEngineKind: .whisperKit)),
             "a recogniser that cannot start must not be reported as ready")
     }
 
@@ -580,7 +582,7 @@ struct DictationPipelineStateTests {
 
         #expect(
             await pipeline.currentState
-                == .failed(DictationFailure(SpeechEngineError.audioTooShort)))
+                == .failed(DictationFailure(SpeechEngineError.audioTooShort, speechEngineKind: .whisperKit)))
     }
 
     /// "um" tidies to nothing, and inserting nothing over a selection deletes it.
