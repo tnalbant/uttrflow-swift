@@ -163,6 +163,15 @@ struct CompletionParsingTests {
         #expect(!CompletionText.isDegenerate("toring the data in the table for the next run"))
     }
 
+    @Test("A word repeated, or spelled out one letter at a time, is not a continuation.")
+    func stutterAndSpelledOutAreDropped() {
+        #expect(CompletionText.isDegenerate(" pic pic pic pic pic"))
+        #expect(CompletionText.isDegenerate(" a s s p o r t"))
+        #expect(!CompletionText.isDegenerate(" a b c"))
+        #expect(!CompletionText.isDegenerate(" no no no, not that one"))
+        #expect(!CompletionText.isDegenerate(" I want a cup of tea"))
+    }
+
     @Test("A continuation the length of a paragraph is not the rest of a line.")
     func paragraphsAreDropped() {
         let paragraph = String(repeating: "word ", count: 60)

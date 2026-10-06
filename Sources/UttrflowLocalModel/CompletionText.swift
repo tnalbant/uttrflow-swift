@@ -513,8 +513,22 @@ enum CompletionText {
                 }
             }
         }
+        if hasSpelledOutRun(words) { return true }
         // Six or more words drawn from a third as many distinct ones is a repetition, not a sentence.
         return words.count >= 6 && Set(words).count * 3 <= words.count
+    }
+
+    /// The fewest one-letter words in a row that spell a word out letter by letter rather than say anything.
+    static let spelledOutRunLength = 4
+
+    /// Whether the words hold a run of single letters, as in `a s s p o r t`, which no sentence has.
+    static func hasSpelledOutRun(_ words: [Substring]) -> Bool {
+        var run = 0
+        for word in words {
+            run = word.count == 1 && word.first?.isLetter == true ? run + 1 : 0
+            if run >= spelledOutRunLength { return true }
+        }
+        return false
     }
 
     /// Strips a code fence, bullet, or numbering the model added despite being asked not to.
