@@ -319,8 +319,7 @@ final class SuggestionCoordinator {
     func forgetSuggestions(from bundleIdentifier: String) async throws {
         let capture = self.capture
         let store = self.store
-        rejectedSuggestionRecorder.forget(bundleIdentifier: bundleIdentifier)
-        try await forgetWhatThisLoopRemembers(clearingCorpus: {
+        try await forgetWhatThisLoopRemembers(of: bundleIdentifier, clearingCorpus: {
             await capture.forgetLearned(from: bundleIdentifier)
             try await store.forget(bundleIdentifier: bundleIdentifier)
         })
@@ -330,18 +329,18 @@ final class SuggestionCoordinator {
     func forgetEverySuggestion() async throws {
         let capture = self.capture
         let store = self.store
-        rejectedSuggestionRecorder.forget()
-        try await forgetWhatThisLoopRemembers(clearingCorpus: {
+        try await forgetWhatThisLoopRemembers(of: nil, clearingCorpus: {
             await capture.forgetLearnedLines()
             try await store.forgetEverything()
             try await capture.forgetEveryAnswer()
         })
     }
 
-    /// Drops the verdicts and model answers this loop keeps, which may name a forgotten line.
+    /// Drops the verdicts, model answers and held rejections this loop keeps for one application, or for all when nil.
     private func forgetWhatThisLoopRemembers(
-        clearingCorpus: @escaping @Sendable () async throws -> Void
+        of bundleIdentifier: String?, clearingCorpus: @escaping @Sendable () async throws -> Void
     ) async throws {
+        rejectedSuggestionRecorder.forget(bundleIdentifier: bundleIdentifier)
         await acceptances.beginForgetting()
         defer { acceptances.finishForgetting() }
         try await verifier.forgetEverything(then: clearingCorpus)
