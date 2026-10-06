@@ -357,13 +357,14 @@ struct ScreenWords: Sendable {
     }
 
     init(texts: [String]) {
-        words = texts.joined(separator: " ").split { !$0.isLetter && !$0.isNumber }
-            .prefix(CorrectionEvidence.maximumWordsOnScreen).map(String.init)
+        words = Array(
+            WordTokens.words(texts.joined(separator: " "), .comparison).prefix(
+                CorrectionEvidence.maximumWordsOnScreen))
     }
 
     /// Whether `written` appears in exactly this case with one of `neighbours` right before or after it.
     func shows(_ written: String, besideAnyOf neighbours: [String]) -> Bool {
-        let needle = written.split { !$0.isLetter && !$0.isNumber }.map(String.init)
+        let needle = WordTokens.words(written, .comparison)
         guard !needle.isEmpty, !neighbours.isEmpty, needle.count <= words.count else { return false }
         return words.indices.dropLast(needle.count - 1).contains { start in
             guard Array(words[start..<(start + needle.count)]) == needle else { return false }
