@@ -349,6 +349,29 @@ struct MainIntentWiringTests {
         #expect(await reread.clips(keeping: window).isEmpty)
     }
 
+    @Test("flagging a dictation with a reason keeps the reason, and unflagging clears it")
+    func flagsADictationWithAReason() async throws {
+        let sandbox = Sandbox()
+        let app = AppDelegate(container: sandbox.root)
+        let store = DictationHistoryStore(
+            file: DictationHistoryStore.defaultFile(in: sandbox.root))
+        let retention = Retention(days: 30, now: .now)
+        let record = DictationRecord(text: "Right, the drafting is done.", when: .now)
+        try await store.append(record, keeping: retention)
+
+        app.carryOut(.flagDictationAs(record.id, .formatting))
+        await app.intentWork?.value
+        let flagged = await store.records(keeping: retention).first
+        #expect(flagged?.isFlagged == true)
+        #expect(flagged?.flagReason == .formatting)
+
+        app.carryOut(.flagDictation(record.id))
+        await app.intentWork?.value
+        let unflagged = await store.records(keeping: retention).first
+        #expect(unflagged?.isFlagged == false)
+        #expect(unflagged?.flagReason == nil)
+    }
+
     @Test("flagging a dictation is kept, and flagging it again puts it back")
     func flagsADictation() async throws {
         let sandbox = Sandbox()

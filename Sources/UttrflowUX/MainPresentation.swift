@@ -1,6 +1,7 @@
 // The main window's shared vocabulary: intents, actions, empty states, figures, and formatting.
 public import Foundation
 public import UttrflowCore
+public import UttrflowHistory
 
 /// What clicking something in the main window means, named so a page compares in a test.
 public enum MainIntent: Sendable, Equatable {
@@ -23,6 +24,8 @@ public enum MainIntent: Sendable, Equatable {
 
     /// This dictation came out wrong: the honest input to teaching.
     case flagDictation(UUID)
+    /// This dictation came out wrong in this way: a flag that names its error class.
+    case flagDictationAs(UUID, FlagReason)
     /// Open the word editor with this spelling as "Say it like", so the right spelling is typed once.
     case fixWord(String)
     /// Keep this dictation in clipboard history by choice.

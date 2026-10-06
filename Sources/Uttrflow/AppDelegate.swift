@@ -3397,6 +3397,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case .flagDictation(let id):
             let retention = Retention(days: settings.transcriptRetentionDays, now: Date())
             act { try await self.history.toggleFlag(id, keeping: retention) }
+
+        case .flagDictationAs(let id, let reason):
+            let retention = Retention(days: settings.transcriptRetentionDays, now: Date())
+            act { try await self.history.flag(id, as: reason, keeping: retention) }
         }
     }
 

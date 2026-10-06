@@ -434,7 +434,7 @@ public enum HistoryPresenter {
                     symbolName: entry.isFlagged ? "flag.fill" : "flag",
                     intent: .flagDictation(entry.id)),
             ],
-            more: (canKeepAsClip
+            more: flagReasons(for: entry.id) + (canKeepAsClip
                 ? [
                     MainAction(
                         title: "Keep as clip", symbolName: "doc.on.clipboard",
@@ -442,6 +442,19 @@ public enum HistoryPresenter {
                 ]
                 : []) + [.delete(.forgetDictation(entry.id))],
             fixes: fixes(for: entry.text))
+    }
+
+    /// One flag per error class of `Docs/accuracy-targets.md`, so a flag can say what was wrong.
+    static func flagReasons(for id: UUID) -> [MainAction] {
+        FlagReason.allCases.map { reason in
+            let title =
+                switch reason {
+                case .meaningChanging: "Flag: Wrong Words"
+                case .formatting: "Flag: Formatting"
+                case .cosmetic: "Flag: Spacing"
+                }
+            return MainAction(title: title, symbolName: "flag", intent: .flagDictationAs(id, reason))
+        }
     }
 
     /// One action per distinct word in the text, in text order, for teaching the dictionary its right spelling.
