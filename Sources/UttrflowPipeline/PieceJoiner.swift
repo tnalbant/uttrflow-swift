@@ -674,7 +674,8 @@ enum PieceJoiner {
         let head = draft.shape(at: live[position + length])
         if let value = Self.ordinals[head.key] {
             guard
-                prefix != nil || head.endsClause || opensClauseAfterPause(at: position, in: draft, live, starts: starts)
+                prefix != nil || head.endsClause
+                    || opensClauseAfterPause(at: position, in: draft, live, starts: starts)
                     || hasPriorOrdinalSequence(
                         value, before: word, in: draft, starts: starts
                     )
