@@ -61,7 +61,7 @@ public enum Scorer {
     }
 
     private static func normalisedWhitespace(_ text: String) -> String {
-        text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        WordTokens.words(text, .display).joined(separator: " ")
     }
 
     /// The beginning, ending and exact form checked literally, each named with its side so a missing anchor never reads as output.

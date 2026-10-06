@@ -141,11 +141,11 @@ public struct EvaluationCase: Sendable, Equatable, Identifiable {
     /// One segment carrying a score for every spoken word, or none at all when nothing was doubtful or paused.
     private var segments: [TranscriptionSegment] {
         guard !doubtful.isEmpty || !pausedAfter.isEmpty else { return [] }
-        let spokenWords = spoken.split(whereSeparator: \.isWhitespace).map(String.init)
+        let spokenWords = WordTokens.words(spoken, .display)
         // A run is doubted where it stands, so naming one word does not doubt every other occurrence of it.
         var unsure: Set<Int> = []
         for run in doubtful {
-            let wanted = run.split(whereSeparator: \.isWhitespace).map { Self.bare(String($0)) }
+            let wanted = WordTokens.words(run, .display).map(Self.bare)
             guard let start = Self.place(of: wanted, in: spokenWords, past: unsure) else { continue }
             unsure.formUnion(start..<(start + wanted.count))
         }
