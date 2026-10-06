@@ -45,7 +45,10 @@ public struct LayoutWordsPass: PieceCleaningPass {
                 let item = itemNumber(at: position + 1, in: live, of: draft)
             {
                 let labelText = WordShape.capitalised(draft.shape(at: label).core)
-                draft.replace(at: label, with: "\n\(labelText) \(item.value): ", by: Self.id)
+                // At the head of the text a labelled item has no line to break from, as a numbered item has none.
+                let lineBreak = live.first == label ? "" : "\n"
+                let written = "\(lineBreak)\(labelText) \(item.value)\(Draft.labelStop)"
+                draft.replace(at: label, with: written, by: Self.id)
                 for index in live[position..<position + found.length] { draft.remove(at: index, by: Self.id) }
                 live.removeSubrange(position..<position + found.length)
                 continue
