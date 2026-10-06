@@ -56,7 +56,9 @@ extension CleaningPipeline {
             destination == .codeEditor
             && CaretStructure.region(precedingText: precedingText, documentName: documentName).isCode
         if let layoutPosition = cleanings.firstIndex(where: { $0.id == .layoutWords }) {
-            if inCode { cleanings.insert(CodeEditorCommandsPass(), at: layoutPosition) }
+            if inCode || destination == .terminal {
+                cleanings.insert(CodeEditorCommandsPass(destination: destination), at: layoutPosition)
+            }
             // A code editor's comments take no casing: its rows are identifiers, which a comment is not.
             if destination != .codeEditor || inCode {
                 cleanings.insert(SpokenCasingPass(destination: destination), at: layoutPosition)

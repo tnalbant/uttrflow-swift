@@ -1,8 +1,11 @@
 import UttrflowCore
 
-/// Writes spoken symbol commands in executable code.
+/// Writes spoken symbol commands in executable code, or at a command line.
 struct CodeEditorCommandsPass: PieceCleaningPass {
     static let id: PassID = .codeEditorCommands
+
+    /// Where the words go; a command line takes only the rows that name it, so its brackets stay marks.
+    var destination: Destination = .codeEditor
 
     func apply(_ draft: Draft) -> Draft {
         var draft = draft
@@ -10,7 +13,7 @@ struct CodeEditorCommandsPass: PieceCleaningPass {
         while position < draft.presentIndices.count {
             let live = draft.presentIndices
             guard position < live.count else { break }
-            if let symbol = Self.symbol(at: position, in: live, of: draft) {
+            if let symbol = symbol(at: position, in: live, of: draft) {
                 apply(symbol, at: position, in: live, to: &draft)
             }
             position += 1
@@ -18,9 +21,9 @@ struct CodeEditorCommandsPass: PieceCleaningPass {
         return draft
     }
 
-    private static func symbol(at position: Int, in live: [Int], of draft: Draft) -> SpokenCommand? {
+    private func symbol(at position: Int, in live: [Int], of draft: Draft) -> SpokenCommand? {
         SpokenCommands.codeSymbols.first {
-            $0.isEnabled(in: .codeEditor)
+            ($0.destinations?.contains(destination) ?? (destination == .codeEditor))
                 && draft.spells($0.words, at: position, in: live, acrossSentences: true)
         }
     }
