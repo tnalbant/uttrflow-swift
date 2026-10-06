@@ -228,7 +228,7 @@ public struct ClipImage: Sendable, Equatable, Codable {
     }
 
     /// Whether a stored file name is a single path component, so it can only name a file inside the Images folder.
-    public static func isConfinedFileName(_ name: String) -> Bool {
+    static func isConfinedFileName(_ name: String) -> Bool {
         !name.isEmpty && name != "." && name != ".." && !name.contains("/") && !name.contains("\0")
     }
 
