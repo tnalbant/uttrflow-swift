@@ -54,6 +54,18 @@ struct EvidenceLedgerStoreTests {
         try await store.reset()
     }
 
+    @Test("forgetting one subject's kinds leaves its other kinds and every other subject")
+    func forgetRemovesOnlyTheNamedRows() async throws {
+        let store = EvidenceLedgerStore(file: try sandbox(), encryptedStore: EncryptedStore(keys: Keys()))
+        let other = EvidenceRow(kind: .use, subject: "entry-2", day: 20_000, provenance: .dictation)
+        let sighting = EvidenceRow(kind: .sighting, subject: "entry-1", day: 20_000, provenance: .dictation)
+        try await store.append([row, other, sighting], keeping: always)
+        try await store.forget(subject: "entry-1", kinds: [.use, .revert])
+        #expect(await store.rows(keeping: always) == [other, sighting])
+        try await store.forget(kinds: [.sighting])
+        #expect(await store.rows(keeping: always) == [other])
+    }
+
     @Test("a file from a newer build is read as empty and never overwritten")
     func newerVersionIsLeftAlone() async throws {
         let file = try sandbox()

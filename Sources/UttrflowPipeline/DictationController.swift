@@ -182,7 +182,7 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
 
     /// Watches for the shortcut, or rebinds to another one. See Docs/pipeline-gestures.md.
     public func start(binding: HotkeyBinding) async throws(HotkeyError) {
-        forgetUnsettledPress()
+        await abandonUnsettledPress()
         self.binding = binding
         try await monitor.start(binding: binding)
     }
@@ -190,7 +190,7 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
     /// Watches for the command key, or stops watching when it is nil; separate so a refusal leaves dictation armed.
     public func start(commandBinding: HotkeyBinding?) async throws(HotkeyError) {
         guard let commandMonitor else { return }
-        forgetUnsettledPress()
+        await abandonUnsettledPress()
         self.commandBinding = commandBinding
         guard let commandBinding else { return commandMonitor.stop() }
         try await commandMonitor.start(binding: commandBinding)
@@ -199,7 +199,7 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
     /// Stops watching for the shortcut, first finishing any dictation under way so no microphone outlives it.
     public func stop() async {
         await endForSessionEnding()
-        forgetUnsettledPress()
+        await abandonUnsettledPress()
         stopWatchingTheLimit()
         // Stopped last, so the release it owes for a hold still reaches the forwarder.
         monitor.stop()
@@ -221,7 +221,7 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
     private func adopt(_ activation: HotkeyActivation) async {
         guard activation != self.activation else { return }
         self.activation = activation
-        forgetUnsettledPress()
+        await abandonUnsettledPress()
         pressedAt = nil
         lastTapEndedAt = nil
         pressOpenedTheMicrophone = false
@@ -371,7 +371,7 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
 
     /// Discards the dictation under way when Escape is pressed, whether still listening or already being processed.
     private func cancelListening() async {
-        forgetUnsettledPress()
+        await abandonUnsettledPress()
         pressedAt = nil
         lastTapEndedAt = nil
         pressOpenedTheMicrophone = false
@@ -488,6 +488,13 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
             forgetUnsettledPress()
             await cancelListening()
         }
+    }
+
+    /// Forgets a waiting press and closes the microphone it opened on key-down, so none outlives a rebind, stop or mode change.
+    private func abandonUnsettledPress() async {
+        guard unsettledPress != nil else { return }
+        forgetUnsettledPress()
+        await pipeline.cancelModifierPress()
     }
 
     private func forgetUnsettledPress() {
