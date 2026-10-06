@@ -64,7 +64,7 @@ public enum CaptureGate {
     }
 
     /// The version of the credential rules, raised whenever they widen so lines learned before are swept once.
-    public static let secretRulesVersion = 2
+    public static let secretRulesVersion = 3
 
     /// Removes every learned line the credential rules now recognise, once per `secretRulesVersion`, and counts them.
     @discardableResult
@@ -75,10 +75,15 @@ public enum CaptureGate {
         }
     }
 
-    /// Whether a value has the shape of a credential, asked of the rules the clipboard already uses.
-    public static func looksLikeSecret(_ text: String) -> Bool { SecretShapes.matches(text) }
+    /// Whether a value, or any line of it, has the shape of a credential, asked of the clipboard's rules.
+    public static func looksLikeSecret(_ text: String) -> Bool {
+        // A learned value's lines come back one at a time, so each is judged as the one-line clip it becomes.
+        SecretShapes.matches(text)
+            || (text.contains(where: \.isNewline)
+                && text.split(whereSeparator: \.isNewline).contains { SecretShapes.matches(String($0)) })
+    }
 
-    /// Whether a value contains 2 to 8 digits grouped by whitespace, hyphens or periods.
+    /// Whether a value is only digits, at least two, grouped by whitespace, hyphens or periods: a code, PIN, phone or account number at any length.
     public static func looksLikeSensitiveValue(_ text: String, from reading: FieldReading) -> Bool {
         guard !TerminalApplications.contains(reading.bundleIdentifier) else { return false }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -95,6 +100,6 @@ public enum CaptureGate {
                 return false
             }
         }
-        return (2...8).contains(digitCount) && hasDigitSinceSeparator
+        return digitCount >= 2 && hasDigitSinceSeparator
     }
 }

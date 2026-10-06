@@ -63,7 +63,7 @@ extension MeaningPreservationGuard {
             return .rejected(reason: "the rewrite dropped a negation", kind: .negationDropped)
         }
         if case .rejected(let reason, let kind) = negationPlacementVerdict(
-            alignment, echo: echoTokens)
+            alignment, echo: echoTokens, removable: removable)
         {
             return .rejected(reason: reason, kind: kind)
         }
@@ -134,9 +134,13 @@ extension MeaningPreservationGuard {
                         guard end <= change.kept.upperBound,
                             zip(name, kept[start..<end]).allSatisfy({ $0 == $1.matching }),
                             !removable.contains(where: { start..<end ~= $0 }),
-                            !MentionGuard.isMentioned(
-                                at: start, spanning: name.count, in: Array(kept.indices), of: draft,
-                                reach: MentionGuard.phraseReach, kind: command.placement)
+                            // A name whose whole run the rewrite replaced with its mark, between two words, is that mark.
+                            start == change.kept.lowerBound && end == change.kept.upperBound
+                                && change.rewritten.lowerBound < rewrittenGaps.count - 1
+                                && rewrittenGaps[change.rewritten.lowerBound].contains(character)
+                                || !MentionGuard.isMentioned(
+                                    at: start, spanning: name.count, in: Array(kept.indices), of: draft,
+                                    reach: MentionGuard.phraseReach, kind: command.placement)
                         else { continue }
                         removable.formUnion(start..<end)
                         remaining -= 1
@@ -296,7 +300,7 @@ extension MeaningPreservationGuard {
 
     /// Refuses a negator that moved to a different content-word neighbourhood, while allowing contractions and punctuation changes.
     static func negationPlacementVerdict(
-        _ alignment: RewriteAlignment, echo: [GrammarToken]
+        _ alignment: RewriteAlignment, echo: [GrammarToken], removable: Set<Int> = []
     ) -> GuardVerdict {
         let kept = alignment.kept
         let rewritten = alignment.rewritten
@@ -311,7 +315,8 @@ extension MeaningPreservationGuard {
         }
         guard keptNegations.count == writtenNegations.count else { return .accepted }
 
-        let keptPlaces = negationPlaces(in: kept)
+        // A word a pass could take out, as a filler or a mark's name, locates nothing the rewrite must keep beside it.
+        let keptPlaces = negationPlaces(in: kept, skipping: removable)
         let rewrittenPlaces = negationPlaces(in: rewritten)
         guard keptPlaces.count == rewrittenPlaces.count else { return .accepted }
         guard
@@ -344,7 +349,10 @@ extension MeaningPreservationGuard {
     }
 
     /// Coordinators bound clauses; the content words beside a negation locate its scope.
-    private static func negationPlaces(in tokens: [GrammarToken]) -> [NegationPlace] {
+    private static func negationPlaces(
+        in tokens: [GrammarToken], skipping removable: Set<Int> = []
+    ) -> [NegationPlace] {
+        let anchors: (Int) -> Bool = { isAnchor(tokens[$0]) && !removable.contains($0) }
         var clause = 0
         var clauseStart = 0
         var result: [NegationPlace] = []
@@ -359,8 +367,8 @@ extension MeaningPreservationGuard {
                     tokens[(index + 1)...].firstIndex {
                         ["but", "and", "or"].contains($0.matching)
                     } ?? tokens.endIndex
-                let before = tokens[clauseStart..<index].last(where: isAnchor)
-                let after = tokens[(index + 1)..<clauseEnd].first(where: isAnchor)
+                let before = (clauseStart..<index).last(where: anchors).map { tokens[$0] }
+                let after = ((index + 1)..<clauseEnd).first(where: anchors).map { tokens[$0] }
                 result.append(NegationPlace(clause: clause, before: before, after: after))
             }
         }

@@ -31,6 +31,51 @@ struct FirstWordPassTests {
         #expect(cleaned(input, by: sut) == expected)
     }
 
+    /// A sampled fallback decode can hear a whole sentence in capitals; it reaches the field in sentence case.
+    @Test(
+        "sets a transcript heard wholly in capitals in sentence case",
+        arguments: [
+            ("KAL MEETING HAI, PLEASE SLIDES READY RAKHNA.", "Kal meeting hai, please slides ready rakhna."),
+            ("THE BUILD IS GREEN. I WILL SHIP IT", "The build is green. I will ship it"),
+            ("SHIP THE API TODAY", "Ship the API today"),
+        ]
+    )
+    func lowersAShoutedTranscript(input: String, expected: String) {
+        #expect(cleaned(input, by: FirstWordPass(policy: .fromInsertionPoint, state: .unknown)) == expected)
+    }
+
+    /// Two capitalised words are as likely an acronym pair as a shout, and a capital a pass wrote was asked for.
+    @Test(
+        "keeps capitals that are not the decoder's shout",
+        arguments: ["ship the API to AWS", "AWS API", "OK"]
+    )
+    func keepsCapitalsThatAreNotAShout(input: String) {
+        #expect(
+            cleaned(input, by: FirstWordPass(policy: .fromInsertionPoint, state: .unknown)).dropFirst()
+                == input.dropFirst())
+    }
+
+    @Test("keeps capitals a spoken casing command wrote")
+    func keepsSpokenCapitals() {
+        var draft = Draft(text: "say hello world now")
+        for index in draft.presentIndices.dropFirst() {
+            draft.replace(at: index, with: draft.words[index].text.uppercased(), by: SpokenCasingPass.id)
+        }
+        let result = FirstWordPass(policy: .fromInsertionPoint, state: .unknown).apply(draft)
+        #expect(result.text == "Say HELLO WORLD NOW")
+    }
+
+    /// A word whose dictionary form is capitalised is a name, so a capital after the first word stays on every run.
+    @Test(
+        "keeps a capitalised name after the first word, and a second run changes nothing",
+        arguments: [("at Delhi", "At Delhi"), ("the Delhi", "The Delhi"), ("we met in Paris", "We met in Paris")]
+    )
+    func keepsANameAfterTheFirstWord(input: String, expected: String) {
+        let once = cleaned(input, by: sut)
+        #expect(once == expected)
+        #expect(cleaned(once, by: sut) == once)
+    }
+
     @Test(
         "capitalises the start of every sentence",
         arguments: [
