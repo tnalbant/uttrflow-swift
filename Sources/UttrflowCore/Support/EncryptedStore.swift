@@ -26,6 +26,8 @@ public struct EncryptedStore: Sendable {
     private static let nonceLength = 12
     private static let tagLength = 16
     private let keys: StoreKeyCache
+    private let writeFile: @Sendable (Data, URL) throws -> Void
+    private let removeFile: @Sendable (URL) throws -> Void
 
     /// Returns the number of leading bytes in this store's sealed-file header.
     public static let sealedHeaderLength = magic.count
@@ -33,11 +35,33 @@ public struct EncryptedStore: Sendable {
     /// Uses the production Keychain provider unless a test supplies an isolated provider.
     public init(keys: (any StoreKeyProviding)? = nil) {
         self.keys = StoreKeyCache(keys ?? KeychainStoreKeyProvider())
+        self.writeFile = { data, url in try PrivateFile.write(data, to: url) }
+        self.removeFile = { url in try FileManager.default.removeItem(at: url) }
     }
 
-    /// Reads, authenticates and decodes one JSON file, migrating valid legacy JSON atomically.
+    init(
+        keys: any StoreKeyProviding,
+        writeFile: @escaping @Sendable (Data, URL) throws -> Void,
+        removeFile: @escaping @Sendable (URL) throws -> Void = { url in
+            try FileManager.default.removeItem(at: url)
+        }
+    ) {
+        self.keys = StoreKeyCache(keys)
+        self.writeFile = writeFile
+        self.removeFile = removeFile
+    }
+
+    /// Reads and authenticates one JSON file, or migrates valid legacy JSON.
     public func read<Value: Decodable & Encodable & Sendable>(
         _ type: Value.Type, from url: URL, now: Date = Date()
+    ) -> StoredList<Value> {
+        read(type, from: url, now: now, recoveringPreviousGeneration: false)
+    }
+
+    /// Reads as above and optionally recovers a prior sealed generation for an opted-in caller.
+    package func read<Value: Decodable & Encodable & Sendable>(
+        _ type: Value.Type, from url: URL, now: Date = Date(),
+        recoveringPreviousGeneration: Bool
     ) -> StoredList<Value> {
         let data: Data
         do {
@@ -45,6 +69,9 @@ public struct EncryptedStore: Sendable {
         } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
             return .missing
         } catch {
+            if recoveringPreviousGeneration, let recovered = recover(type, from: url, now: now) {
+                return .read(recovered)
+            }
             return .unreadable(setAside: LocalStore.setAside(url, now: now))
         }
         let isEnvelope = data.starts(with: Self.magic)
@@ -71,7 +98,12 @@ public struct EncryptedStore: Sendable {
             do {
                 value = try JSONDecoder().decode(type, from: payload)
             } catch {
-                if !isEnvelope { return .unreadable(setAside: LocalStore.setAside(url, now: now)) }
+                if !isEnvelope {
+                    if recoveringPreviousGeneration, let recovered = recover(type, from: url, now: now) {
+                        return .read(recovered)
+                    }
+                    return .unreadable(setAside: LocalStore.setAside(url, now: now))
+                }
                 throw error
             }
             if !isEnvelope {
@@ -86,6 +118,11 @@ public struct EncryptedStore: Sendable {
             }
             return .read(value)
         } catch {
+            if isEnvelope, recoveringPreviousGeneration,
+                let recovered = recover(type, from: url, now: now)
+            {
+                return .read(recovered)
+            }
             Self.log.error(
                 "Encrypted store could not be authenticated or decoded for \(url.lastPathComponent, privacy: .public)"
             )
@@ -93,19 +130,62 @@ public struct EncryptedStore: Sendable {
         }
     }
 
-    /// Writes JSON only after sealing it with filename-bound authenticated data.
-    public func write<Value: Encodable & Sendable>(_ value: Value, to url: URL) throws {
+    /// Seals JSON with filename-bound authenticated data.
+    public func write<Value: Encodable & Sendable>(
+        _ value: Value, to url: URL
+    ) throws {
+        try write(value, to: url, preservingPreviousGeneration: false)
+    }
+
+    /// Seals JSON and optionally preserves the prior generation for an opted-in caller.
+    package func write<Value: Encodable & Sendable>(
+        _ value: Value, to url: URL, preservingPreviousGeneration: Bool
+    ) throws {
         let data = try JSONEncoder().encode(value)
         var key: SymmetricKey
+        var previous: Data?
         do {
             let existing = try Data(contentsOf: url)
             guard existing.starts(with: Self.magic) else { throw StoreKeyError.legacyFileNeedsMigration }
             key = try keys.key(createIfMissing: false)
             _ = try Self.open(existing, key: key, name: url.lastPathComponent)
+            previous = existing
         } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
             key = try keys.key(createIfMissing: true)
+            if preservingPreviousGeneration {
+                try removeIfPresent(PrivateFile.backupURL(for: url))
+                let folder = url.deletingLastPathComponent()
+                if FileManager.default.fileExists(atPath: folder.path(percentEncoded: false)) {
+                    try PrivateFile.synchronizeDirectory(at: folder)
+                }
+            }
         }
-        try PrivateFile.write(Self.seal(data, key: key, name: url.lastPathComponent), to: url)
+        if preservingPreviousGeneration, let previous {
+            try PrivateFile.preserveSealedGeneration(previous, from: url)
+        }
+        try writeFile(Self.seal(data, key: key, name: url.lastPathComponent), url)
+    }
+
+    /// Removes a store and its previous generation so a deliberate reset cannot restore deleted data.
+    package func remove(_ url: URL) throws {
+        let backup = PrivateFile.backupURL(for: url)
+        try removeIfPresent(backup)
+        let folder = url.deletingLastPathComponent()
+        if FileManager.default.fileExists(atPath: folder.path(percentEncoded: false)) {
+            try PrivateFile.synchronizeDirectory(at: folder)
+        }
+        try removeIfPresent(url)
+        if FileManager.default.fileExists(atPath: folder.path(percentEncoded: false)) {
+            try PrivateFile.synchronizeDirectory(at: folder)
+        }
+    }
+
+    private func removeIfPresent(_ url: URL) throws {
+        do {
+            try removeFile(url)
+        } catch let error as CocoaError where error.code == .fileNoSuchFile {
+            return
+        }
     }
 
     /// Encrypts bytes for a logical filename while leaving file I/O to the caller.
@@ -163,6 +243,35 @@ public struct EncryptedStore: Sendable {
         let combined = envelope.dropFirst(headerLength)
         let box = try AES.GCM.SealedBox(combined: Data(combined))
         return try AES.GCM.open(box, using: key, authenticating: Data(name.utf8))
+    }
+
+    private func recover<Value: Decodable & Sendable>(
+        _ type: Value.Type, from url: URL, now: Date
+    ) -> Value? {
+        let backupURL = PrivateFile.backupURL(for: url)
+        guard let backup = try? Data(contentsOf: backupURL), backup.starts(with: Self.magic),
+            let key = try? keys.key(createIfMissing: false),
+            let payload = try? Self.open(backup, key: key, name: url.lastPathComponent),
+            let value = try? JSONDecoder().decode(type, from: payload)
+        else { return nil }
+
+        if FileManager.default.fileExists(atPath: url.path(percentEncoded: false)),
+            LocalStore.setAside(url, now: now) == nil
+        {
+            return nil
+        }
+        do {
+            try PrivateFile.restore(backup, to: url)
+            Self.log.notice(
+                "Restored the previous encrypted store generation for \(url.lastPathComponent, privacy: .public)"
+            )
+            return value
+        } catch {
+            Self.log.error(
+                "Could not restore the previous encrypted store generation for \(url.lastPathComponent, privacy: .public)"
+            )
+            return nil
+        }
     }
 }
 

@@ -941,7 +941,13 @@ public actor ClipboardStore {
     /// Reads one file, setting an unreadable one aside and remembering that its pictures are unknown.
     private func read(_ url: URL) -> [Clip] {
         guard !unreplaceable.contains(url) else { return [] }
-        let stored = encryptedStore?.read([Clip].self, from: url) ?? LocalStore.read([Clip].self, from: url)
+        let stored: StoredList<[Clip]>
+        if let encryptedStore {
+            stored = encryptedStore.read(
+                [Clip].self, from: url, recoveringPreviousGeneration: true)
+        } else {
+            stored = LocalStore.read([Clip].self, from: url)
+        }
         if case .unreadable(let setAside) = stored {
             hasUnreadableIndex = true
             if let setAside {
@@ -1028,7 +1034,7 @@ public actor ClipboardStore {
             let data = try JSONEncoder().encode(clips)
             Self.writes?.record(data)
             if let encryptedStore {
-                try encryptedStore.write(clips, to: url)
+                try encryptedStore.write(clips, to: url, preservingPreviousGeneration: true)
             } else {
                 try PrivateFile.write(data, to: url)
             }
@@ -1049,6 +1055,7 @@ public actor ClipboardStore {
 
     /// Deletes a file if it is there; nothing to delete is success, not a failure.
     private func removeFile(_ url: URL) throws {
+        if let encryptedStore { return try encryptedStore.remove(url) }
         let manager = FileManager.default
         guard manager.fileExists(atPath: url.path(percentEncoded: false)) else { return }
         try manager.removeItem(at: url)

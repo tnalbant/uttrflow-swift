@@ -101,9 +101,11 @@ Neither is an error and neither writes anything, so undoing twice cannot count t
 dictionary entry. The caller passes a returned entry to
 `PersonalDictionaryStore.recordRevert(of:)`.
 
-Writes are atomic, so a crash or a full disk cannot leave a truncated file behind. An empty
-list removes the file rather than writing `[]`, so an emptied history leaves nothing of the
-user's on disk.
+Writes flush the temporary file and containing folder around their atomic replacement, so a
+crash or a full disk cannot leave a truncated history file behind. Dictation history does not
+keep a previous-generation backup; unreadable bytes from outside this write path follow the
+set-aside behavior below. An empty list removes the file rather than writing `[]`, so an emptied
+history leaves nothing of the user's on disk.
 
 ## When the file cannot be read
 
@@ -117,10 +119,10 @@ cannot be opened, the app must still open. The store never treats such a file as
 | An encrypted file that fails authentication, or whose key is definitely missing | Renamed aside the same way | As above. |
 | A legacy plaintext file that does not decode, a key that is temporarily unavailable, or a file that could not be renamed | Left in place | Reads as empty and refuses every write (`HistoryStoreError.couldNotWrite`), so the original bytes cannot be replaced. |
 
-Records are not salvaged one by one from an unreadable file: the store's own writes are atomic,
-so the realistic corruption is a whole file somebody changed, and half a history restored is
-harder to explain than none. Inside a readable file, an individual change that cannot be decoded
-costs only that change ([core-history-decoding.md](core-history-decoding.md)).
+Records are not salvaged one by one from an unreadable file: the store's own writes are durable
+and atomic, so the realistic corruption is a whole file somebody changed, and half a history
+restored is harder to explain than none. Inside a readable file, an individual change that
+cannot be decoded costs only that change ([core-history-decoding.md](core-history-decoding.md)).
 
 A set-aside copy holds transcripts, so it lives no longer than they would have. Every
 `records(keeping:)` deletes copies whose stamp the retention window has passed

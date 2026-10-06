@@ -76,6 +76,45 @@ struct ClipboardEncryptionTests {
         #expect(await reopened.imageData(for: try #require(restored.image)) == original)
     }
 
+    @Test("a clipboard index recovers its previous sealed generation once")
+    func indexRecoveryIsOneShot() async throws {
+        let folder = try TemporaryFolder()
+        let crypto = encryptedStore()
+        let file = folder.url.appending(path: "clipboard.json")
+        let previous = [Clip(text: "recover me", kind: .text, copiedAt: Date())]
+        try crypto.write(previous, to: file)
+        try crypto.write(
+            [Clip(text: "replacement", kind: .text, copiedAt: Date())], to: file,
+            preservingPreviousGeneration: true)
+        let current = try Data(contentsOf: file)
+        try Data(current.prefix(10)).write(to: file)
+        let store = ClipboardStore(file: file, encryptedStore: crypto)
+
+        let recovered = await store.clips(keeping: folder.retention)
+        #expect(recovered.map(\.id) == previous.map(\.id))
+        #expect(recovered.map(\.text) == previous.map(\.text))
+    }
+
+    @Test("forgetting the clipboard removes index backups too")
+    func resetRemovesIndexBackups() async throws {
+        let folder = try TemporaryFolder()
+        let crypto = encryptedStore()
+        let file = folder.url.appending(path: "clipboard.json")
+        let store = ClipboardStore(file: file, encryptedStore: crypto)
+        try await store.record(Clip(text: "one", kind: .text, copiedAt: Date()), keeping: folder.retention)
+        try await store.record(
+            Clip(text: "two", kind: .text, copiedAt: Date()), keeping: folder.retention)
+        let backup = file.appendingPathExtension("bak")
+        #expect(FileManager.default.fileExists(atPath: backup.path))
+
+        try await store.forgetEverything()
+
+        #expect(!FileManager.default.fileExists(atPath: file.path))
+        #expect(!FileManager.default.fileExists(atPath: backup.path))
+        #expect(
+            await ClipboardStore(file: file, encryptedStore: crypto).clips(keeping: folder.retention).isEmpty)
+    }
+
     @Test("legacy clipboard JSON and picture files migrate on first read")
     func legacyFilesMigrate() async throws {
         let folder = try TemporaryFolder()
