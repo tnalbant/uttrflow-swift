@@ -33,6 +33,7 @@ public enum RichTextPlainForm: Sendable {
 
         var tokens: [HTMLToken] = []
         while let token = tokenizer.next() { tokens.append(token) }
+        tokens = HiddenContent.removed(from: tokens)
         var renderer = PlainTextRenderer(
             itemCounts: PlainTextRenderer.itemCounts(in: tokens), maximumOutputBytes: maximumOutputBytes)
         for token in tokens {
@@ -40,6 +41,56 @@ public enum RichTextPlainForm: Sendable {
             if renderer.didReachLimit { break }
         }
         return renderer.finish()
+    }
+}
+
+// MARK: - Hidden content
+
+/// Drops what the page hides from its reader, since the page and not the browser chooses what the HTML flavour holds.
+enum HiddenContent {
+    /// Elements that never have content or an end tag, so hiding one hides only itself.
+    private static let voidElements: Set<String> = [
+        "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source",
+        "track", "wbr",
+    ]
+
+    /// The tokens a reader would see: every hidden element is removed with everything inside it.
+    static func removed(from tokens: [HTMLToken]) -> [HTMLToken] {
+        var kept: [HTMLToken] = []
+        kept.reserveCapacity(tokens.count)
+        var hiddenName: String?
+        var depth = 0
+        for token in tokens {
+            if let name = hiddenName {
+                guard case .tag(let tag) = token, tag.name == name else { continue }
+                depth += tag.isClosing ? -1 : 1
+                if depth == 0 { hiddenName = nil }
+                continue
+            }
+            if case .tag(let tag) = token, !tag.isClosing, isHidden(tag) {
+                if !voidElements.contains(tag.name) {
+                    hiddenName = tag.name
+                    depth = 1
+                }
+                continue
+            }
+            kept.append(token)
+        }
+        return kept
+    }
+
+    /// Whether a start tag hides its element: `hidden`, `aria-hidden="true"`, or an inline style that hides it.
+    static func isHidden(_ tag: HTMLTag) -> Bool {
+        if tag.attribute("hidden") != nil { return true }
+        if tag.attribute("aria-hidden")?.trimmingCharacters(in: .whitespaces).lowercased() == "true" {
+            return true
+        }
+        guard let style = tag.attribute("style") else { return false }
+        let declarations = style.lowercased().filter { !$0.isWhitespace }.split(separator: ";")
+        return declarations.contains { declaration in
+            let value = declaration.replacingOccurrences(of: "!important", with: "")
+            return value == "display:none" || value == "visibility:hidden"
+        }
     }
 }
 

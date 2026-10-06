@@ -50,6 +50,9 @@ public struct PhoneticIndex: Sendable, Equatable {
     /// Entries no coder could address, which nothing can ever look up; empty unless a spelling is all punctuation.
     public let unaddressable: [DictionaryEntry]
 
+    /// A digest of every trustworthy entry and its counts, equal for equal contents across launches.
+    public let revision: UInt64
+
     /// Each filed entry's Double Metaphone code, keyed by what it sounds like, so a ranking never encodes it again.
     private let codes: [String: PhoneticCode]
 
@@ -73,12 +76,29 @@ public struct PhoneticIndex: Sendable, Equatable {
             }
         }
         self.unaddressable = unfiled
+        self.revision = Self.digest(of: entries.filter(\.isTrustworthy))
         self.byFoldedSpelling = spelt.mapValues { $0.sorted(by: PhoneticIndex.isMoreUseful) }
         self.codes = codes
         self.buckets = Buckets(
             buckets.mapValues {
                 Array($0.sorted(by: PhoneticIndex.isMoreUseful).prefix(PhoneticIndex.maximumPerSound))
             })
+    }
+
+    /// FNV-1a over each entry's identity, spelling, sound and counts, in identifier order.
+    private static func digest(of entries: [DictionaryEntry]) -> UInt64 {
+        let fields = entries.sorted { $0.id.uuidString < $1.id.uuidString }.map {
+            [
+                $0.id.uuidString, $0.word, $0.pronunciation ?? "", "\($0.origin)", "\($0.timesUsed)",
+                "\($0.timesReverted)",
+            ]
+            .joined(separator: "\u{1F}")
+        }
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in fields.joined(separator: "\u{1E}").utf8 {
+            hash = (hash ^ UInt64(byte)) &* 0x0000_0100_0000_01b3
+        }
+        return hash
     }
 
     /// The code the index already made for an entry sounding like `soundsLike`; nil when no filed entry does.

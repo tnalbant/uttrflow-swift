@@ -37,7 +37,9 @@ public struct ARPALimits: Sendable, Equatable {
 /// Parses the ARPA text format: a `\data\` header of counts, one section per order, and `\end\`.
 public enum ARPAReader {
     /// The model in `text`, or the first reason it cannot be used.
-    public static func model(from text: String, limits: ARPALimits = .standard) throws(ARPAError) -> NGramModel {
+    public static func model(
+        from text: String, limits: ARPALimits = .standard
+    ) throws(ARPAError) -> NGramModel {
         let bytes = text.utf8.count
         guard bytes <= limits.maxBytes else { throw .tooLarge(bytes: bytes) }
         var parser = Parser(limits: limits)
@@ -68,7 +70,9 @@ private struct Parser {
         if line == "\\end\\" { ended = true; return }
         if line.hasPrefix("ngram ") { return try declare(line, number: number) }
         if line.hasPrefix("\\"), line.hasSuffix("-grams:") {
-            guard let order = Int(line.dropFirst().dropLast(7)), declared[order] != nil else { throw .malformed(line: number) }
+            guard let order = Int(line.dropFirst().dropLast(7)), declared[order] != nil else {
+                throw .malformed(line: number)
+            }
             section = order
             return
         }
@@ -90,15 +94,21 @@ private struct Parser {
     mutating func add(_ line: Substring, number: Int) throws(ARPAError) {
         let fields = line.split(whereSeparator: { $0 == " " || $0 == "\t" })
         guard fields.count == section + 1 || fields.count == section + 2,
-              let probability = Float(fields[0]), probability.isFinite else { throw .malformed(line: number) }
+            let probability = Float(fields[0]), probability.isFinite
+        else { throw .malformed(line: number) }
         var backoff: Float = 0
         if fields.count == section + 2 {
-            guard let value = Float(fields[section + 1]), value.isFinite else { throw .malformed(line: number) }
+            guard let value = Float(fields[section + 1]), value.isFinite else {
+                throw .malformed(line: number)
+            }
             backoff = value
         }
         let wordIDs = try fields[1...section].map { word throws(ARPAError) in try id(for: String(word)) }
         let key = NGramModel.key(wordIDs)
-        guard entries.updateValue(NGramEntry(log10Probability: probability, log10Backoff: backoff), forKey: key) == nil else {
+        guard
+            entries.updateValue(NGramEntry(log10Probability: probability, log10Backoff: backoff), forKey: key)
+                == nil
+        else {
             throw .duplicate(line: number)
         }
         found[section, default: 0] += 1
@@ -126,7 +136,8 @@ private struct Parser {
 private extension Substring {
     func trimmingWhitespace() -> Substring {
         let isSpace: (Character) -> Bool = { $0 == " " || $0 == "\t" || $0 == "\r" }
-        guard let first = firstIndex(where: { !isSpace($0) }), let last = lastIndex(where: { !isSpace($0) }) else {
+        guard let first = firstIndex(where: { !isSpace($0) }), let last = lastIndex(where: { !isSpace($0) })
+        else {
             return self[endIndex...]
         }
         return self[first...last]

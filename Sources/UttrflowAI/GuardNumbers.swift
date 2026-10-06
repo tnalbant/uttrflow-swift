@@ -5,9 +5,9 @@ import UttrflowDictionary
 extension MeaningPreservationGuard {
     /// The first number the rewrite states that the speaker did not state, there and that many times, or nil.
     static func inventedNumber(original: String, rewritten: String) -> String? {
-        // Read in words on the written side too, so "twenty chairs" is refused where "20 chairs" already was.
-        var spoken = numberSequence(in: original, reading: numberWords)[...]
-        for number in numberSequence(in: rewritten, reading: englishNumberWords) {
+        // Read in words on the written side too, so "twenty chairs" and "assi log" are refused as "20 chairs" is.
+        var spoken = numberSequence(in: original, reading: quantityWords)[...]
+        for number in numberSequence(in: rewritten, reading: writtenQuantityWords) {
             guard let found = spoken.firstIndex(of: number) else { return number }
             spoken = spoken[(found + 1)...]
         }
@@ -43,6 +43,7 @@ extension MeaningPreservationGuard {
     /// The digit runs and comma separators as they appear, kept in text order.
     private static func numericSpellings(in text: String) -> [String] {
         let characters = Array(text)
+        let separators = Quantities.groupingCommas(in: characters)
         var spellings: [String] = []
         var index = 0
         while index < characters.count {
@@ -52,16 +53,8 @@ extension MeaningPreservationGuard {
             }
             let start = index
             index += 1
-            while index < characters.count {
-                if characters[index].isNumber {
-                    index += 1
-                } else if characters[index] == ",", index + 1 < characters.count,
-                    characters[index + 1].isNumber
-                {
-                    index += 1
-                } else {
-                    break
-                }
+            while index < characters.count, characters[index].isNumber || separators.contains(index) {
+                index += 1
             }
             spellings.append(String(characters[start..<index]))
         }
@@ -72,18 +65,28 @@ extension MeaningPreservationGuard {
     static func numberSequence(in text: String, reading table: [String: String]) -> [String] {
         var pieces: [(text: String, isDigits: Bool)] = []
         var run = ""
-        var runIsDigits = false
         func flush() {
-            if !run.isEmpty { pieces.append((run, runIsDigits)) }
+            if !run.isEmpty { pieces.append((run, false)) }
             run = ""
         }
-        for character in withoutThousandsSeparators(text) {
-            guard character.isNumber || character.isLetter else {
+        // Each number is read once, by `Quantities`, so "50K", "50 thousand" and "50,000" come to one value here too.
+        let characters = Array(text)
+        var spans = Quantities.spans(in: text)[...]
+        var position = 0
+        while position < characters.count {
+            if let span = spans.first, span.range.lowerBound == position {
+                flush()
+                pieces.append((span.quantity.digits, true))
+                spans = spans.dropFirst()
+                position = span.range.upperBound
+                continue
+            }
+            let character = characters[position]
+            position += 1
+            guard character.isLetter else {
                 flush()
                 continue
             }
-            if character.isNumber != runIsDigits { flush() }
-            runIsDigits = character.isNumber
             run.append(character)
         }
         flush()
@@ -95,7 +98,10 @@ extension MeaningPreservationGuard {
             if pieces[index].isDigits {
                 found.append(pieces[index].text)
                 index += 1
-            } else if let read = NumberWords.cardinal(words[index...]), read.count > 1 {
+            } else if let read =
+                NumberWords.cardinal(words[index...]) ?? NumberWords.hindiCardinal(words[index...]),
+                read.count > 1
+            {
                 found += words[index..<(index + read.count)].compactMap { table[$0] }
                 found.append(String(read.value))
                 index += read.count
@@ -107,27 +113,37 @@ extension MeaningPreservationGuard {
         return found
     }
 
-    /// Drops a comma that groups digits, so "12,000" and "1,50,000" read as the numbers they are.
+    /// Drops a comma that groups digits, so "12,000" and "1,50,000" read as the numbers they are and "10,20" as two.
     static func withoutThousandsSeparators(_ text: String) -> String {
         let characters = Array(text)
-        var result = ""
-        for (index, character) in characters.enumerated() {
-            if character == ",", index > 0, characters[index - 1].isNumber {
-                let run = characters[(index + 1)...].prefix(while: \.isNumber).count
-                if run == 2 || run == 3 { continue }
-            }
-            result.append(character)
-        }
-        return result
+        let separators = Quantities.groupingCommas(in: characters)
+        return String(characters.indices.filter { !separators.contains($0) }.map { characters[$0] })
     }
 
-    /// Digits people dictate as words, in English and Hindi; traps on first use if the tables share a word.
+    /// Digits people dictate as words, in English and Hindi; traps if a shared word ("lakh") differs in value.
     static let numberWords: [String: String] = Dictionary(
-        uniqueKeysWithValues: Array(englishNumberWords) + NumberWords.hindi.map { ($0.key, String($0.value)) }
-    )
+        NumberWords.english.map { ($0.key, String($0.value)) }
+            + NumberWords.hindi.map { ($0.key, String($0.value)) }
+    ) { english, hindi in
+        precondition(english == hindi, "a number word means one value in both tables")
+        return english
+    }
 
-    /// The English number words as digits, read from `NumberWords`.
-    private static let englishNumberWords: [String: String] = NumberWords.english.mapValues(String.init)
+    /// Each ordinal word as the numeral the rules write for it, "third" as "3rd".
+    static let ordinalNumerals: [String: String] = NumberFormsPass.ordinalUnits.mapValues {
+        "\($0)\(NumberFormsPass.ordinalSuffix($0))"
+    }
+
+    /// The number words, the Hindi fraction words and the ordinals, each as the value it states.
+    private static let quantityWords: [String: String] = numberWords.merging(
+        NumberWords.hindiFractions.mapValues { String($0.value) }
+    ) { first, _ in first }.merging(NumberFormsPass.ordinalUnits.mapValues { String($0) }) { first, _ in first
+    }
+
+    /// The quantity words read on the written side, less the Hindi ones as often an ordinary word ("do", "saath").
+    private static let writtenQuantityWords: [String: String] = quantityWords.filter {
+        !NumberWords.hindiHomographs.contains($0.key)
+    }
 
     /// The positions of every spoken number run the rewrite wrote as the one numeral it comes to.
     static func composedNumbers(_ tokens: [GrammarToken], in pool: Set<String>) -> Set<Int> {

@@ -142,7 +142,7 @@
       "bytes": 9423
     },
     {
-      "path": "Sources/UttrflowClipboard/Resources/LICENSE-bip39.txt",
+      "path": "Sources/UttrflowCore/Resources/LICENSE-bip39.txt",
       "origin": "third-party",
       "source": "https://github.com/bitcoin/bips/tree/master/bip-0039",
       "revision": "unrecorded",
@@ -153,7 +153,7 @@
       "bytes": 1131
     },
     {
-      "path": "Sources/UttrflowClipboard/Resources/bip39-english.txt",
+      "path": "Sources/UttrflowCore/Resources/bip39-english.txt",
       "origin": "third-party",
       "source": "https://github.com/bitcoin/bips/tree/master/bip-0039",
       "revision": "unrecorded",
@@ -169,8 +169,8 @@
       "licence": "MIT",
       "redistribution": true,
       "note": "read through DataTable; see Docs/data-tables.md",
-      "sha256": "6a188470214354c563841adc39253e75b5e73ff6e94a8c054dcb42f05fac71db",
-      "bytes": 3979
+      "sha256": "62721e2f47e66301a1e21e960c652e713a308238c136e6dea4e933ecc3665a8a",
+      "bytes": 5747
     },
     {
       "path": "Sources/UttrflowCore/Resources/Tables/correction-triggers.json",
@@ -178,8 +178,8 @@
       "licence": "MIT",
       "redistribution": true,
       "note": "read through DataTable; see Docs/data-tables.md",
-      "sha256": "cad11353bc39acc371ba3c42ab75b7cc26ae2c2050ec2e22d433ef96b000b78a",
-      "bytes": 1659
+      "sha256": "7bec1f556946f1c2173c7e74747c2f02cdaf32b0a181e35b648582eff1bd4a06",
+      "bytes": 1872
     },
     {
       "path": "Sources/UttrflowCore/Resources/Tables/function-words.json",
@@ -187,8 +187,53 @@
       "licence": "MIT",
       "redistribution": true,
       "note": "read through DataTable; see Docs/data-tables.md",
-      "sha256": "d10273c6febae571f7cbc7b446da62737a2916a0a2dc28aa606830f662e6a664",
-      "bytes": 11864
+      "sha256": "18141a0ed3f6dbb8802e13390be8adf392d3686883deb16db5e1d76222a47378",
+      "bytes": 12074
+    },
+    {
+      "path": "Sources/UttrflowCore/Resources/Tables/hindi-words.json",
+      "origin": "authored",
+      "licence": "MIT",
+      "redistribution": true,
+      "note": "read through DataTable; see Docs/data-tables.md",
+      "sha256": "596fe020406cf28311358f6cb088adb79caa732c6a7153c591091566057c9368",
+      "bytes": 7855
+    },
+    {
+      "path": "Sources/UttrflowCore/Resources/Tables/romanised-variants.json",
+      "origin": "authored",
+      "licence": "MIT",
+      "redistribution": true,
+      "note": "read through DataTable; see Docs/data-tables.md",
+      "sha256": "c595648412417f8f4e96b6905092cd488c102214492b2da23b470f9a6ccc02ed",
+      "bytes": 12215
+    },
+    {
+      "path": "Sources/UttrflowCore/Resources/Tables/kinship-words.json",
+      "origin": "authored",
+      "licence": "MIT",
+      "redistribution": true,
+      "note": "read through DataTable; see Docs/data-tables.md",
+      "sha256": "b0d961e63b7c2f0b17acf8242b8c9a8b6ae029a10052a7b9c0aab6f86cb991a7",
+      "bytes": 1062
+    },
+    {
+      "path": "Sources/UttrflowCore/Resources/Tables/mark-spacing.json",
+      "origin": "authored",
+      "licence": "MIT",
+      "redistribution": true,
+      "note": "read through DataTable; see Docs/data-tables.md",
+      "sha256": "2e8a586ff7344649917cd5bece7bff1ee30073efd60f6fe06633b758d5d7b1f3",
+      "bytes": 1018
+    },
+    {
+      "path": "Sources/UttrflowCore/Resources/Tables/number-cues.json",
+      "origin": "authored",
+      "licence": "MIT",
+      "redistribution": true,
+      "note": "read through DataTable; see Docs/data-tables.md",
+      "sha256": "6e9802b2d8947edb0b9f78c05030590980e5d0d69ea34822cb2d05f2b213ef37",
+      "bytes": 1218
     },
     {
       "path": "Sources/UttrflowCore/Resources/Tables/number-words.json",
@@ -205,8 +250,8 @@
       "licence": "MIT",
       "redistribution": true,
       "note": "read through DataTable; see Docs/data-tables.md",
-      "sha256": "d2170a10d7eb4092e8d6ff9d01ba65985e54ad13359494c0581268ecf9d1026e",
-      "bytes": 4124
+      "sha256": "6731089a7c929479ccc915b6e421c1a26a3fe6d25d27b02c5e5734e1b4ab46f2",
+      "bytes": 11860
     },
     {
       "path": "Sources/UttrflowCore/Resources/Tables/technical-lexicon.json",
@@ -214,8 +259,17 @@
       "licence": "MIT",
       "redistribution": true,
       "note": "written for this repository, copied from no list; read through DataTable; see Docs/data-tables.md",
-      "sha256": "ded443e32a693bab0de54e6ed849d9e2518060902507752b9763a13a000bee5c",
-      "bytes": 19145
+      "sha256": "2163e6141a2b7c5d4a063838db817ac4c9da29d41ee6231371ab534392e7dab1",
+      "bytes": 19999
+    },
+    {
+      "path": "Sources/UttrflowEval/Resources/Corpus/oneLineField.json",
+      "origin": "authored",
+      "licence": "MIT",
+      "redistribution": true,
+      "note": "evaluation cases read through CorpusFile",
+      "sha256": "79b96021861e65813d8110789dfbdc065ec65f38768bfaccf8637befbce67791",
+      "bytes": 2388
     },
     {
       "path": "Sources/UttrflowUX/Resources/PropertyValueAliases.txt",

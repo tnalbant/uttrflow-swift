@@ -14,6 +14,8 @@ public struct TechnicalTerm: DataTableRow, Equatable {
         case concept
         /// A file name or extension.
         case fileFormat
+        /// A marker word that opens a code comment: TODO, FIXME.
+        case annotation
     }
 
     /// The written form, with its casing; unique within the lexicon.
@@ -26,6 +28,8 @@ public struct TechnicalTerm: DataTableRow, Equatable {
     public let pronunciations: [String]
     /// The destinations it applies in; nil means every destination.
     public let destinations: Set<Destination>?
+    /// Whether the written form, past its leading dot, is also an everyday spoken word: swift, go, lock.
+    public let isEveryday: Bool
 
     /// Whether the term applies where the words are going.
     public func applies(in destination: Destination) -> Bool {
@@ -39,10 +43,11 @@ public struct TechnicalTerm: DataTableRow, Equatable {
         category = try container.decode(Category.self, forKey: .category)
         pronunciations = try container.decodeIfPresent([String].self, forKey: .pronunciations) ?? []
         destinations = try container.decodeIfPresent(Set<Destination>.self, forKey: .destinations)
+        isEveryday = try container.decodeIfPresent(Bool.self, forKey: .everyday) ?? false
     }
 
     private enum Key: String, CodingKey {
-        case id, spoken, category, pronunciations, destinations
+        case id, spoken, category, pronunciations, destinations, everyday
     }
 }
 
@@ -56,12 +61,17 @@ public enum TechnicalTermProblem: Equatable, Sendable {
     case ordinaryWithoutDestination(id: String)
     /// The entry lists an empty set of destinations, so it applies nowhere.
     case appliesNowhere(id: String)
+    /// The written form is not printable Latin-script characters without spaces.
+    case malformedWritten(id: String)
+    /// An earlier entry of the same category says the same phrase in a destination this one shares.
+    case duplicateSpoken(id: String, spoken: String, earlier: String)
 }
 
 /// The shipped technical vocabulary, read from `technical-lexicon.json`; a new term is a row there.
 public enum TechnicalLexicon {
     /// The bundled rows; with none loaded every word stays as spoken.
-    static let table = DataTable<TechnicalTerm>.load("technical-lexicon", schema: 1, from: .module, fallback: [])
+    static let table = DataTable<TechnicalTerm>.load(
+        "technical-lexicon", schema: 1, from: .module, fallback: [])
 
     /// Every term, in file order.
     public static var terms: [TechnicalTerm] { table.rows }
@@ -73,11 +83,36 @@ public enum TechnicalLexicon {
     public static func problems(
         in terms: [TechnicalTerm], isOrdinary: (String) -> Bool
     ) -> [TechnicalTermProblem] {
-        terms.flatMap { problems(of: $0, isOrdinary: isOrdinary) }
+        terms.flatMap { problems(of: $0, isOrdinary: isOrdinary) } + collisions(in: terms)
     }
 
-    private static func problems(of term: TechnicalTerm, isOrdinary: (String) -> Bool) -> [TechnicalTermProblem] {
+    private static func collisions(in terms: [TechnicalTerm]) -> [TechnicalTermProblem] {
         var found: [TechnicalTermProblem] = []
+        for (index, term) in terms.enumerated() {
+            let earlier = terms[..<index]
+            for phrase in term.spoken {
+                let clash = earlier.first { other in
+                    other.category == term.category && other.spoken.contains(phrase)
+                        && sharesDestination(other, term)
+                }
+                if let clash {
+                    found.append(.duplicateSpoken(id: term.id, spoken: phrase, earlier: clash.id))
+                }
+            }
+        }
+        return found
+    }
+
+    private static func sharesDestination(_ first: TechnicalTerm, _ second: TechnicalTerm) -> Bool {
+        guard let one = first.destinations, let two = second.destinations else { return true }
+        return !one.isDisjoint(with: two)
+    }
+
+    private static func problems(
+        of term: TechnicalTerm, isOrdinary: (String) -> Bool
+    ) -> [TechnicalTermProblem] {
+        var found: [TechnicalTermProblem] = []
+        if !isWellFormedWritten(term.id) { found.append(.malformedWritten(id: term.id)) }
         if term.spoken.isEmpty { found.append(.unspoken(id: term.id)) }
         for phrase in term.spoken where !isWellFormed(phrase) {
             found.append(.malformedSpoken(id: term.id, spoken: phrase))
@@ -88,11 +123,16 @@ public enum TechnicalLexicon {
         return found
     }
 
+    private static func isWellFormedWritten(_ id: String) -> Bool {
+        !id.isEmpty && id.unicodeScalars.allSatisfy { ("!"..."~").contains($0) }
+    }
+
     private static func isWellFormed(_ phrase: String) -> Bool {
         let words = phrase.split(separator: " ", omittingEmptySubsequences: false)
         return !words.isEmpty
             && words.allSatisfy { word in
-                !word.isEmpty && word.unicodeScalars.allSatisfy { ("a"..."z").contains($0) || ("0"..."9").contains($0) }
+                !word.isEmpty
+                    && word.unicodeScalars.allSatisfy { ("a"..."z").contains($0) || ("0"..."9").contains($0) }
             }
     }
 }

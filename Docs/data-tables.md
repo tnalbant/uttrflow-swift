@@ -58,21 +58,19 @@ the app with every other resource bundle. Nothing is fetched at run time.
 | File | Read by | Rows |
 |---|---|---|
 | `correction-triggers.json` | `Restatement` | a phrase that announces a spoken correction, its `language`, and the `evidence` it needs before anything is taken back: `alignedHalves`, `alignedHalvesPausedSingleWord`, `restatedNumber`, `pausedRestatedNumber` |
-| `function-words.json` | `FunctionWords` | a small word and the lists it belongs to: `function`, `leadsOn`, `meaningBearing` |
+| `function-words.json` | `FunctionWords` | a small word and the lists it belongs to: `function`, `leadsOn`, `meaningBearing`, `determiner` |
+| `hindi-words.json` | `HindiWords` | a romanised Hindi spelling, its `classes` (`copula`, `negation`, `postposition`, `conjunction`, `questionWord`, `pronoun`, `possessive`, `verbStem`, `auxiliary`, `particle`; a `copula`, `postposition`, `auxiliary` or `particle` is a grammar word the script guard leaves out of its comparison), the `word` it respells, the pronoun it is a `caseOf`, and whether it is also an `english` content word |
+| `romanised-variants.json` | `RomanisedVariants` | a romanised Hindi word as it is most often typed (`id`) and the other `variants` people type for it; `Romaniser.soundKey` maps every spelling of a row to its `id` |
+| `kinship-words.json` | `KinshipWords` | a kinship or honorific word said in place of a name, and the `languages` (`en`, `hi`) it is said in |
+| `mark-spacing.json` | `MarkSpacing` | a punctuation mark and the side it goes on (`kind`: `trailing`, `closing`, `opening`, `leading`, `joining`, `standalone`); a spoken mark row with no `placement` of its own takes it from here, and `SpacingPass` moves a stray `trailing` or `closing` mark onto the word before it. Straight quotes have no row: their side depends on position |
+| `number-cues.json` | `NumberCues` | a word said before or between numbers and the `cues` it gives: `dotted` (dotted digit groups are an address or version), `digitRun` (a run of digits is a code, not a count), `coordinator` (numbers it joins share one form), `range` (a coordinator that joins only a rising pair) |
 | `number-words.json` | `NumberWords` | a number word, its value and its rank: `unit`, `teen`, `ten`, `scale` |
-| `spoken-commands.json` | `SpokenCommands` | a phrase said as a command, its `action` (`mark`, `layout`, `codeSymbol`), the text it writes, and optionally its `placement`, `requiresLists` and `destinations`; no two rows of one action share a phrase in one destination |
-| `technical-lexicon.json` | `TechnicalLexicon` | a technical term's written form and casing, its `spoken` forms, its `category` (`acronym`, `language`, `command`, `tool`, `concept`, `fileFormat`), and optionally `pronunciations` and `destinations` |
+| `spoken-commands.json` | `SpokenCommands` | a phrase said as a command, its `action` (`mark`, `layout`, `codeSymbol`, `casing`, `flag`, `leadIn`, `replace`), the text it writes, and optionally its `placement`, `requiresLists` and `destinations`; no two rows of one action share a phrase in one destination |
+| `technical-lexicon.json` | `TechnicalLexicon` | a technical term's written form and casing, its `spoken` forms, its `category` (`acronym`, `language`, `command`, `tool`, `concept`, `fileFormat`, `annotation`), and optionally `pronunciations`, `destinations` and `everyday` (a file ending that is also a spoken word) |
 
 ## The technical lexicon
 
-Every row is written for this repository and copied from no published list; its licence and
-digest are in [data-manifest.md](data-manifest.md). It holds generic technical vocabulary and
-the names of widely used open tools and languages, and no person, address or product of a
-single vendor. A spoken form is lower-case Latin words separated by single spaces. A term
-written or said as an ordinary word (`GeneralVocabulary.isOrdinary`) carries `destinations`,
-so it is never offered in prose. `TechnicalLexicon.problems` states these rules, and
-`TechnicalLexiconTests` and `TechnicalLexiconOrdinaryTests` fail on any shipped row that
-breaks one.
+Its entry format, what is rejected and how to check a change are in [lexicon.md](lexicon.md).
 
 ## Testing
 

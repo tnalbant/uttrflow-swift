@@ -1,7 +1,7 @@
 // What a focused field is for, so a subject, a recipient list and a search box are formatted apart.
 
 /// The purpose of the focused field, decided from its Accessibility role, its line count and its label.
-public enum FieldRole: Sendable, Equatable, CaseIterable {
+public enum FieldRole: String, Sendable, Equatable, CaseIterable, Codable {
     /// A box whose text is a query, typed as spoken.
     case search
     /// A browser's address and search bar.

@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @testable import UttrflowPredict
@@ -368,6 +369,52 @@ struct DestructiveCommandTests {
     }
 
     @Test(
+        "Worktree, rm and forced submodule deinit throw work away, every flag spelling.",
+        arguments: [
+            "git worktree remove ../wt", "git worktree remove --force ../wt",
+            "git worktree remove -f ../wt", "git worktree remove --force",
+            "git -C repo worktree remove -f ../wt", "sudo git worktree remove ../wt",
+            "git rm file", "git rm -f file", "git rm --force file",
+            "git rm -rf file", "git rm -f Sources/App/Main.swift",
+            "git -C repo rm -f secret", "sudo git rm -f file",
+            "git submodule deinit -f path", "git submodule deinit --force path",
+            "git submodule deinit -f", "git -C repo submodule deinit -f path",
+            "sudo git submodule deinit --force path",
+        ])
+    func forcedGitOperationsAreDestructive(_ line: String) {
+        #expect(
+            DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be destructive")
+    }
+
+    @Test(
+        "Unforced submodule deinit and ordinary git worktree reads stay ordinary.",
+        arguments: [
+            "git worktree list", "git worktree add ../wt", "git worktree prune",
+            "git submodule deinit path", "git submodule deinit --all",
+            "git submodule status", "git submodule init path", "git rm --cached file",
+        ])
+    func unforcedSubmoduleAndWorktreeReadsStayOrdinary(_ line: String) {
+        #expect(
+            !DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be ordinary")
+    }
+
+    @Test func pathOnlyCheckoutIsDestructiveWhenTheFileExists() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: "checkout-4408-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appending(path: "App.swift")
+        try Data("x".utf8).write(to: file)
+        let path = file.path(percentEncoded: false)
+        #expect(DestructiveCommand.matches("git checkout \(path)", failClosedOnUnresolved: true))
+        #expect(DestructiveCommand.matches("git -C repo checkout \(path)", failClosedOnUnresolved: true))
+        #expect(
+            !DestructiveCommand.matches(
+                "git checkout missing-\(UUID().uuidString).swift", failClosedOnUnresolved: true))
+        #expect(!DestructiveCommand.matches("git checkout main", failClosedOnUnresolved: true))
+    }
+
+    @Test(
         "An rsync that deletes files is destructive, whichever delete flag it carries.",
         arguments: [
             "rsync -a --delete src/ backup/", "rsync -a --delete-after src/ backup/",
@@ -564,6 +611,59 @@ struct DestructiveCommandTests {
     }
 
     @Test(
+        "An AWS operation named outside the delete- or terminate- prefixes but irreversible in fact is destructive.",
+        arguments: [
+            "aws kms schedule-key-deletion --key-id K --pending-window-in-days 7",
+            "aws ec2 deregister-image --image-id ami-0",
+            "aws kms disable-key --key-id K",
+            "aws ec2 remove-tags --resources i-1 --tags Key=env",
+            "aws sqs purge-queue --queue-url https://sqs.example.com/q",
+            "aws ecr batch-delete-image --repository-id r --image-ids imageDigest=0",
+        ])
+    func awsIrreversibleNamedOperationsAreDestructive(_ line: String) {
+        #expect(
+            DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be destructive")
+    }
+
+    @Test(
+        "gcloud and az destructive verbs other than `delete` are destructive when they remove, purge or batch-delete.",
+        arguments: [
+            "gcloud storage rm -r gs://prod-bucket",
+            "gcloud services purge disabled-service.googleapis.com",
+            "az storage blob delete-batch -s c --account-name a",
+            "az keyvault purge --name v",
+        ])
+    func cloudNonDeleteVerbsAreDestructive(_ line: String) {
+        #expect(
+            DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be destructive")
+    }
+
+    @Test(
+        "gsutil rsync with the delete flag inside a short-flag cluster is destructive.",
+        arguments: [
+            "gsutil rsync -dr src gs://example",
+            "gsutil rsync -rd src gs://example",
+            "gsutil rsync -mdr src gs://example",
+            "gsutil -m rsync -dr src gs://example",
+        ])
+    func gsutilRsyncClusteredDeleteIsDestructive(_ line: String) {
+        #expect(
+            DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be destructive")
+    }
+
+    @Test(
+        "gsutil rsync without the delete flag, including a plain -r cluster, is ordinary.",
+        arguments: [
+            "gsutil rsync -r src gs://example",
+            "gsutil rsync src gs://example",
+            "gsutil -m rsync -r src gs://example",
+        ])
+    func gsutilRsyncWithoutDeleteIsOrdinary(_ line: String) {
+        #expect(
+            !DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be ordinary")
+    }
+
+    @Test(
         "A cloud or hosting tool that only reads or creates is ordinary.",
         arguments: [
             "gh repo view example/demo", "gh release list", "gh pr create --title delete", "gh api repos/o/r",
@@ -755,6 +855,36 @@ struct DestructiveCommandTests {
     func parallelCarryingDestructive(_ line: String) {
         #expect(
             DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be destructive")
+    }
+
+    @Test(
+        "A destroyer carried as a quoted command line is judged as that line, at any depth.",
+        arguments: [
+            "ssh host 'rm -rf x'",
+            "ssh -p 2222 host \"rm -rf /srv/app\"",
+            "ssh host \"sh -c 'rm -rf x'\"",
+            "parallel 'rm -rf /data'",
+            "docker exec c sh -c 'rm -rf /'",
+            "podman exec -it c bash -c 'shred notes.txt'",
+            "kubectl exec p -- sh -c 'rm -rf /var/lib'",
+            "fd -x sh -c 'rm -rf {}'",
+            "fd -e log -x sh -c 'rm -f {}'",
+        ])
+    func quotedCarriedCommandIsJudged(_ line: String) {
+        #expect(DestructiveCommand.matches(line), "\(line) should be destructive")
+    }
+
+    @Test(
+        "An ordinary command carried as a quoted line stays ordinary.",
+        arguments: [
+            "ssh host 'ls -la'",
+            "ssh host \"echo 'rm -rf x'\"",
+            "docker exec c sh -c 'echo hi'",
+            "kubectl exec p -- sh -c 'cat /etc/hostname'",
+            "fd -x sh -c 'wc -l {}'",
+        ])
+    func quotedOrdinaryCarriedCommandIsOrdinary(_ line: String) {
+        #expect(!DestructiveCommand.matches(line), "\(line) should be ordinary")
     }
 
     @Test(

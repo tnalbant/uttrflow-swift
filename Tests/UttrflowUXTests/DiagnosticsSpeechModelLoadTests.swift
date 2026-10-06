@@ -9,7 +9,8 @@ struct DiagnosticsSpeechModelLoadTests {
     private var loads: [SpeechModelLoadRecord] {
         var history = SpeechModelLoadHistory()
         let start = Date(timeIntervalSinceReferenceDate: 800_000_000)
-        history.append(date: start, seconds: 2, parts: nil, systemBuild: "25A100", modelRevision: "0123456789abc")
+        history.append(
+            date: start, seconds: 2, parts: nil, systemBuild: "25A100", modelRevision: "0123456789abc")
         history.append(
             date: start.addingTimeInterval(3600), seconds: 75, parts: nil, systemBuild: "25B200",
             modelRevision: "0123456789abc")
@@ -33,15 +34,19 @@ struct DiagnosticsSpeechModelLoadTests {
         let report = DiagnosticsPresenter.report(
             for: DiagnosticsSnapshot(speechModelLoads: loads), locale: DiagnosticsFixture.locale)
         #expect(report.contains("Speech model load\n"))
-        #expect(report.contains("macOS 25B200, model 0123456, macOS updated, slow expected, likely recompile"))
-        #expect(DiagnosticsPresenter.report(for: DiagnosticsSnapshot()).contains("Speech model load: none recorded yet"))
+        #expect(
+            report.contains("macOS 25B200, model 0123456, macOS updated, slow expected, likely recompile"))
+        #expect(
+            DiagnosticsPresenter.report(for: DiagnosticsSnapshot()).contains(
+                "Speech model load: none recorded yet"))
     }
 
     @Test("Every reason reads as words.")
     func reasons() {
         let record = { (change: SpeechModelLoadChange) in
             SpeechModelLoadRecord(
-                date: .distantPast, seconds: 1, parts: nil, systemBuild: "b", modelRevision: "r", change: change,
+                date: .distantPast, seconds: 1, parts: nil, systemBuild: "b", modelRevision: "r",
+                change: change,
                 isLikelyRecompile: false)
         }
         #expect(

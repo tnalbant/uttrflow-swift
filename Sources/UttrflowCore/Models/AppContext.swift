@@ -6,8 +6,12 @@ public struct AppContext: Sendable, Equatable {
     public let applicationName: String?
     /// Bundle identifier of the frontmost application, e.g. `"com.tinyspeck.slackmacgap"`.
     public let bundleIdentifier: String?
+    /// The running process, which every application has even when it carries no bundle identifier.
+    public let processIdentifier: Int32?
     /// Title of the focused window or document, where the app exposes it.
     public let documentName: String?
+    /// Host of the focused page's address, lowercased; the path and query are dropped on read and never kept.
+    public let pageHost: String?
     /// Text the user had selected, where readable. Never modified by the pipeline.
     public let selectedText: String?
     /// Up to ``InsertionPoint/precedingLimit`` characters before the caret; `nil` when the field will not say.
@@ -22,23 +26,30 @@ public struct AppContext: Sendable, Equatable {
     public let isMultiline: Bool?
     /// What the focused field calls itself, one line without control characters; never read from a secure field nor kept in history.
     public let fieldLabel: String?
+    /// The focused field itself, so a write can refuse a field the user moved away from; `nil` when unreadable.
+    public let field: FieldIdentity?
 
     /// A context; anything not supplied is unknown.
     public init(
         applicationName: String? = nil,
         bundleIdentifier: String? = nil,
+        processIdentifier: Int32? = nil,
         documentName: String? = nil,
+        pageAddress: String? = nil,
         selectedText: String? = nil,
         precedingText: String? = nil,
         followingText: String? = nil,
         isSecure: Bool = false,
         accessibilityRole: String? = nil,
         isMultiline: Bool? = nil,
-        fieldLabel: String? = nil
+        fieldLabel: String? = nil,
+        field: FieldIdentity? = nil
     ) {
         self.applicationName = applicationName
         self.bundleIdentifier = bundleIdentifier
+        self.processIdentifier = processIdentifier
         self.documentName = documentName
+        self.pageHost = pageAddress.flatMap(Self.host)
         self.selectedText = selectedText
         self.precedingText = precedingText
         self.followingText = followingText
@@ -46,6 +57,16 @@ public struct AppContext: Sendable, Equatable {
         self.accessibilityRole = accessibilityRole
         self.isMultiline = isMultiline
         self.fieldLabel = isSecure ? nil : fieldLabel.flatMap(Self.fieldLabel)
+        self.field = field
+    }
+
+    /// A web address reduced to its lowercased host, or nil for one without a web host.
+    public static func host(_ address: String) -> String? {
+        guard let components = URLComponents(string: address.trimmingCharacters(in: .whitespaces)),
+            let scheme = components.scheme?.lowercased(), scheme == "https" || scheme == "http",
+            let host = components.host?.lowercased(), !host.isEmpty
+        else { return nil }
+        return host.hasSuffix(".") ? String(host.dropLast()) : host
     }
 
     /// The most label characters carried; a longer one is a sentence of help text, not a name.

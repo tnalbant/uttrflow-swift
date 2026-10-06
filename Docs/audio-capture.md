@@ -135,7 +135,8 @@ buffer ended (`CaptureTimeline`):
 - A hole up to 100 ms is filled with silence of the same length, pushed in the same block as the
   buffer after it, from zeros allocated once per engine, so word timings stay on the real clock.
 - A longer hole sets a flag the handoff's thread takes before delivering the next block, and the
-  session reports it as `CaptureInterruption.began`, the refusal a device change already takes.
+  session reports it as `CaptureInterruption.began`, which marks a discontinuity exactly as a
+  device change does (see [`microphone.md`](microphone.md)).
 - A lost buffer leaves the expected start where it was, so it reappears as the hole before the next
   one; lost buffers, holes and total hole length are counted on the timeline.
 
@@ -218,6 +219,23 @@ stop returns 1,365 more canonical samples than an undrained one, which is 85.3 m
 at 4096 frames and 48 kHz, resampled to 16 kHz. What the converter keeps back is a separate and much
 smaller loss: `AudioResampler` reuses one stateful `AVAudioConverter` across calls, so its delay line
 is emitted on the next call and only the final residual is lost.
+
+## Timing the drain on a device
+
+`TapDrain.wait` returns what it found: how long it slept, whether a block arrived inside the
+window, and how many converted samples the latest block carried. The microphone source keeps the
+latest one with the tap size and device rate as `lastDrain`, and `uttrflow-dev record` prints it
+after each stop, so repeated records on one input give the drain time per device:
+
+```bash
+uttrflow-dev record --seconds 3
+```
+
+The last block's sample count shows whether the device honoured the tap size: at 4096 frames and
+48 kHz a block converts to about 1,365 samples at 16 kHz, and a larger count means the engine
+delivered a larger block than asked. **Not measured:** drain p50 and p95 per device and the
+delivered block length at 1024 and 2048 frames, which need a person speaking into each input, and
+the CPU cost of a smaller tap.
 
 ## A key released before the last word ends
 
