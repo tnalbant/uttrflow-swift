@@ -432,6 +432,7 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
         case ".":
             return closes(at: next, in: live, of: draft)
                 || isCommaBracketed(before: next, spanning: length, in: live, of: draft)
+                || opensDeterminerClause(at: next, in: live, of: draft)
         case "-", "\u{2014}": return !closes(at: next, in: live, of: draft)
         default: return true
         }
@@ -444,6 +445,17 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
         guard next < live.count, next > length else { return false }
         return draft.shape(at: live[next - length - 1]).suffix.hasSuffix(",")
             && draft.shape(at: live[next - 1]).suffix.hasSuffix(",")
+    }
+
+    /// Whether a determiner-led clause starts at `next`, so a full stop before it is a sentence boundary.
+    private func opensDeterminerClause(
+        at next: Int, in live: [Int], of draft: Draft
+    ) -> Bool {
+        guard next < live.count, next + 1 < live.count else { return false }
+        let head = draft.shape(at: live[next]).key
+        guard MentionGuard.determiners.contains(head) else { return false }
+        return LexicalClass.tag(ofWordAt: next + 1, in: live.map { draft.shape(at: $0).key })
+            .map { $0 == .noun || $0 == .verb } ?? false
     }
 
     /// Whether the text ends at `next`, or a layout word, a layout mark or a closing quote stands there.
