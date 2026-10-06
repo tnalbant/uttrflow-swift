@@ -4,6 +4,7 @@ import os
 
 public import struct Foundation.Data
 public import struct Foundation.Date
+public import typealias Foundation.TimeInterval
 public import struct Foundation.URL
 public import class Foundation.FileManager
 public import class Foundation.JSONDecoder
@@ -110,8 +111,39 @@ extension LocalStore {
         if let refusal { throw refusal }
     }
 
+    /// How many set-aside copies of one file are kept; the oldest beyond this go when another is made.
+    public static let setAsideLimit = 3
+
+    /// How long a set-aside copy is kept before the next one made beside it removes it.
+    public static let setAsideLifetime: TimeInterval = 30 * 24 * 60 * 60
+
     /// Renames an unreadable file to a timestamped name beside it, answering `nil` when it cannot be moved.
     public static func setAside(_ url: URL, now: Date) -> URL? {
+        guard let destination = move(url, now: now) else { return nil }
+        pruneSetAside(url, now: now)
+        return destination
+    }
+
+    /// Removes copies set aside from this name past `setAsideLifetime`, then the oldest past `setAsideLimit`.
+    static func pruneSetAside(_ url: URL, now: Date) {
+        let prefix = url.lastPathComponent + setAsideMarker
+        let folder = url.deletingLastPathComponent()
+        let stamped: [(name: String, stamp: Int)] = ((try? contents(of: folder)) ?? []).compactMap { name in
+            guard name.hasPrefix(prefix) else { return nil }
+            // A stamp that does not parse is kept, since its age cannot be known.
+            guard let stamp = name.dropFirst(prefix.count).split(separator: "-").first.flatMap({ Int($0) })
+            else { return nil }
+            return (name, stamp)
+        }
+        let newestFirst = stamped.sorted { ($0.stamp, $0.name) > ($1.stamp, $1.name) }
+        let oldest = now.addingTimeInterval(-setAsideLifetime).timeIntervalSince1970
+        let doomed = newestFirst.enumerated().filter { index, copy in
+            index >= setAsideLimit || Double(copy.stamp) < oldest
+        }
+        try? removeEach(doomed.map { folder.appending(path: $0.element.name, directoryHint: .notDirectory) })
+    }
+
+    private static func move(_ url: URL, now: Date) -> URL? {
         let name = url.lastPathComponent
         let stamp = "\(name)\(setAsideMarker)\(Int(now.timeIntervalSince1970))"
         let folder = url.deletingLastPathComponent()

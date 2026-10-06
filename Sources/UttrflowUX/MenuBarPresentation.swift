@@ -17,6 +17,8 @@ public enum DictationActivity: Sendable, Equatable, CaseIterable {
     case unconfirmed
     /// Text remains on the clipboard for the user to paste.
     case copied
+    /// A long recording was cancelled, so nothing was typed.
+    case discarded
 
     /// Carries the insertion outcome through the menu without claiming text arrived when it did not.
     public static func completion(
@@ -205,6 +207,8 @@ public struct MenuBarState: Sendable, Equatable {
     public var shortcutUnheard: String?
     /// Why AI suggestions cannot receive keyboard input right now, or nil when they can.
     public var suggestionUnheard: String?
+    /// Whether AI suggestions can receive keyboard input right now.
+    public var suggestionRuntime: SuggestionRuntimeStatus
     /// How far along the AI suggestion model is, so a switch that is on but waiting says so.
     public var suggestionModel: SuggestionModelReadiness
     /// Whether the dictation shortcut is held or pressed, so the hint uses the right verb.
@@ -229,6 +233,7 @@ public struct MenuBarState: Sendable, Equatable {
         unarmedShortcuts: Set<ShortcutAction> = [],
         shortcutUnheard: String? = nil,
         suggestionUnheard: String? = nil,
+        suggestionRuntime: SuggestionRuntimeStatus = .idle,
         suggestionModel: SuggestionModelReadiness = .notAsked,
         activation: HotkeyActivation = .holdToTalk,
         speechModelBytes: Int64? = nil
@@ -249,6 +254,7 @@ public struct MenuBarState: Sendable, Equatable {
         self.unarmedShortcuts = unarmedShortcuts
         self.shortcutUnheard = shortcutUnheard
         self.suggestionUnheard = suggestionUnheard
+        self.suggestionRuntime = suggestionRuntime
         self.suggestionModel = suggestionModel
         self.activation = activation
         self.speechModelBytes = speechModelBytes
@@ -272,7 +278,7 @@ public enum MenuBarIntent: Sendable, Equatable {
     case copyClip(id: UUID)
     /// Removes and refuses a learned word, named by its entry so a redraw cannot change which.
     case undoLearnedWord(id: UUID)
-    case open(Destination)
+    case open(AppLocation)
     /// Opens the clipboard panel, which is otherwise reachable only by a shortcut nothing mentions.
     case openClipboard
     /// Move one of the three switches, naming the one it moves so the other two cannot follow.
@@ -462,7 +468,8 @@ public struct MenuBarPresentation: Sendable, Equatable {
     public var commands: [MenuBarCommand] {
         let action: [MenuBarCommand] =
             if case .status(let status) = header, let command = status.action { [command] } else { [] }
-        let rows = ([lastDictation].compactMap(\.self) + clips).flatMap { [$0.insert, $0.copy] }
+        let rows =
+            ([lastDictation].compactMap(\.self) + clips).flatMap { [$0.insert, $0.copy] }
             + learned.map(\.undo)
         let menu = items.compactMap { if case .command(let command) = $0 { command } else { nil } }
         return action + buttons.map(\.command) + rows + menu
@@ -518,6 +525,7 @@ public enum MenuBarPresenter {
         case .partial: .symbol("exclamationmark.circle")
         case .unconfirmed: .symbol("questionmark.circle")
         case .copied: .symbol("doc.on.clipboard")
+        case .discarded: .symbol("trash")
         }
     }
 
@@ -558,6 +566,7 @@ public enum MenuBarPresenter {
             case .partial: MissedSpeech.line
             case .unconfirmed: "Inserted — not confirmed"
             case .copied: "Copied — press ⌘V"
+            case .discarded: "Discarded"
             }
         }
     }
@@ -686,7 +695,7 @@ public enum MenuBarPresenter {
         guard state.failure?.severity != .blocking else { return false }
         guard state.speechModel == .ready else { return false }
         return switch state.activity {
-        case .idle, .inserted, .partial, .unconfirmed, .copied: true
+        case .idle, .inserted, .partial, .unconfirmed, .copied, .discarded: true
         case .listening, .working: false
         }
     }
@@ -700,7 +709,7 @@ public enum MenuBarPresenter {
     static func isBusy(_ activity: DictationActivity) -> Bool {
         switch activity {
         case .listening, .working: true
-        case .idle, .inserted, .partial, .unconfirmed, .copied: false
+        case .idle, .inserted, .partial, .unconfirmed, .copied, .discarded: false
         }
     }
 
@@ -709,7 +718,7 @@ public enum MenuBarPresenter {
         switch action.recovery {
         case .openSystemSettings: "\(action.title)…"
         case .retry, .downloadSpeechModel, .pasteManually, .showHistory, .retryFromRecording,
-            .copyTranscript:
+            .restoreRecording, .copyTranscript:
             action.title
         }
     }

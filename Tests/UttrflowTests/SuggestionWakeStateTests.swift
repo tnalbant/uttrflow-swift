@@ -9,14 +9,16 @@ struct SuggestionWakeStateTests {
     func stopDiscardsQueuedWake() {
         var state = SuggestionWakeState()
         state.start()
-        #expect(state.queue(.keystroke))
+        let queued1 = state.queue(.keystroke)
+        #expect(queued1)
 
         state.stop()
         var fieldReads = 0
         if state.takeAfterTurn() != nil { fieldReads += 1 }
 
         #expect(fieldReads == 0)
-        #expect(!state.queue(.tick))
+        let queued2 = state.queue(.tick)
+        #expect(!queued2)
         #expect(state.takeAfterTurn() == nil)
     }
 
@@ -24,21 +26,24 @@ struct SuggestionWakeStateTests {
     func keepsTheMostUrgentQueuedWake() {
         var state = SuggestionWakeState()
         state.start()
-        #expect(state.queue(.returnPressed))
-        #expect(state.queue(.tick))
+        let queued3 = state.queue(.returnPressed)
+        #expect(queued3)
+        let queued4 = state.queue(.tick)
+        #expect(queued4)
         #expect(state.takeAfterTurn() == .returnPressed)
     }
 
     @Test("starting the loop clears stopped state and any wake from its previous run")
     func startResetsPendingWake() {
         var state = SuggestionWakeState()
-        state.queue(.keystroke)
+        _ = state.queue(.keystroke)
         state.stop()
         state.start()
 
         #expect(!state.isStopped)
         #expect(state.takeAfterTurn() == nil)
-        #expect(state.queue(.tick))
+        let queued5 = state.queue(.tick)
+        #expect(queued5)
         #expect(state.takeAfterTurn() == .tick)
     }
 }

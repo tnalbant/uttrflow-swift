@@ -10,8 +10,9 @@ the corpus is `EvaluationCorpus` (`Sources/UttrflowEval/EvaluationCorpus.swift`)
 
 ## The corpus
 
-**The corpus is 412 cases in seven categories** — `everyday` 148, `contextual` 91, `grammar` 26,
-`technical` 45, `multilingual` 15, `notARequest` 77, `oneLineField` 10 — and everything in it is synthesised or
+**The corpus is 522 cases in eleven categories** — `everyday` 165, `contextual` 110, `grammar` 26,
+`technical` 45, `multilingual` 17, `notARequest` 77, `oneLineField` 10, `secondLanguage` 40,
+`bareLiteral` 23, `commandInput` 8, `longInput` 1 — and everything in it is synthesised or
 written by hand. `Scripts/docs_audit.sh` checks this sentence against `EvaluationCorpus.swift`.
 The count of record for any run is the one `make bakeoff` prints in its header, from
 `EvaluationCorpus.all.count`, beside the prompt version (`PromptBuilder.version`, 11).
@@ -19,6 +20,9 @@ The count of record for any run is the one `make bakeoff` prints in its header, 
 `contextual` is the same words under different windows ([`predict.md`](predict.md) and the
 destination rows in [`cleanup.md`](cleanup.md) are what it measures); `grammar` is the slips a
 formatter may repair beside the dialect that must stay ([`cleanup-design.md`](cleanup-design.md)).
+`longInput` is unmarked dictation past three hundred words; its case is named after the issue it
+guards (`long-input-2351`), must end with a stop and must close at least half its sentences, so one
+run-on sentence fails it however many words survive.
 
 ## How a case is scored
 
@@ -66,30 +70,20 @@ Llama            3B      90%        100%        100%            0%
 rules            —       90%        83%         100%            0%
 ```
 
-The local models are measured here only. The app's router is `EngineConfiguration.default` —
-`[.foundationModels, .localModel, .rules]` — but `TransformerKind.selectable` excludes
-`.localModel`, so no app build assembles one and dictation is tidied by Apple's model with rules
-as the floor ([`core-engine-kinds.md`](core-engine-kinds.md)).
+**Decision: the tidy order is the local model, then Apple's model, then rules.** Gemma 3 4B
+passes 85% against Apple's 81% and rules' 73%, and handles Hindi that Apple's model is withheld
+from. `EngineConfiguration.default` is `[.localModel, .foundationModels, .rules]`. The local
+model tidies only while its weights are loaded, so a Mac without them, or without Apple
+Intelligence, falls through to the next engine. Which local model runs is the `LocalModel`
+setting, so another candidate of similar cost replaces Gemma without a code change
+([`core-engine-kinds.md`](core-engine-kinds.md)).
 
-## Apple's model handles Hindi, though Apple does not list it
+## Hindi is withheld from Apple's model
 
-`SystemLanguageModel.supportedLanguages` does not include Hindi. Given Devanagari anyway, the
-model writes accurate romanised Hindi:
-
-| spoken | Apple's model writes |
-|---|---|
-| कहां से आ रहे हो | Kahan se aa rahe ho? |
-| मैं कल ऑफिस नहीं आऊंगा, मैं घर से काम करूंगा | Main kal office nahi aaunga, main ghar se kaam karunga. |
-| यार ये बग बहुत अजीब है | Yaar yeh bug bahut ajeeb hai… |
-
-It also restores English loanwords to their English spelling: the recogniser hears आफिस and बग,
-and the output reads `office` and `bug`. In the prompt-v2 run it scored 60% on Hindi against
-Gemma 3 4B's 80%.
-
-`AppleFoundationCleanupModel.verifiedBeyondApplesList` holds the languages verified beyond
-Apple's own list — `[.hindi]` — and nothing goes in it that the corpus has not measured. It is a
-list rather than a rule because the behaviour is not one Apple promises; the corpus guards it
-against an OS update changing it, and a bad rewrite still falls through the meaning guard to rules.
+Given Devanagari, Apple's model can write accurate romanised Hindi, and in the prompt-v2 run it
+scored 60% on Hindi against Gemma 3 4B's 80%. On the pipeline it refuses most Hindi dictations as
+an unsupported language, so Hindi is withheld from it and goes to the next engine
+([`ai-model-output.md`](ai-model-output.md#hindi-on-apples-model)).
 
 The meaning guard reads Hindi number words in both scripts (`MeaningPreservationGuard`'s
 `hindiNumberWords`), so "बीस मिनट" arriving as "20 minute" is a spoken number written as digits,
@@ -108,7 +102,7 @@ resident footprint.
 | Qwen 3 4B | 2.28 GB | 2.35 GB | 2.99 GB |
 | Gemma 3 4B | 3.03 GB | 2.74 GB | 3.14 GB |
 
-Dictation in English or Hindi uses the recogniser and Apple's model: 0.65 GB on disk and 0.29 GB
+Dictation in English uses the recogniser and Apple's model: 0.65 GB on disk and 0.29 GB
 at its peak while dictating. Apple's model is a shared system service the app neither downloads
 nor holds in memory. The full memory budget is in [`performance.md`](performance.md).
 

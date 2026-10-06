@@ -70,11 +70,18 @@ struct SuggestionModelBannerTests {
         #expect(shown.message.contains("resume automatically"))
     }
 
+    @Test("a long tap rest keeps Settings informed")
+    func tapResting() throws {
+        let shown = try #require(bannerForRuntime(.tapResting))
+        #expect(shown.title == "Suggestions are paused briefly")
+        #expect(shown.message.contains("resume automatically"))
+    }
+
     @Test("every suggestions banner avoids internal terms")
     func suggestionBannersUsePlainWords() throws {
         var banners: [SettingsBanner] = []
         for runtime in [
-            SuggestionRuntimeStatus.starting, .restarting, .secureInputBlocked,
+            SuggestionRuntimeStatus.starting, .tapResting, .restarting, .secureInputBlocked,
             .tapFailed, .corpusFailed,
         ] {
             banners.append(try #require(bannerForRuntime(runtime)))
@@ -130,11 +137,12 @@ struct SuggestionModelBannerTests {
         #expect(bannerFor(.releasedForMemory, suggesting: false) == nil)
     }
 
-    @Test("loading is its own state, since it happens on every launch and no bytes move")
+    @Test("loading says what is happening without claiming it only occurs once")
     func loadingSaysSo() throws {
         let shown = try #require(bannerFor(.loading))
         #expect(shown.title == "Getting ready")
-        #expect(shown.message.contains("once per launch"))
+        #expect(shown.message == "The model is being read into memory for AI suggestions.")
+        #expect(!shown.message.contains("once per launch"))
     }
 
     @Test("a failure is shown rather than swallowed, and says what to do about it")

@@ -216,8 +216,8 @@ struct SpecificsTests {
     func entityCallArgumentsAreRefused(_ call: String) {
         let typed = "let result = repository.\(call)("
         let line = "\(typed)1)"
-        #expect(!Specifics.areGrounded(line, typed: typed, in: code(), writesCode: true), call)
-        #expect(CompletionText.finished([line], typed: typed, in: code()).isEmpty, call)
+        #expect(!Specifics.areGrounded(line, typed: typed, in: code(), writesCode: true), "\(call)")
+        #expect(CompletionText.finished([line], typed: typed, in: code()).isEmpty, "\(call)")
     }
 
     @Test(

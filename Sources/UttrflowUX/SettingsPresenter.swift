@@ -159,6 +159,7 @@ public enum SettingsPresenter {
         case .clipboard: .symbol("list.clipboard", .suggestion)
         case .pasteLastTranscript: .symbol("text.insert", .info)
         case .copyLastTranscript: .symbol("doc.on.doc", .mint)
+        case .editCommand: .symbol("wand.and.stars", .dictation)
         }
     }
 
@@ -224,7 +225,7 @@ public enum SettingsPresenter {
                     label: "Double-tap speed",
                     explanation: "Choose how far apart your taps can be.",
                     control: .menu(
-                        options: [450, 600, 800].map { milliseconds in
+                        options: Settings.handsFreeDoubleTapChoices.map { milliseconds in
                             SettingsOption(
                                 id: String(milliseconds), title: "\(milliseconds) ms",
                                 change: .handsFreeDoubleTap(milliseconds: milliseconds))
@@ -232,6 +233,20 @@ public enum SettingsPresenter {
                         selectedID: String(settings.handsFreeDoubleTapMilliseconds)),
                     style: .inset),
                 at: 2)
+            shortcuts.insert(
+                SettingsRow(
+                    id: "handsFreeHoldMilliseconds",
+                    label: "Hold length",
+                    explanation: "Choose how long a press can last and still count as a tap.",
+                    control: .menu(
+                        options: Settings.handsFreeHoldChoices.map { milliseconds in
+                            SettingsOption(
+                                id: String(milliseconds), title: "\(milliseconds) ms",
+                                change: .handsFreeHold(milliseconds: milliseconds))
+                        },
+                        selectedID: String(settings.handsFreeHoldMilliseconds)),
+                    style: .inset),
+                at: 3)
         }
         shortcuts.append(
             SettingsRow(
@@ -285,6 +300,7 @@ public enum SettingsPresenter {
                     id: "system",
                     title: "Sound & startup",
                     rows: [
+                        microphoneRow(settings, capabilities),
                         toggleRow(
                             .playsSoundWhenRecordingStarts,
                             label: "Play a sound when recording starts",
@@ -430,6 +446,26 @@ public enum SettingsPresenter {
             icon: .symbol("globe", .info))
     }
 
+    /// The row saying how long the user pauses while speaking, so a long pause does not end a sentence.
+    static func pausesRow(_ settings: Settings) -> SettingsRow {
+        SettingsRow(
+            id: "pauses",
+            label: "Pauses while you speak",
+            explanation: "Longer means Uttrflow waits longer before a pause ends a sentence",
+            control: .segmented(
+                options: PauseLength.allCases.map { pauses in
+                    let title: String =
+                        switch pauses {
+                        case .usual: "Usual"
+                        case .long: "Long"
+                        case .veryLong: "Very long"
+                        }
+                    return SettingsOption(id: pauses.rawValue, title: title, change: .pauses(pauses))
+                },
+                selectedID: settings.profile.pauses.rawValue),
+            icon: .symbol("pause.circle", .info))
+    }
+
     /// The tidying row, shared by every screen that offers the level.
     static func tidyingRow(
         _ level: SettingsTidyingLevel, _ capabilities: SettingsCapabilities
@@ -505,7 +541,9 @@ public enum SettingsPresenter {
             title: title(of: .languages),
             banner: nil,
             groups: [
-                SettingsGroup(id: "spoken", title: "Languages you speak", rows: [listenForRow(settings)]),
+                SettingsGroup(
+                    id: "spoken", title: "Languages you speak",
+                    rows: [listenForRow(settings), pausesRow(settings)]),
                 SettingsGroup(
                     id: "tidying", title: "Tidying up",
                     rows: [tidyingRow(level, capabilities)]
@@ -528,7 +566,6 @@ public enum SettingsPresenter {
         _ capabilities: SettingsCapabilities,
         _ personalisation: SettingsPersonalisation
     ) -> SettingsPane {
-        let quality = SettingsTranscriptionQuality(engine: settings.engines.speech)
         let availabilityGroups = [foundationModelAvailabilityRow(capabilities)].compactMap { row in
             row.map { SettingsGroup(id: "tidyingAvailability", title: "Tidying availability", rows: [$0]) }
         }
@@ -537,24 +574,6 @@ public enum SettingsPresenter {
             title: title(of: .dictation),
             banner: nil,
             groups: [
-                SettingsGroup(
-                    id: "recognition",
-                    title: "Speech recognition",
-                    rows: [
-                        SettingsRow(
-                            id: "quality",
-                            label: "Speed and accuracy",
-                            explanation:
-                                "Faster uses macOS speech recognition, which does not recognise "
-                                + "Hindi. Use Most accurate for Hindi or Hinglish dictation.",
-                            control: .segmented(
-                                options: SettingsTranscriptionQuality.allCases.map(qualityOption),
-                                selectedID: quality.rawValue),
-                            // Off only when neither option can run, and moving it would achieve nothing.
-                            unavailability: capabilities.readySpeechEngines.isEmpty
-                                ? "This option needs a download that has not finished yet." : nil,
-                            icon: .symbol("waveform", .dictation))
-                    ]),
                 SettingsDestinations.places(
                     settings.destinations, lastApp: personalisation.lastDictationApp),
 
@@ -622,12 +641,6 @@ public enum SettingsPresenter {
             icon: .symbol("text.badge.checkmark", .info))
     }
 
-    /// One transcription quality, as a segmented option.
-    private static func qualityOption(_ quality: SettingsTranscriptionQuality) -> SettingsOption {
-        SettingsOption(
-            id: quality.rawValue, title: quality.title, change: .transcription(quality))
-    }
-
     // MARK: - Suggestions
 
     /// The master switch, the quiet switch and the pause, then where suggestions are left alone.
@@ -691,6 +704,10 @@ public enum SettingsPresenter {
             return SettingsBanner(
                 symbolName: "clock", title: "Starting suggestions…",
                 message: "Suggestions will be ready shortly.")
+        case .tapResting:
+            return SettingsBanner(
+                symbolName: "clock", title: "Suggestions are paused briefly",
+                message: "Suggestions will resume automatically.")
         case .restarting:
             return SettingsBanner(
                 symbolName: "clock", title: "Restarting suggestions…",
@@ -730,7 +747,7 @@ public enum SettingsPresenter {
             return SettingsBanner(
                 symbolName: "clock",
                 title: title,
-                message: "The model is being read into memory. This happens once per launch.")
+                message: "The model is being read into memory for AI suggestions.")
         case .releasedForMemory:
             return SettingsBanner(
                 symbolName: "memorychip",
@@ -868,12 +885,13 @@ public enum SettingsPresenter {
         _ settings: Settings
     ) -> SettingsRow {
         let identifier = application.bundleIdentifier
+        let title = SuggestionApplications.isOffByDefault(identifier) ? "Turn on" : "Remove"
         return SettingsRow(
             id: "suggestionsIn.\(identifier)",
             label: application.name,
             explanation: applicationSentence(preferences.state(of: identifier)),
             control: .action(
-                title: "Remove", change: .suggestionsHere(application: identifier, isOn: true)),
+                title: title, change: .suggestionsHere(application: identifier, isOn: true)),
             unavailability: settings.suggestions.isEnabled ? nil : SettingsEditor.suggestionsAreOff,
             icon: .application(bundleIdentifier: identifier, name: application.name))
     }
@@ -892,6 +910,7 @@ public enum SettingsPresenter {
         case .on: nil
         case .turnedOff: "You turned AI suggestions off here."
         case .offByDefault: "Off here by default (it has its own suggestions)"
+        case .offAsPrivate: "Off here by default (it holds private information)"
         }
     }
 
@@ -904,19 +923,10 @@ public enum SettingsPresenter {
         let identifier = application.bundleIdentifier
         let key = preferences.acceptKeys.key(forBundleIdentifier: identifier)
         let kind = DestinationClassifier.kind(for: AppContext(bundleIdentifier: identifier))
-        let explanation: String? =
-            if key == .tab,
-                kind == .spreadsheet || kind == .terminal || kind == .codeEditor
-                    || kind == .sqlEditor
-            {
-                "Tab also has a job in this app."
-            } else {
-                key.explanation
-            }
         return SettingsRow(
             id: "suggestionAcceptKey.\(identifier)",
             label: "Accept with",
-            explanation: explanation,
+            explanation: key.explanation(for: kind),
             control: .menu(
                 options: AcceptKey.allCases.map { offered in
                     SettingsOption(
@@ -969,12 +979,6 @@ public enum SettingsPresenter {
                     id: "retention",
                     title: "Your data",
                     rows: [
-                        SettingsRow(
-                            id: "onDevice",
-                            label: "Your words stay on your Mac",
-                            explanation: "Nothing you say is uploaded",
-                            control: .status("On-device"),
-                            icon: .symbol("checkmark.shield", .dictation)),
                         retentionRow(settings),
                         toggleRow(
                             .sharesUsageStatistics,
@@ -991,7 +995,11 @@ public enum SettingsPresenter {
                             settings, .everything
                         ).with(icon: .symbol("exclamationmark.bubble", .neutral)),
                     ]),
+                SettingsGroup(
+                    id: "network", title: "Network, last \(NetworkActivity.windowDays) days",
+                    rows: networkRows(personalisation.network)),
                 SettingsGroup(id: "appearance", title: "Appearance", rows: [appearanceRow(settings)]),
+                personaGroup(personalisation),
                 SettingsGroup(
                     id: "reset",
                     title: "Start over",
@@ -1001,6 +1009,34 @@ public enum SettingsPresenter {
                 symbolName: "lock",
                 message: "\(privacyPromise) \(signingOutKeepsEverything)",
                 tint: .dictation))
+    }
+
+    /// Dictation first, which no purpose belongs to, then every purpose with its count from the ledger.
+    static func networkRows(_ network: [NetworkPurpose: NetworkTally]) -> [SettingsRow] {
+        let dictation = SettingsRow(
+            id: "network.dictation",
+            label: "Dictation",
+            explanation: "Nothing you say is uploaded",
+            control: .status(counted(0, "request", "requests")),
+            icon: .symbol("checkmark.shield", .dictation))
+        return [dictation]
+            + NetworkPurpose.allCases.map { purpose in
+                SettingsRow(
+                    id: "network.\(purpose.rawValue)",
+                    label: networkLabel(purpose),
+                    control: .status(counted(network[purpose]?.count ?? 0, "request", "requests")))
+            }
+    }
+
+    /// The name each purpose goes by in the Privacy pane.
+    static func networkLabel(_ purpose: NetworkPurpose) -> String {
+        switch purpose {
+        case .account: "Account and sign-in"
+        case .modelDownload: "Downloads"
+        case .updateCheck: "Update checks"
+        case .crashReport: "Crash reports"
+        case .usageStatistics: "Usage statistics"
+        }
     }
 
     /// What a crash report carries, in the words the row shows. See `Docs/crash-reporting.md`.
@@ -1023,7 +1059,35 @@ public enum SettingsPresenter {
     /// What happens to the audio, in the one wording every screen repeats. See `Docs/recordings.md`.
     public static let recordingsPromise =
         "Audio is deleted the moment it becomes text, and kept on this Mac for a day only "
-        + "if it couldn’t be, so you can retry."
+        + "if some of it couldn’t be, so you can retry."
+
+    /// The menu id of following the system default input.
+    static let systemDefaultMicrophone = "system-default"
+
+    /// System default first, then every input present; a chosen device that is absent stays listed as missing.
+    static func microphoneRow(_ settings: Settings, _ capabilities: SettingsCapabilities) -> SettingsRow {
+        let present = capabilities.microphones.map { device in
+            SettingsOption(id: device.uid, title: device.name, change: .microphone(uid: device.uid))
+        }
+        let chosen = settings.microphoneUID
+        let absent =
+            chosen.flatMap { uid in
+                present.contains { $0.id == uid }
+                    ? nil
+                    : SettingsOption(
+                        id: uid, title: "Chosen microphone (not connected)", change: .microphone(uid: uid))
+            }
+        let systemDefault = SettingsOption(
+            id: systemDefaultMicrophone, title: "System default", change: .microphone(uid: nil))
+        return SettingsRow(
+            id: "microphone",
+            label: "Microphone",
+            explanation: "When the chosen one is not connected, dictation uses the system default.",
+            control: .menu(
+                options: [systemDefault] + present + [absent].compactMap(\.self),
+                selectedID: chosen ?? systemDefaultMicrophone),
+            icon: .symbol("mic", .dictation))
+    }
 
     /// The order the theme is offered in: following the Mac first, then the two fixed looks.
     static let offeredAppearances: [AppAppearance] = [.system, .light, .dark]
@@ -1068,6 +1132,47 @@ public enum SettingsPresenter {
                 },
                 selectedID: String(days)),
             icon: .symbol("clock", .info))
+    }
+
+    // MARK: - Persona
+
+    /// Every fact the evidence ledger records, each with its own Remove, and a reset for all of them.
+    static func personaGroup(_ personalisation: SettingsPersonalisation) -> SettingsGroup {
+        let items = personalisation.persona.map { item in
+            SettingsRow(
+                id: "persona.\(item.id)", label: item.title, explanation: item.detail,
+                control: .removal(
+                    SettingsRemoval(reset: .personaFact(item.fact), title: "Remove", confirmation: nil)),
+                style: .inset)
+        }
+        guard !personalisation.persona.isEmpty else {
+            return SettingsGroup(
+                id: "persona", title: "What Uttrflow noticed about you",
+                rows: [
+                    SettingsRow(
+                        id: "resetPersona", label: "Nothing noticed yet",
+                        explanation:
+                            "Words you use and how you write in each kind of app appear here as you dictate.",
+                        control: .status("Empty"), icon: .symbol("person.crop.circle", .amber))
+                ])
+        }
+        let count = counted(personalisation.persona.count, "thing", "things")
+        let reset = SettingsRow(
+            id: "resetPersona",
+            label: "Reset what Uttrflow noticed",
+            explanation: "Forget \(count) noticed from your dictations. Your dictionary and history stay.",
+            control: .removal(
+                SettingsRemoval(
+                    reset: .persona, title: "Reset…",
+                    confirmation: SettingsConfirmation(
+                        title: "Reset what Uttrflow noticed?",
+                        message:
+                            "This removes \(count) Uttrflow noticed from your dictations. "
+                            + "Your dictionary and history stay. This cannot be undone.",
+                        confirmTitle: "Reset", cancelTitle: "Cancel"))),
+            unavailability: SettingsEditor.unavailability(of: .persona, given: personalisation),
+            icon: .symbol("person.crop.circle", .amber))
+        return SettingsGroup(id: "persona", title: "What Uttrflow noticed about you", rows: [reset] + items)
     }
 
     // MARK: - Forgetting

@@ -25,7 +25,7 @@ struct LastTranscriptForgetTests {
     }
 
     private func dictated(_ text: String, in sandbox: borrowing Sandbox) -> AppDelegate {
-        let app = AppDelegate(container: sandbox.root)
+        let app = AppDelegate(container: sandbox.root, account: HeldSession(signedIn: true).layer)
         app.render(.inserted(DictationOutcome(text: text, method: .accessibility, cleanedBy: .rules)))
         return app
     }
@@ -102,7 +102,8 @@ struct LastTranscriptForgetTests {
         let newest = DictationRecord(text: "Newest words", when: .now)
         try await history.append(newest, keeping: Retention(days: 7, now: .now))
 
-        let app = AppDelegate(container: sandbox.root)
+        let session = HeldSession(signedIn: true)
+        let app = AppDelegate(container: sandbox.root, account: session.layer)
         let insertion = InsertionRecorder()
         let clipboardRoute = InsertionRecorder()
         app.lastTranscriptInserter = insertion
@@ -140,13 +141,16 @@ struct LastTranscriptForgetTests {
         #expect(app.actionNotice?.message.hasPrefix("There is no transcript to") == true)
     }
 
-    @Test("both shortcuts say so when there is nothing to put back", arguments: [
-        (ShortcutAction.pasteLastTranscript, "There is no transcript to paste yet."),
-        (ShortcutAction.copyLastTranscript, "There is no transcript to copy yet."),
-    ])
+    @Test(
+        "both shortcuts say so when there is nothing to put back",
+        arguments: [
+            (ShortcutAction.pasteLastTranscript, "There is no transcript to paste yet."),
+            (ShortcutAction.copyLastTranscript, "There is no transcript to copy yet."),
+        ])
     func nothingToPutBackIsSaid(action: ShortcutAction, message: String) async {
         let sandbox = Sandbox()
-        let app = AppDelegate(container: sandbox.root)
+        let session = HeldSession(signedIn: true)
+        let app = AppDelegate(container: sandbox.root, account: session.layer)
 
         await app.perform(action)
 
@@ -172,7 +176,7 @@ struct LastTranscriptForgetTests {
         let app = dictated("Older words", in: sandbox)
         let olderID = try #require(app.lastTranscriptID)
         let insertion = InsertionRecorder()
-        app.clipInserter = insertion
+        app.lastTranscriptInserter = insertion
 
         app.render(failed("Newer words"))
         await app.perform(.pasteLastTranscript)

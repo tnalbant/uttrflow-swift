@@ -79,10 +79,10 @@ struct SnippetsPageTests {
     func searching() {
         let snippets = [
             HistoryFixture.snippet("my address", text: "Flat 402, Bengaluru"),
-            HistoryFixture.snippet("sign off", text: "Thanks, Naveen"),
+            HistoryFixture.snippet("sign off", text: "Thanks, Avery"),
         ]
         #expect(HistoryFixture.snippets(snippets, query: "address").rows.count == 1)
-        #expect(HistoryFixture.snippets(snippets, query: "Naveen").rows.count == 1)
+        #expect(HistoryFixture.snippets(snippets, query: "Avery").rows.count == 1)
         #expect(HistoryFixture.snippets(snippets, query: "  ").rows.count == 2)
     }
 
@@ -158,6 +158,30 @@ struct SnippetsEditorTests {
 
         #expect(editor?.canSave == false)
         #expect(editor?.problem == "You already have a snippet for “My  Address”.")
+    }
+
+    @Test("a one-word trigger is saved but warned about, since it fires on that word everywhere")
+    func oneWordTriggerCaution() {
+        let editor = HistoryFixture.snippets(
+            draft: SnippetDraft(trigger: " address ", text: "x")
+        ).editor
+
+        #expect(editor?.canSave == true)
+        #expect(
+            editor?.caution == """
+                Uttrflow swaps in this text every time you say “address”, in any sentence. \
+                A phrase you would not say otherwise, such as “my home address”, is safer.
+                """)
+    }
+
+    @Test("a trigger of two or more words, or one that cannot be saved, carries no warning")
+    func noCaution() {
+        #expect(
+            HistoryFixture.snippets(draft: SnippetDraft(trigger: "my address", text: "x")).editor?
+                .caution == nil)
+        #expect(
+            HistoryFixture.snippets(draft: SnippetDraft(trigger: "address", text: " ")).editor?
+                .caution == nil)
     }
 
     @Test("a trigger dictation rewrites says how it arrives and offers to save that form")

@@ -263,6 +263,7 @@ Sources/
   UttrflowSettings     What the user chose, kept between launches.
   UttrflowHistory      What was dictated, kept between launches and aged out on a clock.
   UttrflowDictionary   Words you say that a general model does not know, found by sound.
+  UttrflowDiagnostics  Opt-in crash and hang reports. The only module that links the crash reporter.
   UttrflowAccount      Who is signed in, and what their subscription allows.
   UttrflowClipboard    Clipboard history, classification and storage; panel UI lives in Uttrflow/Panel.
   UttrflowPredict      Finishing a line you have typed before: the turn, the gates, the ranking.
@@ -297,7 +298,6 @@ swift run uttrflow-dev models install         # one-time, 646 MB
 swift run uttrflow-dev record -s 5            # record 5s, write a WAV
 swift run uttrflow-dev transcribe -s 6        # record and transcribe
 swift run uttrflow-dev transcribe voice.wav   # transcribe a file
-swift run uttrflow-dev transcribe -e appleSpeech -s 6
 swift run uttrflow-dev clean "um so i think the the deployment is uh still running"
 swift run uttrflow-dev insert "Hello from Uttrflow."   # needs Accessibility access
 ```
@@ -315,7 +315,7 @@ Which implementations run is decided entirely by `EngineConfiguration`:
 
 ```swift
 EngineConfiguration(
-    speech: .whisperKit,                                    // or .appleSpeech
+    speech: .whisperKit,
     transformerPreference: [.foundationModels, .localModel, .rules]
 )
 ```

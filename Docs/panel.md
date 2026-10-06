@@ -13,7 +13,10 @@ stories about the same moment. Window, focus and AppKit traps are in
 
 A clip has one of seven kinds, detected rather than declared: text, link, code, secret, colour,
 image and file path (`ClipKind` in `Sources/UttrflowClipboard/Clip.swift`). The kind picks the
-glyph, the tint and what the row offers.
+glyph, the tint and what the row offers. A colour with a resolved sRGB value shows that value as
+the row mark; a detected perceptual colour without an sRGB conversion keeps the palette glyph.
+Word-shaped hashes and issue-like short numbers need a colour declaration to disambiguate
+them. An exact standalone CSS named colour gets a swatch; a colour name within prose stays text.
 
 One search field matches text and aliases. An alias is reduced the same way when it is saved
 and when it is matched, in `PanelAlias.handle` (no leading slash, no whitespace, case, accents
@@ -129,6 +132,9 @@ confirmation, and the undo is what pays for that, so the undo is **offered, not 
 available**: an undo nobody is told about leaves the clip gone with neither a question
 beforehand nor a way back.
 
+If another clip took the deleted clip's alias during that window, undo restores the clip without
+that alias, keeps the newer clip's name, and announces the conflict in the panel.
+
 The panel window takes ⌘Z ahead of Edit › Undo, which would otherwise swallow it, in this order:
 while the offer shows, ⌘Z restores the clip; otherwise, if the search field has typing to take
 back, ⌘Z undoes that typing; otherwise it goes to the panel. ⇧⌘Z stays Redo.
@@ -220,6 +226,10 @@ whitespace says so and includes the clip's character count, instead of becoming 
 Name matching keeps the existing case, accent, width, whitespace and leading-slash folding, then compares Unicode confusable skeletons: normalize to NFD, replace each code point with its Unicode confusable prototype, and normalize to NFD again. The skeleton is only a comparison key and is never shown or stored. The packaged Unicode 18.0.0 confusables, Scripts, ScriptExtensions and PropertyValueAliases data make the result consistent across macOS ICU versions. If any table is missing or unreadable, saving a name is disabled and the sheet says why.
 
 The script check intersects each alphabetic character's Script_Extensions set, falling back to Script when no extension set is listed. Common and inherited letters do not constrain the set. An empty intersection means the name mixes scripts, except that Japanese names may combine Han with Hiragana or Katakana, and Korean names may combine Han with Hangul. Other mixed-script combinations remain refused. Unicode data is distributed under the [Unicode terms of use](https://www.unicode.org/terms_of_use.html); the source tables identify their version and copyright.
+
+## Invisible and control characters in clips
+
+The panel identifies default-ignorable, format and control scalars in a clip, except tabs and line endings. Rows show a `Hidden chars` badge, and previews replace each such scalar with its `U+` value and Unicode name in brackets; unnamed controls are labelled `CONTROL CHARACTER`. Search removes non-whitespace hazards from both the clip text and the query; whitespace controls keep the existing search-as-space behavior. A query made only of removed scalars acts like a blank search. The stored clip and ordinary Insert or Copy actions keep the original text. `Paste cleaned` is an explicit row action that removes those scalars from the text sent to the destination; it never edits the stored clip, and a secret remains marked concealed.
 
 ## Related
 

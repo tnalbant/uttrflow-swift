@@ -30,14 +30,19 @@ struct DoubtfulWordsTests {
     @Test("offers the readings for the run the recogniser was unsure of")
     func offersReadings() async {
         let spans = await DoubtfulWords(sources: [source]).spans(in: .heard("i ate an ?apple"), for: .unknown)
-        #expect(spans == [DoubtfulSpan(heard: "apple", confidence: 0.3, candidates: ["Apple", "apples"], occurrence: 0)])
+        #expect(
+            spans == [
+                DoubtfulSpan(heard: "apple", confidence: 0.3, candidates: ["Apple", "apples"], occurrence: 0)
+            ])
     }
 
     @Test("names which mention of the words was doubted when the same words are said twice")
     func namesTheDoubtedMention() async {
         let sources = [ScriptedCandidates(["set user prefs": ["setUserPrefs"]])]
         let spans = await DoubtfulWords(sources: sources)
-            .spans(in: .heard("we call set user prefs so it never has to ?set ?user ?prefs again"), for: .unknown)
+            .spans(
+                in: .heard("we call set user prefs so it never has to ?set ?user ?prefs again"), for: .unknown
+            )
         #expect(spans.map(\.occurrence) == [1])
     }
 

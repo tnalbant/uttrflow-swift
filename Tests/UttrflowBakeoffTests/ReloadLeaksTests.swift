@@ -1,11 +1,12 @@
 import ArgumentParser
 import Foundation
 import Testing
+import UttrflowCore
 @testable import uttrflow_bakeoff
 @testable import UttrflowEval
 
 struct ReloadLeaksTests {
-    @Test("bake-off comparison catches a lost pass, rising lost words, and a missing passing case")
+    @Test("bake-off comparison catches a lost pass and rising lost words")
     func bakeoffComparisonFindsRegressions() {
         let baseline = measurement(cases: [
             caseResult("pass-to-fail", passed: true),
@@ -21,9 +22,66 @@ struct ReloadLeaksTests {
         #expect(
             comparison?.regressions == [
                 "lost-words: lost words increased from 1 to 2",
-                "missing: previously passing case is missing",
                 "pass-to-fail: previously passing case now fails",
             ])
+        #expect(comparison?.removed == ["missing"])
+    }
+
+    @Test("bake-off comparison fails a category whose marks or case fall while every case still passes")
+    func bakeoffComparisonFindsMarkAndCaseDrops() throws {
+        let baseline = measurement(cases: [caseResult("a", passed: true, mark: 1, casing: 1)])
+        let current = measurement(cases: [caseResult("a", passed: true, mark: 0.5, casing: 1)])
+        let comparison = try #require(RegressionComparison.compare(current, against: baseline))
+        #expect(comparison.regressions == ["category everyday: mark accuracy fell from 100.0% to 50.0%"])
+        #expect(RegressionComparison.compare(baseline, against: current)?.regressions == [])
+    }
+
+    @Test("bake-off comparison judges only unchanged cases and names added, removed and changed ones")
+    func bakeoffComparisonSeparatesCorpusChanges() throws {
+        let baseline = measurement(
+            cases: [
+                caseResult("same", passed: true, identity: "a"),
+                caseResult("edited", passed: true, identity: "b"),
+                caseResult("dropped", passed: true, identity: "c"),
+            ], corpus: "old")
+        let current = measurement(
+            cases: [
+                caseResult("same", passed: true, identity: "a"),
+                caseResult("edited", passed: false, identity: "b2"),
+                caseResult("new", passed: false, identity: "d"),
+            ], corpus: "new")
+
+        let comparison = try #require(RegressionComparison.compare(current, against: baseline))
+        #expect(comparison.regressions.isEmpty)
+        #expect(comparison.added == ["new"])
+        #expect(comparison.removed == ["dropped"])
+        #expect(comparison.changed == ["edited"])
+        #expect(comparison.corpusChanged)
+        #expect(comparison.corpusReport.first?.hasPrefix("Corpus changed") == true)
+    }
+
+    @Test("an unchanged corpus reports nothing about the corpus")
+    func bakeoffComparisonQuietOnSameCorpus() throws {
+        let same = measurement(cases: [caseResult("same", passed: true, identity: "a")], corpus: "x")
+        let comparison = try #require(RegressionComparison.compare(same, against: same))
+        #expect(comparison.corpusReport.isEmpty)
+    }
+
+    @Test("a case's identity moves with what it is scored on and not with its labels")
+    func caseIdentityIgnoresLabels() {
+        let base = EvaluationCase(id: "x", category: .everyday, spoken: "hi there", expected: "Hi there.")
+        let relabelled = EvaluationCase(
+            id: "x", category: .everyday, spoken: "hi there", expected: "Hi there.", origin: .synthetic,
+            addedFor: 1)
+        let edited = EvaluationCase(id: "x", category: .everyday, spoken: "hi there", expected: "Hi, there.")
+        let otherContext = EvaluationCase(
+            id: "x", category: .everyday, spoken: "hi there", expected: "Hi there.",
+            context: AppContext(applicationName: "Notes"))
+        #expect(base.identity == relabelled.identity)
+        #expect(base.identity != edited.identity)
+        #expect(base.identity != otherContext.identity)
+        #expect(
+            EvaluationCase.corpusIdentity(of: [base]) != EvaluationCase.corpusIdentity(of: [edited]))
     }
 
     @Test("bake-off comparison ignores a different candidate")
@@ -36,21 +94,34 @@ struct ReloadLeaksTests {
         #expect(RegressionComparison.compare(rules, against: other) == nil)
     }
 
-    private func measurement(cases: [StoredReport.CaseResult]) -> uttrflow_bakeoff.Measurement {
+    private func measurement(
+        cases: [StoredReport.CaseResult],
+        corpus: String? = nil
+    ) -> uttrflow_bakeoff.Measurement {
         let scores = cases.map {
             CaseScore(
                 caseID: $0.caseID, similarity: $0.passed ? 1 : 0,
                 keptEverythingRequired: $0.lost.isEmpty, lost: $0.lost, isExact: $0.passed)
         }
-        return Measurement(
+        var result = Measurement(
             description: .rules, report: EvaluationReport(label: "rules", scores: scores, durations: []))
+        result.report.cases = cases
+        result.report.corpusIdentity = corpus
+        return result
     }
 
-    private func caseResult(_ id: String, passed: Bool, lost: [String] = []) -> StoredReport.CaseResult {
+    private func caseResult(
+        _ id: String,
+        passed: Bool,
+        lost: [String] = [],
+        identity: String? = nil,
+        mark: Double? = nil,
+        casing: Double? = nil
+    ) -> StoredReport.CaseResult {
         StoredReport.CaseResult(
             caseID: id, category: "everyday", destination: nil, similarity: passed ? 1 : 0,
-            markAccuracy: nil, caseAccuracy: nil, lost: lost, invented: [], brokeShape: [],
-            passed: passed, declined: false)
+            markAccuracy: mark, caseAccuracy: casing, lost: lost, invented: [], brokeShape: [],
+            passed: passed, declined: false, identity: identity)
     }
 
     @Test("scorecard and fixture report use judged shown rows for category precision")

@@ -20,6 +20,31 @@ struct TerminalStopPassTests {
         #expect(cleaned(input, by: sut) == expected)
     }
 
+    @Test(
+        "ends no dictation with a stop after a word that leaves the clause open",
+        arguments: [
+            ("i went to the bank and", "i went to the bank and"),
+            ("i would go but", "i would go but"),
+            ("i stayed home because", "i stayed home because"),
+            ("i went to the bank and.", "i went to the bank and"),
+        ])
+    func danglingWord(input: String, expected: String) {
+        for destination in Destination.allCases {
+            let formatter = DestinationFormatter.standard(for: destination)
+            let pass = TerminalStopPass(
+                policy: formatter.terminalStop, layout: formatter.layout, destination: destination)
+            #expect(cleaned(input, by: pass) == expected)
+        }
+    }
+
+    @Test("leaves a paragraph that ends on a word leaving the clause open without a stop")
+    func danglingParagraph() {
+        let text = "we sent the report and\n\nthen we left the office"
+        #expect(
+            email.apply(Draft(keepingLineBreaks: text)).text
+                == "we sent the report and\n\nthen we left the office.")
+    }
+
     @Test("leaves an open parenthetical unfinished but keeps a question mark")
     func openBracketBeforeCaret() {
         let formatter = DestinationFormatter.standard(for: .plain)
@@ -56,6 +81,14 @@ struct TerminalStopPassTests {
             ("she is a nurse", "she is a nurse."),
             ("the report is a good idea", "the report is a good idea."),
             ("it is not a good idea", "it is not a good idea."),
+            ("here is the list: apples and pears.", "here is the list: apples and pears."),
+            ("here are the files: a and b.", "here are the files: a and b."),
+            ("there is a list: one two three.", "there is a list: one two three."),
+            ("here is what we need: milk and eggs", "here is what we need: milk and eggs."),
+            ("here is the plan", "here is the plan."),
+            ("you are the best person for this", "you are the best person for this."),
+            ("everything is the way it should be", "everything is the way it should be."),
+            ("nothing is the same as before", "nothing is the same as before."),
             (
                 "didi can you ask jiju if he's free on saturday",
                 "didi, can you ask jiju if he's free on saturday?"
