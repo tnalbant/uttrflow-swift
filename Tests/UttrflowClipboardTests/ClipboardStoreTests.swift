@@ -32,18 +32,21 @@ struct ClipboardStoreTests {
         #expect(await store.clips(keeping: week()).map(\.text) == ["second", "first"])
     }
 
-    @Test("reclassifies stored text with the current secret detector before returning or persisting it")
+    @Test("drops stored text the current secret detector calls a secret, from the list and the disk")
     func reclassifiesStoredSecret() async throws {
         let file = TemporaryFile()
         let old = Clip(text: "api_key = ff00aa11ff00aa11ff00aa11", kind: .text, copiedAt: noon)
+        try FileManager.default.createDirectory(
+            at: file.url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try JSONEncoder().encode([old]).write(to: file.url)
         let store = ClipboardStore(file: file.url)
 
         let clips = await store.clips(keeping: week())
 
-        #expect(clips.first?.kind == .secret)
-        let persisted = try JSONDecoder().decode([Clip].self, from: Data(contentsOf: file.url))
-        #expect(persisted.isEmpty)
+        // A secret never crosses a launch, so the reclassified clip is neither handed back nor written.
+        #expect(clips.isEmpty)
+        // Nothing persistable is left, and an empty list is no file at all.
+        #expect(!FileManager.default.fileExists(atPath: file.url.path(percentEncoded: false)))
     }
 
     /// A picture clip carries empty text, and the launch reclassifier must not overwrite its kind.

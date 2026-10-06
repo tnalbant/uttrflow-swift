@@ -155,8 +155,8 @@ struct EncryptedStoreTests {
         #expect(try Data(contentsOf: file).starts(with: Data("UTTFLOWE".utf8)))
     }
 
-    @Test("leaves malformed legacy JSON in place without asking for a key")
-    func malformedLegacyStaysInPlace() throws {
+    @Test("sets malformed legacy JSON aside without asking for a key")
+    func malformedLegacyIsSetAside() throws {
         let directory = try folder()
         defer { try? FileManager.default.removeItem(at: directory) }
         let file = directory.appending(path: "history.v1.json")
@@ -166,9 +166,11 @@ struct EncryptedStoreTests {
         let stored = EncryptedStore(keys: MissingKey()).read([String].self, from: file)
 
         #expect(stored.isUnreadable)
-        #expect(FileManager.default.fileExists(atPath: file.path))
-        #expect(try Data(contentsOf: file) == source)
-        #expect(!LocalStore.hasSetAside(file))
+        #expect(!FileManager.default.fileExists(atPath: file.path))
+        #expect(LocalStore.hasSetAside(file))
+        guard case .unreadable(let moved) = stored else { return }
+        let setAside = try #require(moved)
+        #expect(try Data(contentsOf: setAside) == source)
     }
 
     @Test("rejects a renamed store because the logical filename is authenticated")
