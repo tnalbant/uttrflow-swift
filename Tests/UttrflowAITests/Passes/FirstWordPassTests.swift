@@ -31,6 +31,17 @@ struct FirstWordPassTests {
         #expect(cleaned(input, by: sut) == expected)
     }
 
+    /// A word whose dictionary form is capitalised is a name, so a capital after the first word stays on every run.
+    @Test(
+        "keeps a capitalised name after the first word, and a second run changes nothing",
+        arguments: [("at Delhi", "At Delhi"), ("the Delhi", "The Delhi"), ("we met in Paris", "We met in Paris")]
+    )
+    func keepsANameAfterTheFirstWord(input: String, expected: String) {
+        let once = cleaned(input, by: sut)
+        #expect(once == expected)
+        #expect(cleaned(once, by: sut) == once)
+    }
+
     @Test(
         "capitalises the start of every sentence",
         arguments: [
