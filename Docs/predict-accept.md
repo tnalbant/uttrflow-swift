@@ -63,9 +63,9 @@ swallows it is a tap the user has to quit the app to escape from.
 ## Why the tap swallows from a bitmask
 
 The tap's callback runs inside the window server's event path for **every keypress in the
-system**, ours or not, and macOS disables a tap that takes too long over one. So the
-callback allocates nothing, takes no lock, and asks one question: is the bit for this
-keystroke set in one atomic `UInt32`?
+system**, ours or not, and macOS disables a tap that takes too long over one. `ArmedKeys` routes
+keystrokes through an atomic `UInt32`; `KeyHold` uses a short lock to coordinate queued keys with
+accept completion and expiry.
 
 `ArmedKeys` is that word — one bit per keystroke the feature can ever claim — and
 `KeyRouting.arming` computes it *from `KeyRouting.decision` itself*, over every slot. The
@@ -81,6 +81,11 @@ posts the same key with the same modifiers, tagged so the tap lets it through.
 A swallowed keystroke is written into a fixed ring buffer of `TapState.capacity` (64) entries and a dispatch
 source is signalled; the decision runs on that source's queue. The ring is what keeps two
 quick presses of ⌥↓ from coalescing into one, which a source's own OR-ed data would do.
+
+While an accept is being carried out, later key-downs are held and replayed in order. If the hold
+reaches `KeyHold.limitNanoseconds`, the queued keys are posted before a later key passes through.
+Autorepeats stay tied to the accepted virtual keycode, so releasing Option while ⌥⇥ remains down
+does not turn its repeats into bare Tab input.
 
 The tap gets its own thread with its own run loop. A tap serviced by the main run loop is
 a tap that stalls behind whatever the app is drawing, and the system's answer to a stalled

@@ -12,8 +12,8 @@ final class TapState: @unchecked Sendable {
     let armed = Atomic<UInt32>(0)
     /// Whether an application menu is open, which returns claimed keys to the application.
     private let nativeMenuIsOpen = Atomic<Bool>(false)
-    /// The accept stroke whose autorepeats stay swallowed while its hold remains active.
-    private let repeatingAcceptStroke = Atomic<UInt32>(0)
+    /// The accept keycode plus one, so modifier changes do not expose autorepeats during its hold.
+    private let repeatingAcceptKeyCode = Atomic<UInt32>(0)
     /// The keys pressed after a taken keystroke, kept back until it has been carried out.
     let hold: KeyHold
 
@@ -137,44 +137,56 @@ final class TapState: @unchecked Sendable {
         let suppressUnarmedTab = hold.isHoldingBareTabAccept
         hold.release(
             post: post,
-            where: { event in
-                let stroke = KeyStroke(
-                    keyCode: UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode)),
-                    modifiers: KeyModifiers(event.flags))
-                let bareTabIsArmed = armed.load(ordering: .acquiring) & ArmedKeys.tab.rawValue != 0
-                return !suppressUnarmedTab || stroke != KeyStroke(.tab) || bareTabIsArmed
-            })
-        repeatingAcceptStroke.store(0, ordering: .releasing)
+            where: { event in shouldReplayHeldKey(event, suppressUnarmedTab: suppressUnarmedTab) })
+        repeatingAcceptKeyCode.store(0, ordering: .releasing)
         return isListening
     }
 
     /// Decides one real key-down on the tap's thread, answering true when it is taken or held back.
-    func takes(_ event: CGEvent) -> Bool {
-        if hold.expireIfNeeded() {
-            repeatingAcceptStroke.store(0, ordering: .releasing)
+    func takes(
+        _ event: CGEvent,
+        postExpired: (CGEvent) -> Void = { $0.post(tap: .cghidEventTap) }
+    ) -> Bool {
+        let suppressUnarmedTab = hold.isHoldingBareTabAccept
+        let shouldReplayHeldKey: (CGEvent) -> Bool = { event in
+            self.shouldReplayHeldKey(event, suppressUnarmedTab: suppressUnarmedTab)
+        }
+        if hold.expireIfNeeded(post: postExpired, where: shouldReplayHeldKey) {
+            repeatingAcceptKeyCode.store(0, ordering: .releasing)
         }
         let keyCode = UInt32(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode))
+        let encodedKeyCode = keyCode &+ 1
         let stroke = KeyStroke(
             keyCode: UInt16(truncatingIfNeeded: keyCode),
             modifiers: KeyModifiers(event.flags))
         let slot = ArmedKeys.slot(of: stroke)
-        let repeatingStroke = repeatingAcceptStroke.load(ordering: .acquiring)
+        let repeatingKeyCode = repeatingAcceptKeyCode.load(ordering: .acquiring)
         if event.getIntegerValueField(.keyboardEventAutorepeat) != 0,
-            repeatingStroke != 0,
-            repeatingStroke == slot.rawValue
+            repeatingKeyCode != 0,
+            repeatingKeyCode == encodedKeyCode
         {
             return true
         }
-        if repeatingStroke != 0, repeatingStroke != slot.rawValue {
-            repeatingAcceptStroke.store(0, ordering: .releasing)
+        if repeatingKeyCode != 0, repeatingKeyCode != encodedKeyCode {
+            repeatingAcceptKeyCode.store(0, ordering: .releasing)
         }
         // A key pressed while a taken keystroke is carried out waits for it, so it cannot overtake an insertion.
-        if hold.keep(event) { return true }
+        if hold.keep(event, postExpired: postExpired, where: shouldReplayHeldKey) { return true }
         guard !nativeMenuIsOpen.load(ordering: .acquiring) else { return false }
         guard route(slot) else { return false }
-        repeatingAcceptStroke.store(slot.rawValue, ordering: .releasing)
+        repeatingAcceptKeyCode.store(encodedKeyCode, ordering: .releasing)
         hold.begin(suppressingUnarmedTab: stroke == KeyStroke(.tab))
         return true
+    }
+
+    /// Applies the same bare-Tab rule to a finished hold and one that reaches its deadline.
+    private func shouldReplayHeldKey(_ event: CGEvent, suppressUnarmedTab: Bool) -> Bool {
+        guard suppressUnarmedTab else { return true }
+        let stroke = KeyStroke(
+            keyCode: UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode)),
+            modifiers: KeyModifiers(event.flags))
+        let bareTabIsArmed = armed.load(ordering: .acquiring) & ArmedKeys.tab.rawValue != 0
+        return stroke != KeyStroke(.tab) || bareTabIsArmed
     }
 
     /// Takes an armed key, or disarms every slot for a key the application will see, so a later accept cannot take a stale offer.
