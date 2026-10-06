@@ -133,6 +133,43 @@ private actor HeldCleaner: TranscriptCleaning {
     var isHolding: Bool { held != nil }
 }
 
+/// A tidier that holds its second tidy until that tidy is cancelled, and accounts for each piece by its first word.
+private final class CancelWatchingCleaner: TranscriptCleaning, Sendable {
+    private let state = Mutex((calls: 0, holding: false, cancelled: [String](), finished: [String]()))
+
+    func clean(_ request: TransformationRequest) async throws(TransformationError) -> TransformationResult {
+        let text = request.transcription.text
+        let call = state.withLock { state -> Int in
+            state.calls += 1
+            return state.calls
+        }
+        if call == 2 {
+            state.withLock { $0.holding = true }
+            while !Task.isCancelled { await Task.yield() }
+            state.withLock { $0.cancelled.append(text) }
+            throw .outputRejected(reason: "cancelled", kind: .lostWord)
+        }
+        state.withLock { $0.finished.append(text) }
+        let first = text.split(separator: " ").first.map(String.init) ?? ""
+        return TransformationResult(
+            text: text.uppercased(), producedBy: .foundationModels,
+            cleaning: CleaningRecord(changes: [CleaningRecord.Change(step: .fillers, removed: [first])]))
+    }
+
+    func warm(for situation: Situation?) async {}
+
+    var isHolding: Bool { state.withLock(\.holding) }
+    var cancelled: [String] { state.withLock(\.cancelled) }
+    var finished: [String] { state.withLock(\.finished) }
+}
+
+/// Keeps what the pipeline reported as each dictation's cleaning account.
+private actor KeptCleaningAccounts: CleaningRecording {
+    private(set) var records: [CleaningRecord] = []
+
+    func record(_ record: CleaningRecord) async { records.append(record) }
+}
+
 /// A tidier that shouts, so its work on each piece can be seen, and remembers where it was warmed for.
 private final class ShoutingCleaner: TranscriptCleaning, Sendable {
     private let state = Mutex((warmed: [Destination?](), seen: [String](), contexts: [AppContext]()))
@@ -325,6 +362,9 @@ private enum Take {
     static let fragmentTail = AudioSamples.canonical(
         tone(1.2) + silence(0.5) + tone(1.2) + silence(0.5) + tone(0.1))
 
+    /// A first piece, its pause, and a fragment with no piece between them.
+    static let failedThenFragment = AudioSamples.canonical(tone(1.2) + silence(0.5) + tone(0.1))
+
     static let speechThenSilence = AudioSamples.canonical(tone(1.2) + silence(1.0))
 }
 
@@ -406,7 +446,8 @@ struct DictationPipelineEarlyWorkTests {
             Take.tone(1.2) + Take.silence(4) + Take.tone(0.35) + Take.silence(10))
         let capture = FakeAudioCaptureEngine(stopOutcome: .success(take))
         await capture.setCaptured(take)
-        let speech = NumberingSpeechEngine()
+        // The trailing ten seconds are their own window, which a recogniser answers with nothing.
+        let speech = NumberingSpeechEngine(silentCalls: [3])
         let pipeline = makePipeline(capture: capture, speech: speech)
 
         await pipeline.startRecording()
@@ -414,9 +455,11 @@ struct DictationPipelineEarlyWorkTests {
         await pipeline.finishRecording()
 
         #expect(await pipeline.currentState.outcome?.text == "W1 X. W2 X")
-        #expect(await speech.calls == 2)
+        #expect(await speech.calls == 3)
         let counts = await speech.sampleCounts
-        #expect(counts[1] > 4 * Take.rate, "the final phrase is decoded with the preceding window")
+        #expect(
+            counts[0] + counts[1] >= Int(5.55 * Double(Take.rate)),
+            "the final phrase is decoded with the window before it, never alone")
     }
 
     @Test("a dictation of one piece warms the tidier once, at key-down, and not again after its answer")
@@ -697,8 +740,8 @@ struct DictationPipelineEarlyWorkTests {
 
     @Test("a failed early window joins a fragment tail to its pending span")
     func failedEarlyWindowJoinsFragmentTail() async throws {
-        let capture = FakeAudioCaptureEngine(stopOutcome: .success(Take.fragmentTail))
-        await capture.setCaptured(Take.fragmentTail)
+        let capture = FakeAudioCaptureEngine(stopOutcome: .success(Take.failedThenFragment))
+        await capture.setCaptured(Take.failedThenFragment)
         let speech = NumberingSpeechEngine(failingCalls: [1])
         let pipeline = makePipeline(capture: capture, speech: speech)
 
@@ -708,6 +751,29 @@ struct DictationPipelineEarlyWorkTests {
 
         #expect(await pipeline.currentState.outcome?.text == "W2 X")
         #expect(await speech.calls == 2)
+    }
+
+    @Test("a tidy the release join drops is cancelled and leaves nothing in the account")
+    func droppedTidyIsCancelledAndUnaccounted() async throws {
+        let capture = FakeAudioCaptureEngine(stopOutcome: .success(Take.fragmentTail))
+        await capture.setCaptured(Take.fragmentTail)
+        let speech = NumberingSpeechEngine()
+        let cleaner = CancelWatchingCleaner()
+        let accounts = KeptCleaningAccounts()
+        let pipeline = DictationPipeline(
+            capture: capture, speech: speech, cleaner: cleaner,
+            context: FakeContextEngine(context: .fixture()), inserter: FakeTextInserter(),
+            cleaningRecorder: accounts, windowing: quick, earlyPoll: .milliseconds(2))
+
+        await pipeline.startRecording()
+        try await eventually { cleaner.isHolding }
+        await pipeline.finishRecording()
+
+        #expect(await pipeline.currentState.outcome?.text == "W1 X. W3 X")
+        #expect(cleaner.cancelled == ["w2 x"], "the dropped span's tidy is cancelled")
+        #expect(!cleaner.finished.contains("w2 x"))
+        let removed = await accounts.records.flatMap(\.changes).flatMap(\.removed)
+        #expect(removed.sorted() == ["w1", "w3"], "only inserted pieces are in the account")
     }
 
     @Test("a silent early window does not remove the preceding finished span")
@@ -721,8 +787,9 @@ struct DictationPipelineEarlyWorkTests {
         try await waitForCalls(2, on: speech)
         await pipeline.finishRecording()
 
-        #expect(await pipeline.currentState.outcome?.text == "W1 X. W3 X")
-        #expect(await speech.calls == 3)
+        // The silent answer is a miss, since the window speaks, so it is decoded again; the tail then rejoins it.
+        #expect(await pipeline.currentState.outcome?.text == "W1 X. W4 X")
+        #expect(await speech.calls == 4)
     }
 
     @Test("a retried recording is recognised in windows, so a long one is never one request")

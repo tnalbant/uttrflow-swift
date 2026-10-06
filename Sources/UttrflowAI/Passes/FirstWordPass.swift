@@ -4,6 +4,7 @@ public import UttrflowCore
 /// Capitalises each sentence and the pronoun "I", then cases the first word the way the formatter and the caret say.
 public struct FirstWordPass: WholeTextCleaningPass {
     public static let id: PassID = .firstWord
+    public static let laws: Set<PassLaw> = [.addsNoWords, .keepsDigits, .latinOnly]
 
     public let policy: FirstWordPolicy
     public let state: InsertionPoint.SentenceState
@@ -47,7 +48,7 @@ public struct FirstWordPass: WholeTextCleaningPass {
     }
 
     public func apply(_ draft: Draft) -> Draft {
-        var draft = draft
+        var draft = policy == .fromInsertionPoint ? unshouted(draft) : draft
         let text = draft.text
         let heardWords =
             heard.map { $0.split(whereSeparator: \.isWhitespace).map(String.init) }
@@ -62,6 +63,13 @@ public struct FirstWordPass: WholeTextCleaningPass {
             guard !word.isLayoutMark else {
                 // Every layout mark starts a new sentence.
                 startOfSentence = true
+                continue
+            }
+            if WordShape(word.text).isOption {
+                // An option's letters are what the shell reads, so no casing rule touches them.
+                startOfSentence = false
+                afterPause = false
+                isFirst = false
                 continue
             }
             let letterAdjacent = Self.hasLetterNameBesideI(at: order, in: present, of: draft)
@@ -114,6 +122,28 @@ public struct FirstWordPass: WholeTextCleaningPass {
         }
         return draft
     }
+
+    /// Lowers every unedited word of a transcript the decoder returns all in capitals; a known term keeps its form.
+    func unshouted(_ draft: Draft) -> Draft {
+        let spoken = draft.presentIndices.filter { !draft.words[$0].heard.isEmpty }
+        let lettered = spoken.map { WordShape(draft.words[$0].heard).core.filter(\.isLetter) }.filter {
+            $0.count >= 2
+        }
+        guard lettered.count >= Self.minimumShoutedWords,
+            lettered.allSatisfy({ $0.allSatisfy(\.isUppercase) })
+        else { return draft }
+        var draft = draft
+        for index in spoken where draft.words[index].text == draft.words[index].heard {
+            let shape = WordShape(draft.words[index].text)
+            let key = shape.core.lowercased()
+            let lowered = shape.replacingCore(with: namedForms[key] ?? key)
+            if lowered != draft.words[index].text { draft.replace(at: index, with: lowered, by: Self.id) }
+        }
+        return draft
+    }
+
+    /// Words of two letters or more a transcript needs, all in capitals, before its capitals are read as the decoder's.
+    static let minimumShoutedWords = 3
 
     private static func followsDemotedSentenceEnd(at position: Int, in live: [Int], of draft: Draft) -> Bool {
         guard position > 0 else { return false }
@@ -284,7 +314,8 @@ public struct FirstWordPass: WholeTextCleaningPass {
     func strayCapitalLowered(_ word: String, in text: String) -> String {
         let core = WordShape(word).core
         guard policy == .fromInsertionPoint, core.first?.isUppercase == true, !Self.keepsCapital(word),
-            LexicalClass.isKnownEnglishWord(core.lowercased()), !ownWords.contains(core.lowercased()),
+            LexicalClass.isKnownEnglishWord(core.lowercased()), !LexicalClass.isNameInDictionary(core.lowercased()),
+            !ownWords.contains(core.lowercased()),
             namedForms[core.lowercased()] == nil, !LexicalClass.isNamed(core, in: text),
             !Self.isCalendarWord(word), !Self.isProperName(word, in: text),
             !Self.looksLikeName(word, in: onScreen)
@@ -295,6 +326,8 @@ public struct FirstWordPass: WholeTextCleaningPass {
     /// Whether a word keeps its case mid-sentence: "I" and its contractions, an acronym, or a technical token.
     static func keepsCapital(_ word: String) -> Bool {
         let core = WordShape(word).core
+        // A mention or an address is written as its owner spells it.
+        if word.contains("@") { return true }
         if core == "I" || core.hasPrefix("I'") || core.hasPrefix("I\u{2019}") { return true }
         let letters = core.filter(\.isLetter)
         if core.contains(where: \.isNumber) && letters.contains(where: \.isUppercase) { return true }

@@ -363,7 +363,8 @@ struct DictionaryEditorView: View {
 
     /// Rebuilt from what is in the fields now, not from the presentation drawn a keystroke ago.
     private var save: MainAction {
-        MainAction(
+        if case .replaceWord = editor.save.intent { return replacing(editor.save) }
+        return MainAction(
             title: editor.save.title,
             intent: .saveWord(word: draft.word, pronunciation: draft.pronunciation))
     }
@@ -379,12 +380,17 @@ struct DictionaryEditorView: View {
     private var word: Binding<String> {
         Binding(
             get: { draft.word },
-            set: { draft = DictionaryDraft(word: $0, pronunciation: draft.pronunciation) })
+            set: {
+                draft = DictionaryDraft(
+                    editing: draft.editing, word: $0, pronunciation: draft.pronunciation)
+            })
     }
 
     private var pronunciation: Binding<String> {
         Binding(
             get: { draft.pronunciation },
-            set: { draft = DictionaryDraft(word: draft.word, pronunciation: $0) })
+            set: {
+                draft = DictionaryDraft(editing: draft.editing, word: draft.word, pronunciation: $0)
+            })
     }
 }

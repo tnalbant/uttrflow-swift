@@ -227,6 +227,11 @@ public struct ClipImage: Sendable, Equatable, Codable {
         self.sha = sha
     }
 
+    /// Whether a stored file name is a single path component, so it can only name a file inside the Images folder.
+    static func isConfinedFileName(_ name: String) -> Bool {
+        !name.isEmpty && name != "." && name != ".." && !name.contains("/") && !name.contains("\0")
+    }
+
     /// "1024 × 768", with the multiplication sign rather than a letter x.
     public var dimensions: String { "\(width) × \(height)" }
 }

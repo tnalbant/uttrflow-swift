@@ -95,7 +95,9 @@ struct HistoryRailPresentationTests {
         #expect(row.actions.map(\.title) == ["Copy", "Copy to Paste Elsewhere", "Unflag"])
         #expect(row.actions.map(\.intent) == [.copy("Hello"), .copy("Hello"), .flagDictation(entry.id)])
         #expect(row.isFlagged)
-        #expect(row.more.map(\.intent) == [.forgetDictation(entry.id)])
+        #expect(
+            row.more.map(\.intent)
+                == FlagReason.allCases.map { .flagDictationAs(entry.id, $0) } + [.forgetDictation(entry.id)])
         #expect(row.recording == nil)
     }
 
