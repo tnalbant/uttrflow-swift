@@ -618,8 +618,22 @@ struct DestructiveCommandTests {
             "aws kms disable-key --key-id K",
             "aws ec2 remove-tags --resources i-1 --tags Key=env",
             "aws sqs purge-queue --queue-url https://sqs.example.com/q",
+            "aws ecr batch-delete-image --repository-id r --image-ids imageDigest=0",
         ])
     func awsIrreversibleNamedOperationsAreDestructive(_ line: String) {
+        #expect(
+            DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be destructive")
+    }
+
+    @Test(
+        "gcloud and az destructive verbs other than `delete` are destructive when they remove, purge or batch-delete.",
+        arguments: [
+            "gcloud storage rm -r gs://prod-bucket",
+            "gcloud services purge disabled-service.googleapis.com",
+            "az storage blob delete-batch -s c --account-name a",
+            "az keyvault purge --name v",
+        ])
+    func cloudNonDeleteVerbsAreDestructive(_ line: String) {
         #expect(
             DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be destructive")
     }

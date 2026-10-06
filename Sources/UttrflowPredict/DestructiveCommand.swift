@@ -281,22 +281,27 @@ public enum DestructiveCommand {
                         || (operation == "sync" && arguments.contains("--delete"))
                 }
                 return awsDestructiveOperations.contains(operation)
-                    || operation.hasPrefix("delete-") || operation.hasPrefix("terminate-")
-                    || operation.hasPrefix("deregister-") || operation.hasPrefix("purge-")
-                    || operation.hasPrefix("remove-")
+                    || operation.hasPrefix("delete-") || operation.hasPrefix("batch-delete-")
+                    || operation.hasPrefix("terminate-") || operation.hasPrefix("deregister-")
+                    || operation.hasPrefix("purge-") || operation.hasPrefix("remove-")
             }),
         "gcloud": VerbTool(
             valued: [
                 "--project", "--account", "--configuration", "--format", "--verbosity", "--zone", "--region",
                 "--impersonate-service-account", "--billing-project", "--filter", "--flatten",
             ],
-            destroys: { positionals, _ in positionals.contains("delete") }),
+            destroys: { positionals, _ in
+                positionals.contains("delete") || positionals.contains("rm") || positionals.contains("purge")
+            }),
         "az": VerbTool(
             valued: [
                 "--subscription", "-g", "--resource-group", "-n", "--name", "-o", "--output", "--query", "-l",
                 "--location",
             ],
-            destroys: { positionals, _ in positionals.contains("delete") }),
+            destroys: { positionals, _ in
+                positionals.contains("delete") || positionals.contains("rm") || positionals.contains("purge")
+                    || positionals.contains("delete-batch")
+            }),
         "gsutil": VerbTool(
             valued: ["-o", "-h", "-u"],
             destroys: { positionals, arguments in
