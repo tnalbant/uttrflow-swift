@@ -4,7 +4,7 @@ internal import Synchronization
 internal import UttrflowPredict
 
 /// Everything the C callback may touch, held where a raw pointer can reach it.
-final class TapState: @unchecked Sendable {
+final class TapState: TapPayload, @unchecked Sendable {
     /// How many taken keystrokes may wait for the drain; while it is that far behind, newer ones are dropped.
     static let capacity = 64
 
@@ -12,8 +12,8 @@ final class TapState: @unchecked Sendable {
     let armed = Atomic<UInt32>(0)
     /// Whether an application menu is open, which returns claimed keys to the application.
     private let nativeMenuIsOpen = Atomic<Bool>(false)
-    /// The accept stroke whose autorepeats stay swallowed while its hold remains active.
-    private let repeatingAcceptStroke = Atomic<UInt32>(0)
+    /// The accept keycode plus one, so modifier changes do not expose autorepeats during its hold.
+    private let repeatingAcceptKeyCode = Atomic<UInt32>(0)
     /// The keys pressed after a taken keystroke, kept back until it has been carried out.
     let hold: KeyHold
 
@@ -25,52 +25,29 @@ final class TapState: @unchecked Sendable {
     private let written = Atomic<UInt64>(0)
     /// How many the drain has ever taken out of it.
     private let read = Atomic<UInt64>(0)
-    /// How many disables have counted against the tap inside the current window.
-    private let disables = Atomic<Int>(0)
-    /// When the last disable arrived, in nanoseconds on `clock`.
-    private let lastDisable = Atomic<UInt64>(0)
-    /// The tap port, retained here so the callback can re-enable it without a lock.
-    private let tapPointer = Atomic<UnsafeMutableRawPointer?>(nil)
+    /// The port the callback re-enables and the disables counted against it.
+    let tapPort: TapPort
     /// Woken on every write, so the drain runs off the tap's own thread.
     private let signal: any DispatchSourceUserDataAdd
-    /// The time disables and holds are measured on, injected so a test can move it by hand.
-    private let clock: ElapsedClock
 
     init(signal: any DispatchSourceUserDataAdd, clock: some Clock<Duration> = ContinuousClock()) {
         self.signal = signal
-        self.clock = ElapsedClock(clock)
+        tapPort = TapPort(clock: clock)
         hold = KeyHold(clock: clock)
         ring = .allocate(capacity: Self.capacity)
         ring.initialize(repeating: 0, count: Self.capacity)
     }
 
     deinit {
-        if let held = tapPointer.load(ordering: .relaxed) { Unmanaged<CFMachPort>.fromOpaque(held).release() }
         ring.deinitialize(count: Self.capacity)
         ring.deallocate()
     }
 
     /// Keeps a new tap's port for the callback and forgets older disables, so each tap is judged alone.
-    func adopt(_ port: CFMachPort) {
-        lastDisable.store(0, ordering: .relaxed)  // The new tap starts with no disables.
-        if let previous = tapPointer.exchange(Unmanaged.passRetained(port).toOpaque(), ordering: .releasing) {
-            Unmanaged<CFMachPort>.fromOpaque(previous).release()
-        }
-    }
-
-    /// Lets go of the port if it is still the one held, which its tap keeps alive for any callback still reading it.
-    func relinquish(_ port: CFMachPort) {
-        let expected = Unmanaged.passUnretained(port).toOpaque()
-        if tapPointer.compareExchange(expected: expected, desired: nil, ordering: .releasing).exchanged {
-            Unmanaged<CFMachPort>.fromOpaque(expected).release()
-        }
-    }
+    func adopt(_ port: CFMachPort) { tapPort.adopt(port) }
 
     /// The port to re-enable, read only on the path where the tap has already been disabled.
-    func port() -> CFMachPort? {
-        guard let held = tapPointer.load(ordering: .acquiring) else { return nil }
-        return Unmanaged<CFMachPort>.fromOpaque(held).takeUnretainedValue()
-    }
+    func port() -> CFMachPort? { tapPort.port() }
 
     /// Records one taken keystroke, or drops it and returns false when the drain is a whole ring behind.
     @discardableResult
@@ -86,11 +63,7 @@ final class TapState: @unchecked Sendable {
 
     /// Whether the tap should be turned back on, which it is unless it keeps being disabled within a short window.
     func shouldReEnable() -> Bool {
-        let now = clock.nanoseconds
-        let last = lastDisable.exchange(now, ordering: .relaxed)
-        let (count, reEnable) = TapDisableWindow.decide(
-            last: last, now: now, count: disables.load(ordering: .relaxed))
-        disables.store(count, ordering: .relaxed)
+        let reEnable = tapPort.shouldReEnable()
         if !reEnable {
             gaveUp.store(true, ordering: .releasing)
             signal.add(data: 1)
@@ -137,44 +110,56 @@ final class TapState: @unchecked Sendable {
         let suppressUnarmedTab = hold.isHoldingBareTabAccept
         hold.release(
             post: post,
-            where: { event in
-                let stroke = KeyStroke(
-                    keyCode: UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode)),
-                    modifiers: KeyModifiers(event.flags))
-                let bareTabIsArmed = armed.load(ordering: .acquiring) & ArmedKeys.tab.rawValue != 0
-                return !suppressUnarmedTab || stroke != KeyStroke(.tab) || bareTabIsArmed
-            })
-        repeatingAcceptStroke.store(0, ordering: .releasing)
+            where: { event in shouldReplayHeldKey(event, suppressUnarmedTab: suppressUnarmedTab) })
+        repeatingAcceptKeyCode.store(0, ordering: .releasing)
         return isListening
     }
 
     /// Decides one real key-down on the tap's thread, answering true when it is taken or held back.
-    func takes(_ event: CGEvent) -> Bool {
-        if hold.expireIfNeeded() {
-            repeatingAcceptStroke.store(0, ordering: .releasing)
+    func takes(
+        _ event: CGEvent,
+        postExpired: (CGEvent) -> Void = { $0.post(tap: .cghidEventTap) }
+    ) -> Bool {
+        let suppressUnarmedTab = hold.isHoldingBareTabAccept
+        let shouldReplayHeldKey: (CGEvent) -> Bool = { event in
+            self.shouldReplayHeldKey(event, suppressUnarmedTab: suppressUnarmedTab)
+        }
+        if hold.expireIfNeeded(post: postExpired, where: shouldReplayHeldKey) {
+            repeatingAcceptKeyCode.store(0, ordering: .releasing)
         }
         let keyCode = UInt32(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode))
+        let encodedKeyCode = keyCode &+ 1
         let stroke = KeyStroke(
             keyCode: UInt16(truncatingIfNeeded: keyCode),
             modifiers: KeyModifiers(event.flags))
         let slot = ArmedKeys.slot(of: stroke)
-        let repeatingStroke = repeatingAcceptStroke.load(ordering: .acquiring)
+        let repeatingKeyCode = repeatingAcceptKeyCode.load(ordering: .acquiring)
         if event.getIntegerValueField(.keyboardEventAutorepeat) != 0,
-            repeatingStroke != 0,
-            repeatingStroke == slot.rawValue
+            repeatingKeyCode != 0,
+            repeatingKeyCode == encodedKeyCode
         {
             return true
         }
-        if repeatingStroke != 0, repeatingStroke != slot.rawValue {
-            repeatingAcceptStroke.store(0, ordering: .releasing)
+        if repeatingKeyCode != 0, repeatingKeyCode != encodedKeyCode {
+            repeatingAcceptKeyCode.store(0, ordering: .releasing)
         }
         // A key pressed while a taken keystroke is carried out waits for it, so it cannot overtake an insertion.
-        if hold.keep(event) { return true }
+        if hold.keep(event, postExpired: postExpired, where: shouldReplayHeldKey) { return true }
         guard !nativeMenuIsOpen.load(ordering: .acquiring) else { return false }
         guard route(slot) else { return false }
-        repeatingAcceptStroke.store(slot.rawValue, ordering: .releasing)
+        repeatingAcceptKeyCode.store(encodedKeyCode, ordering: .releasing)
         hold.begin(suppressingUnarmedTab: stroke == KeyStroke(.tab))
         return true
+    }
+
+    /// Applies the same bare-Tab rule to a finished hold and one that reaches its deadline.
+    private func shouldReplayHeldKey(_ event: CGEvent, suppressUnarmedTab: Bool) -> Bool {
+        guard suppressUnarmedTab else { return true }
+        let stroke = KeyStroke(
+            keyCode: UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode)),
+            modifiers: KeyModifiers(event.flags))
+        let bareTabIsArmed = armed.load(ordering: .acquiring) & ArmedKeys.tab.rawValue != 0
+        return stroke != KeyStroke(.tab) || bareTabIsArmed
     }
 
     /// Takes an armed key, or disarms every slot for a key the application will see, so a later accept cannot take a stale offer.

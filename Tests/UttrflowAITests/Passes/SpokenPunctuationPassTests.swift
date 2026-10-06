@@ -115,10 +115,10 @@ struct SpokenPunctuationPassTests {
     @Test(
         "keeps abbreviation full stops when the standard pipeline adds a clause mark",
         arguments: [
-            ("Is it 5 p.m. question mark", "Is it 5 p.m.?"),
-            ("We left at 5 p.m. comma then ate.", "We left at 5 p.m., then ate."),
+            ("Is it 5 p.m. question mark", "Is it 5 pm?"),
+            ("We left at 5 p.m. comma then ate.", "We left at 5 pm, then ate."),
             ("Bring apples, pears, etc. exclamation mark", "Bring apples, pears, etc.!"),
-            ("Meet at 5 p.m. exclamation mark", "Meet at 5 p.m.!"),
+            ("Meet at 5 p.m. exclamation mark", "Meet at 5 pm!"),
         ]
     )
     func keepsAbbreviationStops(input: String, expected: String) {

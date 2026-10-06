@@ -124,7 +124,16 @@ public struct PersonalDataArchive: Codable, Sendable, Equatable {
         }) {
             return .dictionaryWordTooLong
         }
+        let spellings = dictionary.flatMap { [$0.word, $0.pronunciation ?? ""] } + snippets.map(\.trigger)
+        if spellings.contains(where: Self.holdsHiddenCharacters) { return .hiddenCharacters }
         return nil
+    }
+
+    /// Whether text carries a control or bidirectional formatting character, which can hide or reorder what it reads as.
+    static func holdsHiddenCharacters(_ text: String) -> Bool {
+        text.unicodeScalars.contains {
+            $0.properties.generalCategory == .control || $0.properties.isBidiControl
+        }
     }
 }
 
@@ -143,6 +152,7 @@ public enum PersonalDataArchiveError: Error, Sendable {
     case snippetTooLong
     case dictionaryWordTooLong
     case tooManyDictionaryEntries
+    case hiddenCharacters
 }
 
 extension Snippet {

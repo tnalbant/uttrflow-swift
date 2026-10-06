@@ -163,6 +163,8 @@ public struct DiagnosticsSnapshot: Sendable, Equatable {
     public let speechModel: DiagnosticsModelPresence?
     /// Whether the speech model can dictate, from the same state Home, the menu bar and the floating button read.
     public let speechReadiness: SpeechModelReadiness?
+    /// Why the last speech model load failed; absent when it did not, or nobody asked.
+    public let speechLoadFailure: SpeechLoadFailureClass?
     /// What macOS has granted, for every permission asked about.
     public let permissions: [PermissionKind: PermissionStatus]
     /// Whether the dictation shortcut is armed; absent when its state has not been checked.
@@ -199,6 +201,7 @@ public struct DiagnosticsSnapshot: Sendable, Equatable {
         transformerAvailability: [TransformerKind: Bool] = [:],
         speechModel: DiagnosticsModelPresence? = nil,
         speechReadiness: SpeechModelReadiness? = nil,
+        speechLoadFailure: SpeechLoadFailureClass? = nil,
         permissions: [PermissionKind: PermissionStatus] = [:],
         dictationShortcutArmed: Bool? = nil,
         hasDefaultInputDevice: Bool? = nil,
@@ -219,6 +222,7 @@ public struct DiagnosticsSnapshot: Sendable, Equatable {
         self.transformerAvailability = transformerAvailability
         self.speechModel = speechModel
         self.speechReadiness = speechReadiness
+        self.speechLoadFailure = speechLoadFailure
         self.permissions = permissions
         self.dictationShortcutArmed = dictationShortcutArmed
         self.hasDefaultInputDevice = hasDefaultInputDevice
@@ -421,7 +425,9 @@ public enum DiagnosticsPresenter {
         case .loading:
             return card(downloaded, facts(snapshot.speechModel, locale: locale), "Loading", .unknown)
         case .failed(let fix):
-            let status = fix == .downloadSpeechModel ? damaged : "Failed to load"
+            let failed =
+                snapshot.speechLoadFailure.map { "Failed to load: \($0.summary)" } ?? "Failed to load"
+            let status = fix == .downloadSpeechModel ? damaged : failed
             return card(downloaded, facts(snapshot.speechModel, locale: locale), status, .attention)
         case .ready:
             return card(

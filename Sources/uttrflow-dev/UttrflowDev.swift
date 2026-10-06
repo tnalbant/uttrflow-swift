@@ -13,6 +13,7 @@ struct UttrflowDev: AsyncParsableCommand {
             Insert.self,
             Context.self, SimulateField.self, Seams.self,
             SignIn.self, Probe.self, Machine.self, Bench.self, Burst.self, Latency.self, Launch.self,
+            LoadPriority.self,
         ]
     )
 }
