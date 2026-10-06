@@ -188,6 +188,27 @@ struct EncryptedStoreTests {
         #expect(try Data(contentsOf: setAside) == source)
     }
 
+    @Test("seals a plaintext file it sets aside, so the copy is not readable beside the encrypted store")
+    func plaintextSetAsideIsSealed() throws {
+        let directory = try folder()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appending(path: "history.v1.json")
+        let source = Data("[\"private\", ".utf8)
+        try source.write(to: file)
+        let store = EncryptedStore(keys: Keys(value: SymmetricKey(size: .bits256)))
+
+        let stored = store.read([String].self, from: file)
+
+        guard case .unreadable(let moved) = stored else {
+            Issue.record("expected the file to be set aside")
+            return
+        }
+        let copy = try #require(moved)
+        let sealed = try Data(contentsOf: copy)
+        #expect(EncryptedStore.isSealed(sealed))
+        #expect(try store.open(sealed, for: copy.lastPathComponent) == source)
+    }
+
     @Test("rejects a renamed store because the logical filename is authenticated")
     func wrongFilename() throws {
         let directory = try folder()

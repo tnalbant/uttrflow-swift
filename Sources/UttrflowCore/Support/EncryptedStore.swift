@@ -45,7 +45,7 @@ public struct EncryptedStore: Sendable {
         } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
             return .missing
         } catch {
-            return .unreadable(setAside: LocalStore.setAside(url, now: now))
+            return .unreadable(setAside: sealedSetAside(url, now: now))
         }
         let isEnvelope = data.starts(with: Self.magic)
         do {
@@ -57,7 +57,7 @@ public struct EncryptedStore: Sendable {
                 } catch StoreKeyError.unavailable(let status) where status == Int32(errSecItemNotFound) {
                     Self.log.error(
                         "Encrypted store key is missing for \(url.lastPathComponent, privacy: .public)")
-                    return .unreadable(setAside: LocalStore.setAside(url, now: now))
+                    return .unreadable(setAside: sealedSetAside(url, now: now))
                 } catch {
                     Self.log.error(
                         "Encrypted store key is unavailable for \(url.lastPathComponent, privacy: .public)")
@@ -71,7 +71,7 @@ public struct EncryptedStore: Sendable {
             do {
                 value = try JSONDecoder().decode(type, from: payload)
             } catch {
-                if !isEnvelope { return .unreadable(setAside: LocalStore.setAside(url, now: now)) }
+                if !isEnvelope { return .unreadable(setAside: sealedSetAside(url, now: now)) }
                 throw error
             }
             if !isEnvelope {
@@ -89,8 +89,22 @@ public struct EncryptedStore: Sendable {
             Self.log.error(
                 "Encrypted store could not be authenticated or decoded for \(url.lastPathComponent, privacy: .public)"
             )
-            return .unreadable(setAside: LocalStore.setAside(url, now: now))
+            return .unreadable(setAside: sealedSetAside(url, now: now))
         }
+    }
+
+    /// Sets an unreadable file aside and seals a plaintext copy in place, so the copy is never readable beside the encrypted store.
+    func sealedSetAside(_ url: URL, now: Date) -> URL? {
+        guard let copy = LocalStore.setAside(url, now: now) else { return nil }
+        guard let data = try? Data(contentsOf: copy), !Self.isSealed(data) else { return copy }
+        do {
+            let key = try keys.key(createIfMissing: true)
+            try PrivateFile.write(Self.seal(data, key: key, name: copy.lastPathComponent), to: copy)
+        } catch {
+            // The copy stays as it is rather than being lost; it still expires with the others.
+            Self.log.error("Could not seal a set-aside \(url.lastPathComponent, privacy: .public)")
+        }
+        return copy
     }
 
     /// Writes JSON only after sealing it with filename-bound authenticated data.

@@ -144,7 +144,7 @@ struct ClipboardEncryptionTests {
         let sealed = try Data(contentsOf: images.appending(path: name))
         #expect(EncryptedStore.isSealed(sealed))
         #expect(try crypto.open(sealed, for: name) == original)
-        #expect(try setAsideIndex(in: folder.url) == damagedIndex)
+        #expect(try setAsideIndex(in: folder.url, openedBy: crypto) == damagedIndex)
     }
 
     @Test("zero-length, short and truncated plaintext indexes are preserved and recover")
@@ -161,7 +161,9 @@ struct ClipboardEncryptionTests {
             let copies = await store.takeUnreadableIndexSetAsides()
             #expect(copies.count == 1)
             let copy = try #require(copies.first)
-            #expect(try Data(contentsOf: copy) == damagedIndex)
+            let preserved = try Data(contentsOf: copy)
+            #expect(EncryptedStore.isSealed(preserved))
+            #expect(try crypto.open(preserved, for: copy.lastPathComponent) == damagedIndex)
             #expect(await store.takeUnreadableIndexSetAsides().isEmpty)
 
             let later = Clip(text: "a later copy", kind: .text, copiedAt: Date())
@@ -252,13 +254,14 @@ struct ClipboardEncryptionTests {
         #expect(try Data(contentsOf: url.deletingLastPathComponent().appending(path: aside)) == sealed)
     }
 
-    /// Reads the damaged history index after its load-time set-aside.
-    private func setAsideIndex(in folder: URL) throws -> Data? {
+    /// Opens the damaged history index after its load-time set-aside sealed it.
+    private func setAsideIndex(in folder: URL, openedBy crypto: EncryptedStore) throws -> Data? {
         let names = try FileManager.default.contentsOfDirectory(atPath: folder.path)
         guard let name = names.first(where: { $0.hasPrefix("clipboard.json.unreadable-") }) else {
             return nil
         }
-        return try Data(contentsOf: folder.appending(path: name, directoryHint: .notDirectory))
+        let sealed = try Data(contentsOf: folder.appending(path: name, directoryHint: .notDirectory))
+        return try crypto.open(sealed, for: name)
     }
 
     @Test("a damaged encrypted picture is preserved in the unreadable set-aside")
