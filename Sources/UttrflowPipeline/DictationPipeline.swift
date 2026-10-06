@@ -295,6 +295,8 @@ public actor DictationPipeline {
     public func adoptModifierPress() async -> Bool {
         guard !isBusy, !isLoading else {
             await cancelModifierPress()
+            // Told as a shortcut press is told, so the press is not met with silence.
+            if !isBusy { transition(to: .failed(.stillLoading)) }
             return false
         }
         hasTurn = true
