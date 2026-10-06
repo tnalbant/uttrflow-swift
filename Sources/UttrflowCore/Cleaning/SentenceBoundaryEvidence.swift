@@ -74,9 +74,10 @@ public enum SentenceBoundaryEvidence {
 
     /// "my pin is. 2244": a form of "be" straight after its noun subject leaves its complement to the next words.
     private static func awaitsComplement(_ previous: [WordShape], _ following: [WordShape]) -> Bool {
-        guard previous.count > 1, let last = previous.last, copulas.contains(last.key), !following.isEmpty
-        else { return false }
-        let tags = LexicalClass.tags(ofWords: (previous + following).map(\.core))
+        guard previous.count > 1, !following.isEmpty else { return false }
+        let words = (previous + following).map(\.core)
+        guard LexicalClass.lemma(ofWordAt: previous.count - 1, in: words) == "be" else { return false }
+        let tags = LexicalClass.tags(ofWords: words)
         return tags[previous.count - 2] == .noun
     }
 
@@ -110,6 +111,5 @@ public enum SentenceBoundaryEvidence {
     private static let seamObjectEndings: [[String]] = [
         ["could", "finish"], ["pick", "up"], ["look"], ["covers"],
     ]
-    private static let copulas: Set<String> = ["is", "are", "was", "were"]
     private static let subordinators: Set<String> = ["although", "because", "if", "when"]
 }
