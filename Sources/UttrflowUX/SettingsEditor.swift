@@ -40,6 +40,8 @@ public enum SettingsEditor {
             try applyTidying(level, to: &updated, given: capabilities)
         case .spokenLanguage(let code, let isSpoken):
             try applyLanguage(code, isSpoken: isSpoken, to: &updated)
+        case .pauses(let pauses):
+            updated.profile.pauses = pauses
         case .appearance(let appearance):
             // No capability to check: every Mac can draw itself light or dark.
             updated.appearance = appearance
@@ -48,6 +50,11 @@ public enum SettingsEditor {
                 throw SettingsRejection(reason: "Choose a listed hands-free interval.")
             }
             updated.handsFreeDoubleTapMilliseconds = milliseconds
+        case .handsFreeHold(let milliseconds):
+            guard Settings.handsFreeHoldChoices.contains(milliseconds) else {
+                throw SettingsRejection(reason: "Choose a listed hold length.")
+            }
+            updated.handsFreeHoldMilliseconds = milliseconds
         case .retention(let days):
             try applyRetention(days: days, to: &updated)
         case .cleaningStep(let step, let isOn):
@@ -354,6 +361,10 @@ public enum SettingsEditor {
             personalisation.suggestions(from: application) > 0
                 ? nil
                 : "Uttrflow has not picked up anything in \(SuggestionApplications.name(of: application)) yet."
+        case .persona:
+            personalisation.persona.isEmpty ? "Uttrflow has not noticed anything about you yet." : nil
+        case .personaFact(let fact):
+            personalisation.persona.contains { $0.fact == fact } ? nil : "This has already been removed."
         }
     }
 
@@ -364,7 +375,7 @@ public enum SettingsEditor {
     /// What to say when the disk refused a reset, naming what is still here rather than apologising.
     static func reason(forFailed reset: SettingsReset) -> String {
         switch reset {
-        case .learnedWords, .suggestions:
+        case .learnedWords, .suggestions, .persona, .personaFact:
             "Uttrflow could not write to the disk, so nothing was forgotten. Try again."
         case .everything:
             "Uttrflow could not write to the disk, so some of this may still be here. Try again."

@@ -350,8 +350,8 @@ extension EvaluationCorpus {
         .init(
             id: "fmt-token-url-path-stopped", category: .technical,
             spoken: "The url is https colon slash slash example dot com slash docs.",
-            expected: "The url is https://example.com/docs.",
-            mustKeep: ["https://example.com/docs"], classes: [.capitalisationAndTokens]
+            expected: "The url is https:\u{2F}\u{2F}example.com/docs.",
+            mustKeep: ["https:\u{2F}\u{2F}example.com/docs"], classes: [.capitalisationAndTokens]
         ),
         .init(
             id: "fmt-token-acronym-kept", category: .technical,
@@ -373,32 +373,32 @@ extension EvaluationCorpus {
             id: "fmt-number-count", category: .everyday,
             spoken: "we need twelve chairs",
             expected: "We need 12 chairs.",
-            mustKeep: ["12", "chairs"], classes: [.numbers]
+            mustKeep: ["12", "chairs"], classes: [.numbers], semiotic: .cardinal
         ),
         .init(
             id: "fmt-number-percent", category: .everyday,
             spoken: "sales grew by fifteen percent",
             expected: "Sales grew by 15%.",
-            mustKeep: ["15%"], classes: [.numbers]
+            mustKeep: ["15%"], classes: [.numbers], semiotic: .measure
         ),
         .init(
             id: "fmt-number-time", category: .everyday,
             spoken: "the call is at four thirty",
             expected: "The call is at 4:30.",
-            mustKeep: ["call"], classes: [.numbers]
+            mustKeep: ["call"], classes: [.numbers], semiotic: .time
         ),
         .init(
             id: "fmt-number-money", category: .everyday,
             spoken: "the ticket costs forty dollars",
             expected: "The ticket costs 40 dollars.",
-            mustKeep: ["ticket", "40"], classes: [.numbers]
+            mustKeep: ["ticket", "40"], classes: [.numbers], semiotic: .money
         ),
         // Adversarial: "one" as a pronoun is a word, not a numeral.
         .init(
             id: "fmt-number-one-as-pronoun", category: .everyday,
             spoken: "this one is better",
             expected: "This one is better.",
-            mustKeep: ["one", "better"], mustNotAdd: ["1"], classes: [.numbers]
+            mustKeep: ["one", "better"], mustNotAdd: ["1"], classes: [.numbers], semiotic: .staysWords
         ),
     ]
 
@@ -433,7 +433,8 @@ extension EvaluationCorpus {
             expected: "The steps are as follows: back up the files.",
             mustKeep: ["as follows:", "back up"],
             context: AppContext(applicationName: "Pages", bundleIdentifier: "com.apple.iWork.Pages"),
-            destination: .document, classes: [.lists, .perDestination]
+            destination: .document, mustBeginWith: "The", mustEndWith: "files.",
+            classes: [.lists, .perDestination]
         ),
         .init(
             id: "fmt-list-lead-in-email", category: .everyday,
@@ -441,7 +442,8 @@ extension EvaluationCorpus {
             expected: "The agenda is as follows: the budget review.",
             mustKeep: ["as follows:", "budget"],
             context: AppContext(applicationName: "Mail", bundleIdentifier: "com.apple.mail"),
-            destination: .email, classes: [.lists, .perDestination]
+            destination: .email, mustBeginWith: "The", mustEndWith: "review.",
+            classes: [.lists, .perDestination]
         ),
         .init(
             id: "fmt-list-lead-in-chat", category: .everyday,
@@ -449,7 +451,8 @@ extension EvaluationCorpus {
             expected: "The plan is as follows: lunch at noon",
             mustKeep: ["as follows:", "lunch"],
             context: AppContext(applicationName: "Messages", bundleIdentifier: "com.apple.MobileSMS"),
-            mustNotAdd: ["."], destination: .messaging, classes: [.lists, .perDestination]
+            mustNotAdd: ["."], destination: .messaging, mustBeginWith: "The", mustEndWith: "noon",
+            classes: [.lists, .perDestination]
         ),
         // Adversarial: with no lead-in, ordinals in a clause get no colon.
         .init(
@@ -608,7 +611,7 @@ extension EvaluationCorpus {
             id: "fmt-code-markdown-heading-kept", category: .technical,
             spoken: "# Release notes",
             expected: "# Release notes",
-            mustKeep: ["#", "Release"], classes: [.codeAndMarkdown]
+            mustKeep: ["#", "Release"], mustEndWith: "notes", classes: [.codeAndMarkdown]
         ),
     ]
 

@@ -37,14 +37,16 @@ struct AudioResamplerFidelityTests {
         22_050: -100, 44_100: -100, 48_000: -95, 88_200: -25, 96_000: -22, 192_000: -10,
     ]
 
-    @Test("every input rate and layout keeps length, passband and stopband within their floors",
+    @Test(
+        "every input rate and layout keeps length, passband and stopband within their floors",
         arguments: inputRates)
     func matrix(inputRate: Double) throws {
         for layout in Self.layouts {
             let row = try Self.measure(inputRate: inputRate, layout: layout)
             print(Self.line(inputRate: inputRate, layout: layout, row: row))
             #expect(row.lengthError < 0.005, "\(inputRate) \(layout): length error \(row.lengthError)")
-            #expect(row.passbandSpread < 6, "\(inputRate) \(layout): passband spread \(row.passbandSpread) dB")
+            #expect(
+                row.passbandSpread < 6, "\(inputRate) \(layout): passband spread \(row.passbandSpread) dB")
             if let alias = row.worstAlias {
                 let ceiling = try #require(Self.aliasCeilings[inputRate])
                 #expect(alias < ceiling, "\(inputRate) \(layout): alias \(alias) dB")
@@ -86,7 +88,8 @@ struct AudioResamplerFidelityTests {
 
     static func measure(inputRate: Double, layout: Layout) throws -> Row {
         let format = try #require(
-            SyntheticAudio.format(sampleRate: inputRate, channels: layout.channels, interleaved: layout.interleaved))
+            SyntheticAudio.format(
+                sampleRate: inputRate, channels: layout.channels, interleaved: layout.interleaved))
         let frames = AVAudioFrameCount(inputRate)
         let nyquist = inputRate / 2
 
@@ -96,7 +99,8 @@ struct AudioResamplerFidelityTests {
             let convert = try #require(resampler(format: format))
             let input = try #require(tone(frequency: frequency, frames: frames, format: format))
             let output = try convert(input)
-            lengthError = max(lengthError, abs(Double(output.count) / Double(AudioSamples.canonicalSampleRate) - 1))
+            lengthError = max(
+                lengthError, abs(Double(output.count) / Double(AudioSamples.canonicalSampleRate) - 1))
             gains.append(decibels(rms(steady(output)) / (0.5 / 2.0.squareRoot())))
         }
         var aliases: [Double] = []
@@ -112,7 +116,8 @@ struct AudioResamplerFidelityTests {
     }
 
     /// A 0.5 amplitude sine on channel 0 only, silence elsewhere, in either layout.
-    static func tone(frequency: Double, frames: AVAudioFrameCount, format: AVAudioFormat) -> AVAudioPCMBuffer? {
+    static func tone(frequency: Double, frames: AVAudioFrameCount, format: AVAudioFormat) -> AVAudioPCMBuffer?
+    {
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames) else { return nil }
         buffer.frameLength = frames
         let channels = Int(format.channelCount)

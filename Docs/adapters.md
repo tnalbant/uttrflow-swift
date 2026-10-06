@@ -281,3 +281,29 @@ reads its adapter's policy or notation rows.
 
 A family gets an adapter only when it has corpus cases and a measured demand; until then its
 destination keeps its prose row, and nothing is built for it.
+
+## 12. Decided: spoken mathematics gets no adapter
+
+Spoken mathematics is prose. Arithmetic inside a sentence is the numbers pass's work (2.28);
+there is no `formula` notation adapter and no LaTeX adapter, active in `.tex` documents or
+anywhere else. Nothing is built for it.
+
+Measured on this tree, not on users' dictations:
+
+| Question | Measurement | Result |
+|---|---|---|
+| Demand in the evaluation corpus | spoken strings in `Sources/UttrflowEval/*Corpus*.swift` (886) matched against powers, roots, fractions, Greek letter names, sums, integrals, derivatives, `frac`, `backslash`, and the words plus, minus, times, divided by and equals | 0 dictate mathematics; the 5 matches are a SQL join, a regex, a phone number and two code assignments |
+| Demand in the scored cases | `Tests/UttrflowEvalTests/Golden/rules.golden` (654 cases) | 0 mathematical cases |
+| Bounded subset reaching exact match | needs cases to score | not measurable: 0 cases exist, and building them first would be building demand |
+| Destination distinguishable | `FocusedFieldReader+System.swift` reads `kAXDocumentAttribute` | a `.tex` file is identifiable where the editor exposes its document URL; not probed in real editors |
+
+**Why (a).** A family gets an adapter only on corpus cases and measured demand (section 11);
+mathematics has neither. A LaTeX grammar is a second, large notation table whose output
+(`\frac`, `^`, braces) is mostly tokens with no spoken source, which section 4 forbids unless
+each is a `NotationTable` row; and a plain-math adapter would duplicate 2.28's arithmetic.
+
+**Deleted.** Option (b), a LaTeX adapter for `.tex` documents, is not built and has no
+follow-up issue.
+
+**What reopens it.** Mathematical dictations appearing in the evaluation corpus as real
+cases, enough to score a bounded subset against exact match with section 4 holding.

@@ -81,6 +81,28 @@ struct CaretTextTests {
         #expect(afterSides?.following == String(repeating: "a", count: InsertionPoint.followingLimit - 1))
     }
 
+    @Test("leaves a four-character marked run out of both sides, with the caret inside or after it")
+    func excludesMarkedRun() {
+        let text = "ab にほんご cd"
+        let expected = CaretText.Sides(preceding: "ab ", following: " cd")
+        #expect(CaretText.around(text, selection: 7..<7, marked: 3..<7) == expected)
+        #expect(CaretText.around(text, selection: 5..<5, marked: 3..<7) == expected)
+    }
+
+    @Test("moves a marked run into a read window by the distance the caret moved")
+    func shiftsIntoWindow() {
+        #expect(CaretText.shift(1003..<1007, from: 1007, to: 7) == 3..<7)
+        #expect(CaretText.shift(3..<7, from: nil, to: 7) == nil)
+        #expect(CaretText.shift(nil, from: 7, to: 7) == nil)
+    }
+
+    @Test("an empty marked range changes nothing")
+    func ignoresEmptyMarkedRange() {
+        #expect(
+            CaretText.around("hello world", selection: 5..<5, marked: 5..<5)
+                == CaretText.Sides(preceding: "hello", following: " world"))
+    }
+
     @Test("counts the selection in UTF-16 units, the way Accessibility reports it")
     func utf16Offsets() {
         let text = "😀 hello"

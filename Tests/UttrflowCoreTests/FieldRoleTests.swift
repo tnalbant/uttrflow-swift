@@ -3,17 +3,18 @@ import Testing
 @testable import UttrflowCore
 
 struct FieldRoleTests {
-    @Test(arguments: [
-        ("AXTextField", false, "To", FieldRole.recipient),
-        ("AXTextField", false, "Cc:", .recipient),
-        ("AXTextField", false, "Subject", .subject),
-        ("AXTextField", false, "URL", .addressBar),
-        ("AXTextField", false, "Search mail", .search),
-        ("AXSearchField", false, "Subject", .search),
-        ("AXTextArea", true, "Message body", .message),
-        ("AXTextField", false, "First name", .singleLine),
-        ("AXGroup", nil, nil, .unknown),
-    ] as [(String, Bool?, String?, FieldRole)])
+    @Test(
+        arguments: [
+            ("AXTextField", false, "To", FieldRole.recipient),
+            ("AXTextField", false, "Cc:", .recipient),
+            ("AXTextField", false, "Subject", .subject),
+            ("AXTextField", false, "URL", .addressBar),
+            ("AXTextField", false, "Search mail", .search),
+            ("AXSearchField", false, "Subject", .search),
+            ("AXTextArea", true, "Message body", .message),
+            ("AXTextField", false, "First name", .singleLine),
+            ("AXGroup", nil, nil, .unknown),
+        ] as [(String, Bool?, String?, FieldRole)])
     func roleComesFromTheRoleThenTheLabelThenTheLineCount(
         role: String, multiline: Bool?, label: String?, expected: FieldRole
     ) {
@@ -21,7 +22,8 @@ struct FieldRoleTests {
     }
 
     @Test func labelWordsMatchWholeWordsOnly() {
-        #expect(FieldRole(accessibilityRole: "AXTextField", isMultiline: false, label: "Total") == .singleLine)
+        #expect(
+            FieldRole(accessibilityRole: "AXTextField", isMultiline: false, label: "Total") == .singleLine)
     }
 
     @Test func contextCarriesACleanedBoundedLabelAndNoneWhenSecure() {

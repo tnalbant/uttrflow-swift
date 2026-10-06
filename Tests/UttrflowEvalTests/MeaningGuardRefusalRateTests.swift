@@ -10,7 +10,6 @@ struct MeaningGuardRefusalRateTests {
     /// Refusals still open, each with the issue that owns it; the gate lets this list fall and never rise.
     static let acknowledged: [String: Int] = [
         "spoken-colon-before-an-item": 5083,
-        "compound-ordinal-above-one-hundred": 5083,
         "spoken-domain-api-path": 5083,
         "numbered-items-repeated-label": 5083,
         "code-editor-spoken-camel-case": 5083,
@@ -26,10 +25,7 @@ struct MeaningGuardRefusalRateTests {
         "fmt-list-first-second-third": 5083,
         "fmt-list-bullet-command": 5083,
         "fmt-paragraph-next-line": 5083,
-        "agreement-there-is": 5082,
         "tense-drift": 5082,
-        "tense-drift-over-a-stem": 5082,
-        "plural-slip": 5082,
         "restatement-slot-adjacent": 5084,
         "restatement-slot-apart": 5084,
         "answer-no-before-a-restated-phrase": 5084,
@@ -38,10 +34,46 @@ struct MeaningGuardRefusalRateTests {
         "slack-name-spelling": 5084,
     ]
 
+    /// Whole-dictation genre references still refused, all owned by #5365; the list only falls.
+    static let genreAcknowledged: Set<String> = [
+        "genre-customer-email-late-parcel",
+        "genre-customer-email-account-question",
+        "genre-customer-email-booking-change",
+        "genre-chat-reply-weekend-plan",
+        "genre-meeting-minutes-planning-sync",
+        "genre-invitation-retirement-lunch",
+        "genre-invitation-study-group",
+        "genre-shopping-list-weekly-shop",
+        "genre-shopping-list-hardware-run",
+        "genre-recipe-lentil-soup",
+        "genre-recipe-flatbreads",
+        "genre-recipe-overnight-oats",
+        "genre-travel-plan-rail-trip",
+        "genre-travel-plan-road-trip",
+        "genre-travel-plan-city-weekend",
+        "genre-clinic-note-knee-review",
+        "genre-clinic-note-blood-pressure",
+        "genre-clinic-note-child-fever",
+        "genre-legal-clause-termination",
+        "genre-poem-harbour-morning",
+        "genre-product-description-desk-lamp",
+        "genre-product-description-rain-jacket",
+        "genre-social-post-marathon",
+        "genre-social-post-bakery-opening",
+        "genre-social-post-volunteer-call",
+        "genre-announcement-pool-maintenance",
+        "genre-corrected-reply-meeting-time",
+        "genre-corrected-reply-order-quantity",
+        "genre-corrected-reply-address-fix",
+        "genre-hinglish-technical-sprint-plan",
+    ]
+
     /// Judges each expected text against its own cleaned draft under the case's own formatter, as the engine does.
-    static func refusals() -> [(id: String, kind: RefusalKind, reason: String)] {
+    static func refusals(
+        in corpus: [EvaluationCase] = EvaluationCorpus.all
+    ) -> [(id: String, kind: RefusalKind, reason: String)] {
         let guarder = MeaningPreservationGuard()
-        return EvaluationCorpus.all.compactMap { sample in
+        return corpus.compactMap { sample in
             let draft = CleaningPipeline.standard.run(Draft(keepingLineBreaks: sample.spoken))
             let formatter = DestinationFormatter.standard(for: sample.situation)
             let verdict = guarder.verdict(
@@ -55,7 +87,8 @@ struct MeaningGuardRefusalRateTests {
     @Test("every refused expected text is acknowledged with an issue, so the count never rises")
     func noUnacknowledgedRefusal() {
         let refused = Self.refusals()
-        print("meaning guard false refusals: \(refused.count) of \(EvaluationCorpus.all.count) expected texts")
+        print(
+            "meaning guard false refusals: \(refused.count) of \(EvaluationCorpus.all.count) expected texts")
         for refusal in refused {
             print("  \(refusal.id)  \(refusal.kind)  \(refusal.reason)")
         }
@@ -68,5 +101,18 @@ struct MeaningGuardRefusalRateTests {
         let refused = Set(Self.refusals().map(\.id))
         let stale = Self.acknowledged.keys.filter { !refused.contains($0) }.sorted()
         #expect(stale.isEmpty, "these are accepted now; remove them from the list: \(stale)")
+    }
+
+    @Test(
+        "genre references: every refusal is acknowledged, and an acknowledgement that no longer refuses is removed"
+    )
+    func genreRefusalsOnlyFall() {
+        let refused = Set(Self.refusals(in: EvaluationCorpus.genres).map(\.id))
+        #expect(
+            refused.subtracting(Self.genreAcknowledged).isEmpty,
+            "newly refused: \(refused.subtracting(Self.genreAcknowledged).sorted())")
+        #expect(
+            Self.genreAcknowledged.subtracting(refused).isEmpty,
+            "accepted now; remove: \(Self.genreAcknowledged.subtracting(refused).sorted())")
     }
 }

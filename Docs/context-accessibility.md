@@ -24,8 +24,10 @@ bundle identifier from `NSWorkspace`, while every Accessibility call returns `kA
 and the window title and selection stay empty.
 
 So the two are gathered in that order and recorded as they arrive: identity first, banked the
-moment it lands, then the window read, which is the part allowed to hang. Whatever the budget
-interrupts, the application name is already in hand.
+moment it lands, then the window read, which is the part allowed to hang. The window read banks
+each answer as it arrives: the title first, then the role, label and selection once the secure
+check has finished, then the caret text. Whatever the budget interrupts, the application name and
+every answer already banked are kept; a field whose secure check did not finish gives no text.
 
 ## Applications answer the halves separately
 

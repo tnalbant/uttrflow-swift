@@ -21,7 +21,9 @@ enum BudgetVerdict {
         if !disk.isEmpty { print("\nDisk budget") }
         for reading in disk {
             let mark = reading.isOverBudget ? "✗" : "✓"
-            print("  \(mark) \(reading.part.rawValue): \(reading.bytes / 1_048_576) MB of \(reading.part.limitInMegabytes) MB")
+            print(
+                "  \(mark) \(reading.part.rawValue): \(reading.bytes / 1_048_576) MB of \(reading.part.limitInMegabytes) MB"
+            )
         }
         guard !breaches.isEmpty || !diskBreaches.isEmpty else { return }
         for breach in breaches.map(\.description) + diskBreaches.map(\.description) {

@@ -30,6 +30,7 @@ would lose precisely the words worth having.
 | Constant | Value | Meaning |
 |---|---|---|
 | `VocabularyPrompt.maximumTokens` | 111 | the prompt budget |
+| `VocabularyPrompt.maximumLeadTokens` | 48 | the most of it the text before the caret may take |
 | `WorkingSet.defaultLimit` | 28 words | how many dictionary words usually fit beside the rest |
 | `WorkingSet.newAdditionPriorityDays` | 7 days | a word added by hand ranks ahead of older entries for this long |
 | `WorkingSet.recencyHalfLifeInDays` | 30 days | the age at which a word's value halves |
@@ -50,6 +51,15 @@ between words, because dropping a word that will not fit must not leave its sepa
 
 Special tokens are filtered out of every piece. WhisperKit discards them itself, so filtering
 here as well is what keeps the count being budgeted equal to the count that survives.
+
+## The text before the caret comes last
+
+The sentence or two before the caret (`TranscriptionOptions.precedingText`, read once per
+dictation and `nil` in a secure field; see [`context-budget.md`](context-budget.md)) follows the
+vocabulary sentence, so the decoder continues from the user's own words. It keeps its last whole
+words within `maximumLeadTokens`, and the vocabulary packs into what is left. A decode that comes
+back empty is retried with no prompt at all. The dictation bench's developer-vocabulary
+categories measure what a lead-in sentence is worth to recognition.
 
 ## The sentence around the words is the surprise
 
@@ -197,3 +207,25 @@ encode costs them the dictation.
 The arithmetic above is checked against a tokeniser a test writes in three lines rather than
 against a 646 MB download. Its only real implementation adapts WhisperKit's own and lives in
 `WhisperKitBackend.swift`. `firstSpecialToken` is what the special-token filter compares against.
+
+## The prompt is not played back from non-speech
+
+A conditioned decoder given no evidence could continue its prompt, typing the listed words or
+the opening sentence from audio that said neither. `uttrflow-eval nonspeech --vocabulary <words>`
+conditions every clip of the non-speech corpus on those words and counts a clip as an echo when
+the words after the last spoken one are prompt words in prompt order, the opening sentence
+included; `--max-echo-rate` gates it.
+
+Measured on Apple M5 Pro with the shipping turbo model, 66 clips (six non-speech kinds, three
+seeds each, plus eight `say` sentences in one voice followed by each kind), with 20 invented
+names and five words the sentences really say ("bakery", "kettle", "printer", "folder",
+"plants"):
+
+| Prompt | Echoed | Inserted | Spoken dictionary words dropped |
+|---|---|---|---|
+| none | 0 of 66 | 1 of 66 | 0 |
+| 20 words | 0 of 66 | 1 of 66 | 0 |
+
+The one insertion is a breath clip in both runs ("The End" with the prompt), so the prompt adds
+none. With no echo found, no echo check runs at transcript assembly; the empty-result
+retry without the prompt in `CappedDecodeRetry` stays the only prompt-specific recovery.

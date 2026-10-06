@@ -108,8 +108,8 @@ public final class CrashReporter: Sendable {
         "app": ["app_version", "app_build", "app_identifier", "app_name", "build_type"],
     ]
 
-    /// Exception kinds whose value is written by the system rather than from app data.
-    static let systemWrittenValues: Set<String> = ["mach", "signal", "AppHang", "app_hang"]
+    /// Hang kinds, whose value the SDK writes; a crash's value can carry a Swift trap's message, so it never leaves.
+    static let sdkWrittenValues: Set<String> = ["AppHang", "app_hang"]
 
     /// The event with nothing that could name the user or the Mac, or `nil` when it is not a crash or hang.
     public static func scrub(_ event: Event) -> Event? {
@@ -126,8 +126,9 @@ public final class CrashReporter: Sendable {
         event.context = event.context.map(scrubbedContext)
         for exception in exceptions {
             let kind = exception.mechanism?.type ?? ""
-            exception.value = systemWrittenValues.contains(kind) ? exception.value.map(strippingPaths) : nil
+            exception.value = sdkWrittenValues.contains(kind) ? exception.value.map(strippingPaths) : nil
             exception.mechanism?.desc = nil
+            exception.mechanism?.data = nil
             scrub(exception.stacktrace)
         }
         for thread in event.threads ?? [] { scrub(thread.stacktrace) }

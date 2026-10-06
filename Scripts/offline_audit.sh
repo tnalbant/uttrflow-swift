@@ -107,7 +107,6 @@ SNAPSHOT_FILE='Sources/UttrflowLocalModel/CachedSnapshot.swift'
 HUB_CLIENT_FILES=(
     "$SNAPSHOT_FILE"
     'Sources/UttrflowLocalModel/MLXCandidateScorer.swift'
-    'Sources/UttrflowLocalModel/MLXCleanupModel.swift'
     'Sources/UttrflowLocalModel/AnonymousHub.swift'
 )
 
@@ -201,8 +200,11 @@ URL_READ_PATTERN='\b(Data|String|NSData|NSString|NSArray|NSDictionary|NSImage|XM
 URL_READERS=(
     'Sources/Uttrflow/AppDelegate.swift'
     'Sources/UttrflowAudio/RecordingStore.swift'
-    'Sources/UttrflowClipboard/BIP39RecoveryPhrase.swift'
+    'Sources/UttrflowClipboard/ClipboardPreferences.swift'
     'Sources/UttrflowClipboard/ClipboardStore.swift'
+    'Sources/UttrflowClipboard/LegacyPictureMigration.swift'
+    'Sources/UttrflowCore/Secrets/BIP39RecoveryPhrase.swift'
+    'Sources/UttrflowCore/Support/DataTable.swift'
     'Sources/UttrflowCore/Support/EncryptedStore.swift'
     'Sources/UttrflowCore/Support/StoredList.swift'
     'Sources/UttrflowDictionary/PersonalDictionaryStore.swift'
@@ -219,6 +221,8 @@ URL_READERS=(
     'Sources/UttrflowEval/JSONRecordStore.swift'
     'Sources/UttrflowEval/SpokenPassages.swift'
     'Sources/uttrflow-bakeoff/Bakeoff.swift'
+    'Sources/uttrflow-dev/Seams.swift'
+    'Sources/uttrflow-eval/SynthesiseCorpus.swift'
 )
 
 reader_filter=(-v)

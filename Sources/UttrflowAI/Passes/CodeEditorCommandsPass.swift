@@ -1,12 +1,10 @@
-public import UttrflowCore
+import UttrflowCore
 
 /// Writes spoken symbol commands in executable code.
-public struct CodeEditorCommandsPass: PieceCleaningPass {
-    public static let id: PassID = .codeEditorCommands
+struct CodeEditorCommandsPass: PieceCleaningPass {
+    static let id: PassID = .codeEditorCommands
 
-    public init() {}
-
-    public func apply(_ draft: Draft) -> Draft {
+    func apply(_ draft: Draft) -> Draft {
         var draft = draft
         var position = 0
         while position < draft.presentIndices.count {

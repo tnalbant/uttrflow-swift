@@ -6,7 +6,8 @@ extension CleaningPipeline {
 
     /// The piece's passes and the spelled letters joined, so a model is handed "API" rather than "a p i".
     public static func beforeModel(
-        for formatter: DestinationFormatter, situation: Situation, steps: CleaningSteps = .default
+        for formatter: DestinationFormatter, situation: Situation, steps: CleaningSteps = .default,
+        pauses: PauseLength = .usual
     ) -> CleaningPipeline {
         CleaningPipeline(
             passes: piece(
@@ -14,21 +15,21 @@ extension CleaningPipeline {
                 layout: formatter.layout,
                 insertionPoint: situation.insertion, destination: formatter.destination,
                 precedingText: situation.insertion.precedingText, documentName: situation.app.documentName,
-                steps: steps
+                steps: steps, pauses: pauses
             ).passes + initialisms(steps: steps))
     }
 
     /// Every pass the user has left on over a whole message, in the shipped order: the piece's, then the message's.
     public static func standard(
         for formatter: DestinationFormatter, situation: Situation, steps: CleaningSteps = .default,
-        vocabulary: [String] = []
+        vocabulary: [String] = [], pauses: PauseLength = .usual
     ) -> CleaningPipeline {
         CleaningPipeline(
             passes: piece(
                 numbers: formatter.numbers, digits: situation.digits(for: formatter),
                 insertionPoint: situation.insertion,
                 destination: formatter.destination, precedingText: situation.insertion.precedingText,
-                documentName: situation.app.documentName, steps: steps
+                documentName: situation.app.documentName, steps: steps, pauses: pauses
             ).passes
                 + message(for: formatter, situation: situation, steps: steps, vocabulary: vocabulary).passes)
     }
@@ -38,17 +39,18 @@ extension CleaningPipeline {
         numbers: NumberPolicy, digits: DigitGrouping, layout: LayoutPolicy = [.paragraphs, .lists],
         insertionPoint: InsertionPoint = .unknown, destination: Destination = .plain,
         precedingText: String? = nil, documentName: String? = nil,
-        steps: CleaningSteps = .default
+        steps: CleaningSteps = .default, pauses: PauseLength = .usual
     ) -> CleaningPipeline {
         var cleanings: [any PieceCleaningPass] = [
             FillersPass(), RepeatedPhrasePass(), StammersPass(), SelfCorrectionPass(),
             // Spoken punctuation must mark a stop before LayoutWordsPass checks for a break after it.
             SpokenPunctuationPass(destination: destination),
+            SpokenEmojiPass(destination: destination),
             LayoutWordsPass(layout: layout, insertionPoint: insertionPoint),
             NumberFormsPass(policy: numbers, digits: digits),
             ContractionsPass(), SpacingPass(),
             // Last, so a pause inside a number or a removed filler is read on the words left standing.
-            PauseStopPass(destination: destination),
+            PauseStopPass(destination: destination, pauses: pauses),
         ]
         let inCode =
             destination == .codeEditor
@@ -78,7 +80,7 @@ extension CleaningPipeline {
     }
 
     /// What finishes a model's answer to one piece before the final message-wide passes run.
-    public static func afterModelPiece(
+    static func afterModelPiece(
         digits: DigitGrouping, situation: Situation, heard: String? = nil, spoken: String? = nil
     ) -> CleaningPipeline {
         CleaningPipeline(piece: [
@@ -96,15 +98,24 @@ extension CleaningPipeline {
         for formatter: DestinationFormatter, situation: Situation, heard: String? = nil,
         steps: CleaningSteps = .default, vocabulary: [String] = []
     ) -> CleaningPipeline {
-        CleaningPipeline(
+        let casing = AcronymCasingPass(
+            destination: formatter.destination, vocabulary: vocabulary, onScreen: situation.app.textOnScreen)
+        return CleaningPipeline(
             wholeText: initialisms(steps: steps) + [
+                casing,
                 SentenceBoundaryPass(),
                 FirstWordPass(
                     policy: formatter.firstWord, state: situation.insertion.sentenceState,
                     onScreen: situation.app.textOnScreen, heard: heard,
                     capitaliseCalendarWords: formatter.firstWord == .fromInsertionPoint
                         && formatter.destination != .codeEditor,
-                    vocabulary: vocabulary),
+                    vocabulary: vocabulary, casing: casing),
+                CommentMarkerPass(
+                    opensComment: formatter.destination == .codeEditor
+                        && CaretStructure.opensComment(
+                            precedingText: situation.insertion.precedingText,
+                            documentName: situation.app.documentName)
+                ),
                 TerminalStopPass(
                     policy: terminalStop(formatter, in: situation), layout: formatter.layout,
                     insertionPoint: situation.insertion, destination: formatter.destination),

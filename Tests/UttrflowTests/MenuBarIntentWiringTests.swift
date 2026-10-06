@@ -10,7 +10,7 @@ import UttrflowUX
 /// What choosing an item does in a fresh signed-in app, read without a window, a microphone or the defaults.
 private enum Reach: Equatable {
     /// Opens this surface.
-    case opens(UttrflowUX.Destination)
+    case opens(UttrflowUX.AppLocation)
     /// Leaves the app as it was, because a fresh app has no row at that position.
     case nothing
     /// Reaches the microphone, the saved settings, System Settings, a popover or the process, so no headless test drives it.
@@ -57,7 +57,7 @@ private func name(of intent: MenuBarIntent) -> String {
 private let menuBarIntentCaseCount = 13
 
 /// Every surface a menu item can name.
-private let everyDestination: [UttrflowUX.Destination] =
+private let everyDestination: [UttrflowUX.AppLocation] =
     [.onboarding] + SettingsTab.allCases.map { .settings($0) } + MainTab.allCases.map { .main($0) }
 
 /// Every item at least once, with each page, each fix and a first and a far row position.

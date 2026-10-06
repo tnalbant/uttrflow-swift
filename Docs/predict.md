@@ -159,6 +159,12 @@ has taught anything. Importing a shell's history (`ShellHistory`) asks the same 
 terminal it seeds: an application not yet allowed, or declined, gets nothing, and the one-time
 import stays unspent until it is allowed.
 
+Dictation asks the same file before it learns (`LearningConsent` in `UttrflowCore`): the dictionary
+learner and the usage counts write nothing about an application the user declined. An application
+never asked about is learned from, because everything dictation learns stays on this Mac; that
+default is `ConsentState.dictationMayLearn` and lives nowhere else. A secure field teaches nothing
+whatever the answer. One reset removes the file, so it forgets the answers for both features.
+
 The importer reads history from the end in 64 KiB chunks, keeps the newest 5,000 distinct
 commands in chronological order, and skips Bash's epoch timestamp lines.
 
@@ -181,6 +187,9 @@ its own ([development-build.md](development-build.md)).
 - a destructive command (`DestructiveCommand`);
 - a value shorter than `CaptureGate.minimumLength` (2).
 
+A keyed edit inside an accepted line, when committed, records the final text as typed and removes
+the original acceptance and self-sourced count. An unchanged accepted line keeps its acceptance.
+
 ## The corpus on disk, and forgetting
 
 The working database is SQLite held in memory. Each committed change is sealed with AES-GCM
@@ -196,8 +205,10 @@ never creates it, so forgetting works whether or not the loop is running.
 
 - **Forget what it learned here** deletes that application's surfaces and every entry and
   succession in them. Other applications keep theirs.
-- **Reset personalisation** (Settings → Privacy) deletes every surface in the corpus, and the
-  consent file with them.
+- **Reset personalisation** (Settings → Privacy) deletes the dictionary, history, clipboard,
+  snippets, learned completions and the applications they may learn from, recordings kept for a
+  retry, every preference on that screen, every surface in the corpus and its consent file. The
+  [reset row](../Sources/UttrflowUX/SettingsPresenter.swift#L1190-L1203) owns this scope.
 - **Switching an application off** stops learning there and keeps what was learned. Turning the
   feature off everywhere keeps the corpus the same way.
 
@@ -216,14 +227,16 @@ comes back as `.verify` carrying the head of the ranking — `SuggestionSession.
 candidates, every one that could be drawn. Those go through `Verifier`, and the second `resolve`
 draws what the gates left. A turn with nothing on offer settles without the gates.
 
-`SuggestionCoordinator` is the part that cannot be tested headlessly: a global key monitor, a
-one-second tick that runs only for a short window after activity (`SuggestionTicking`), the
-Accessibility read on a queue of its own, the event tap, the panel and the corpus.
+`SuggestionCoordinator` is the part that cannot be tested headlessly: a global key monitor, the
+Accessibility read on a queue of its own, the event tap, the panel and the corpus. Its one-second
+tick runs for the activity window, then slows to five seconds while a ghost remains visible and
+stops when the ghost disappears ([tick intervals](../Sources/Uttrflow/Suggestion/SuggestionTicking.swift#L8-L13)).
 
 | Constant | Value | What it bounds |
 |---|---|---|
 | `SuggestionCoordinator.fieldReadDebounceInMilliseconds` | 180 ms | Typing pause before the field is read; each key withdraws the ghost and restarts it |
 | `SuggestionCoordinator.generationDebounceInMilliseconds` | 120 ms | Pause before a model pass, from the latest key |
+| `SuggestionTicking.interval` / `SuggestionTicking.ghostInterval` | 1 s / 5 s | Field observation after activity, then while a ghost remains visible |
 | `Quieting.proseHesitationInMilliseconds` | 400 ms | Pause a prose writer must make before anything is drawn |
 | `SuggestionSession.turnBudgetInMilliseconds` | 8,000 ms | A whole turn, timed from after the field read; a later answer draws nothing |
 | `Verification.budgetInMilliseconds` | 7,000 ms | The model's share of one keystroke's verification |
@@ -468,7 +481,7 @@ say why nothing was drawn:
 | 5 | `nowhereToDraw` | The field reports no caret |
 | 6 | `textSelected` | Text is selected |
 | 7 | `caretInsideText` | The caret is not at the end of its line |
-| 8 | `applicationPicker` | The field says its own list is open (`AXExpanded`), or a word opens the application's mention, emoji, channel or slash-command picker (`AppPicker`, never on a terminal's command line) |
+| 8 | `applicationPicker` | The field says its own list is open (`AXExpanded`), or trigger text opens a known picker application's mention, emoji, channel or slash-command picker (`AppPicker`; ordinary applications and terminal command lines are not inferred to have one) |
 | 9 | `rejectedTooOften` | `Quieting.rejectionsBeforeSilence` (3) suggestions typed past in this field |
 | 10 | `writingFluently` | A prose writer has not paused for 400 ms |
 
@@ -490,7 +503,7 @@ refused rather than written to.
 
 | Limit | Constant | Value |
 |---|---|---|
-| Entries per surface, evicted by count then age | `PredictStore.entriesPerSurface` | 2,000 |
+| Entries per surface, evicted by fragment status, acceptance, uses and age | `PredictStore.entriesPerSurface` | 2,000 |
 | Scopes kept per field, least recently used evicted | `PredictStore.surfacesPerField` | 64 |
 | Most recent scopes a lookup reads | `PredictStore.scopeLimit` | 8 |
 | Candidates a lookup returns | `PredictStore.candidateLimit` | 16 |
@@ -498,6 +511,10 @@ refused rather than written to.
 An entry carries `count`, `accepted`, `rejected`, `self_sourced` and `last_used`. A
 `superseded_by` value marks text the gates replaced or refused, and a superseded entry is never
 proposed again. Forgetting works at three sizes: one entry, one application, everything.
+
+A write protects its new entry and succession pair from its own eviction. Later pressure removes
+fragments first, then entries with fewer acceptances, fewer uses and older `last_used` values;
+retired entries remain last.
 
 ## Two measurements behind the store's shape
 

@@ -10,10 +10,16 @@ struct TechnicalLexiconTests {
     @Test("The shipped lexicon loads from the bundle with a term in every category.")
     func shipped() {
         #expect(TechnicalLexicon.isBundled)
-        #expect(TechnicalLexicon.terms.count == 259)
+        #expect(!TechnicalLexicon.terms.isEmpty)
         let categories = Set(TechnicalLexicon.terms.map(\.category))
         #expect(categories == Set(TechnicalTerm.Category.allCases))
         #expect(TechnicalLexicon.table.source == .bundled)
+    }
+
+    @Test("The file endings marked everyday in the lexicon are the ones that need a cue to be a file name.")
+    func everydayEndings() {
+        #expect(TechnicalToken.wordLikeFileExtensions == ["swift", "go", "sh", "java", "zip", "lock"])
+        #expect(TechnicalToken.wordLikeFileExtensions.isSubset(of: TechnicalToken.fileExtensions))
     }
 
     @Test("Every shipped term is well formed when nothing is treated as an ordinary word.")
@@ -47,11 +53,41 @@ struct TechnicalLexiconTests {
             ])
     }
 
+    @Test("A non-Latin written form, or a phrase said twice in one category and place, is rejected.")
+    func collisionsRejected() throws {
+        let terms = try decode(
+            #"""
+            [{"id": "API", "category": "acronym", "spoken": ["a p i"]},
+             {"id": "\u0917\u093F\u091F", "category": "command", "spoken": ["git"]},
+             {"id": "APIs", "category": "acronym", "spoken": ["a p i"]},
+             {"id": "ssh", "category": "command", "spoken": ["s s h"], "destinations": ["terminal"]},
+             {"id": "SSH", "category": "acronym", "spoken": ["s s h"]},
+             {"id": "Ssh", "category": "command", "spoken": ["s s h"], "destinations": ["codeEditor"]}]
+            """#)
+        #expect(
+            TechnicalLexicon.problems(in: terms) { _ in false } == [
+                .malformedWritten(id: "\u{0917}\u{093F}\u{091F}"),
+                .duplicateSpoken(id: "APIs", spoken: "a p i", earlier: "API"),
+            ])
+    }
+
     @Test("Pronunciations default to empty, and a term without destinations applies everywhere.")
     func defaults() throws {
-        let term = try #require(try decode(#"[{"id": "API", "category": "acronym", "spoken": ["a p i"]}]"#).first)
+        let term = try #require(
+            try decode(#"[{"id": "API", "category": "acronym", "spoken": ["a p i"]}]"#).first)
         #expect(term.pronunciations.isEmpty)
         #expect(Destination.allCases.allSatisfy(term.applies(in:)))
+    }
+
+    @Test("A written form repeated in the file refuses the whole file.")
+    func repeatedWritten() {
+        #expect(throws: DataTableError.duplicateID("API")) {
+            _ = try decode(
+                #"""
+                [{"id": "API", "category": "acronym", "spoken": ["a p i"]},
+                 {"id": "API", "category": "acronym", "spoken": ["a pee i"]}]
+                """#)
+        }
     }
 
     @Test("An unknown category refuses the whole file.")

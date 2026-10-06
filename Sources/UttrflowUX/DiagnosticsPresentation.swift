@@ -1,6 +1,7 @@
 // The Diagnostics tab: the model cards, this Mac, the latency figures, reliability, and the plain-text report.
 public import Foundation
 public import UttrflowCore
+public import UttrflowHistory
 
 /// Whether something the page reports is fine, wants attention, or is not yet known.
 public enum DiagnosticsState: Sendable, Equatable {
@@ -186,6 +187,10 @@ public struct DiagnosticsSnapshot: Sendable, Equatable {
     public let version: AppVersion
     /// This Mac in one line: macOS version, chip and memory; absent when it could not be read.
     public let machine: String?
+    /// How each kept dictation's words arrived, one per History record; `nil` predates the field.
+    public let arrivals: [RecordedArrival?]
+    /// Which quality layers the running pipeline was built with.
+    let qualityLayers: QualityLayers
 
     /// Builds a snapshot; everything defaults to not yet checked.
     public init(
@@ -205,7 +210,9 @@ public struct DiagnosticsSnapshot: Sendable, Equatable {
         lastCleanedBy: TransformerKind? = nil,
         suggestionModel: SuggestionModelReadiness = .notAsked,
         version: AppVersion = .unknown,
-        machine: String? = nil
+        machine: String? = nil,
+        arrivals: [RecordedArrival?] = [],
+        qualityLayers: QualityLayers = QualityLayers()
     ) {
         self.engines = engines
         self.speechInUse = speechInUse
@@ -224,6 +231,8 @@ public struct DiagnosticsSnapshot: Sendable, Equatable {
         self.suggestionModel = suggestionModel
         self.version = version
         self.machine = machine
+        self.arrivals = arrivals
+        self.qualityLayers = qualityLayers
     }
 }
 
@@ -260,6 +269,8 @@ public struct DiagnosticsPresentation: Sendable, Equatable {
     public let reliability: [MainStatistic]
     /// Aggregate counts of pieces that took extra decodes and empty-result retries.
     public let decoding: [DiagnosticsRow]
+    /// How many kept dictations reached a field, by arrival. Empty until History holds one.
+    public let arrivals: [DiagnosticsRow]
     /// The speech model's last loads, newest first, each saying whether a recompile explains it.
     public let speechModelLoads: [DiagnosticsRow]
     /// One row per speech and clean-up engine.
@@ -268,6 +279,8 @@ public struct DiagnosticsPresentation: Sendable, Equatable {
     public let cleanUp: [DiagnosticsRow]
     /// The exact dictionary words included in the latest recogniser prompt.
     public let vocabularyPrompt: DiagnosticsRow
+    /// One row per quality layer, saying whether it runs and whether that is its default.
+    public let qualityLayers: [DiagnosticsRow]
     /// One row per permission, granted or not.
     public let permissions: [DiagnosticsRow]
     /// Whether the shortcut and input device can start dictation.
@@ -289,9 +302,11 @@ public struct DiagnosticsPresentation: Sendable, Equatable {
         reliability: [MainStatistic],
         decoding: [DiagnosticsRow],
         speechModelLoads: [DiagnosticsRow] = [],
+        arrivals: [DiagnosticsRow] = [],
         engines: [DiagnosticsRow],
         cleanUp: [DiagnosticsRow],
         vocabularyPrompt: DiagnosticsRow,
+        qualityLayers: [DiagnosticsRow] = [],
         permissions: [DiagnosticsRow],
         availability: [DiagnosticsRow],
         storage: [DiagnosticsRow],
@@ -306,9 +321,11 @@ public struct DiagnosticsPresentation: Sendable, Equatable {
         self.reliability = reliability
         self.decoding = decoding
         self.speechModelLoads = speechModelLoads
+        self.arrivals = arrivals
         self.engines = engines
         self.cleanUp = cleanUp
         self.vocabularyPrompt = vocabularyPrompt
+        self.qualityLayers = qualityLayers
         self.permissions = permissions
         self.availability = availability
         self.storage = storage
@@ -348,6 +365,7 @@ public enum DiagnosticsPresenter {
             reliability: reliability(for: snapshot.measurements, locale: locale),
             decoding: decodingRows(for: snapshot.decoding, locale: locale),
             speechModelLoads: speechModelLoadRows(for: snapshot.speechModelLoads, locale: locale),
+            arrivals: arrivalRows(for: snapshot.arrivals),
             engines: engines,
             cleanUp: cleanUpRows(for: snapshot.cleaning),
             vocabularyPrompt: DiagnosticsRow(
@@ -356,6 +374,7 @@ public enum DiagnosticsPresenter {
                     ? "No dictionary words in the last prompt"
                     : snapshot.vocabularyPrompt.joined(separator: ", "),
                 state: .unknown),
+            qualityLayers: qualityLayerRows(for: snapshot.qualityLayers),
             permissions: permissions,
             availability: availability,
             storage: storage,
@@ -541,6 +560,22 @@ public enum DiagnosticsPresenter {
         symbolName: "gauge.with.dots.needle.bottom.50percent",
         title: "No timings yet",
         message: "Dictate something and the times appear here. They stay on this Mac.")
+
+    /// Counts kept dictations by arrival, never their words; an arrival with none is left out.
+    static func arrivalRows(for arrivals: [RecordedArrival?]) -> [DiagnosticsRow] {
+        let titled: [(RecordedArrival?, String)] = [
+            (.confirmed, "Confirmed in the field"), (.notReported, "Sent, field did not report"),
+            (.unconfirmed, "Unconfirmed, left on clipboard"), (.notInserted, "Not inserted"),
+            (nil, "Kept before arrivals were recorded"),
+        ]
+        return titled.compactMap { arrival, title in
+            let count = arrivals.count { $0 == arrival }
+            guard count > 0 else { return nil }
+            return DiagnosticsRow(
+                title: title, detail: MainFormatting.count(count, "dictation", "dictations"),
+                state: .good)
+        }
+    }
 
     /// Counts only aggregate decode outcomes, never the pieces or their words.
     static func decodingRows(
@@ -748,6 +783,18 @@ public enum DiagnosticsPresenter {
         record.changes.filter { CleaningSteps.isOffered($0.step) }
     }
 
+    /// One row per quality layer in declaration order: on or off, and whether a local override set it.
+    static func qualityLayerRows(for layers: QualityLayers) -> [DiagnosticsRow] {
+        QualityLayer.allCases.map { layer in
+            let on = layers.isOn(layer)
+            let state = on ? "On" : "Off"
+            return DiagnosticsRow(
+                title: layer.rawValue,
+                detail: on == layer.defaultOn ? state : "\(state), overridden",
+                state: on == layer.defaultOn ? .good : .attention)
+        }
+    }
+
     /// One row per step that changed something, then every step that is off, naming the words rather than counting them.
     static func cleanUpRows(for record: CleaningRecord?) -> [DiagnosticsRow] {
         guard let record else {
@@ -778,10 +825,19 @@ public enum DiagnosticsPresenter {
         }
         let failures = record.engineFailures.map {
             DiagnosticsRow(
-                title: "Engine failed", detail: "\($0.engine): \($0.failureClass.rawValue)", state: .attention)
+                title: "Engine failed", detail: "\($0.engine): \($0.failureClass.rawValue)", state: .attention
+            )
         }
-        guard changed.isEmpty, off.isEmpty, refused.isEmpty, unavailable.isEmpty, failures.isEmpty else {
-            return unavailable + failures + refused + changed + off
+        // A stage that gave up is why a correction or snippet is missing, and nothing else says so.
+        let skipped = record.skippedStages.map {
+            DiagnosticsRow(
+                title: "Stage skipped", detail: "\($0.stage.rawValue): \($0.reason.rawValue)",
+                state: .attention)
+        }
+        guard changed.isEmpty, off.isEmpty, refused.isEmpty, unavailable.isEmpty, failures.isEmpty,
+            skipped.isEmpty
+        else {
+            return skipped + unavailable + failures + refused + changed + off
         }
         return [
             DiagnosticsRow(
@@ -811,6 +867,7 @@ public enum DiagnosticsPresenter {
                 "  engine skipped (\($0.engine)): \($0.reason.diagnosticDescription)"
             }
             + record.engineFailures.map { "  engine failed (\($0.engine)): \($0.failureClass.summary)" }
+            + record.skippedStages.map { "  stage skipped (\($0.stage.rawValue)): \($0.reason.rawValue)" }
     }
 
     // MARK: - Permissions
@@ -943,6 +1000,10 @@ public enum DiagnosticsPresenter {
             lines += ["", "Decode effort (\(snapshot.decoding.count) pieces)"]
             lines += decoding.map { "  \($0.title): \($0.detail)" }
         }
+
+        let arrivals = arrivalRows(for: snapshot.arrivals)
+        lines += ["", arrivals.isEmpty ? "Arrival: no dictations kept" : "Arrival (kept dictations)"]
+        lines += arrivals.map { "  \($0.title): \($0.detail)" }
 
         let loads = speechModelLoadRows(for: snapshot.speechModelLoads, locale: locale)
         lines += ["", loads.isEmpty ? "Speech model load: none recorded yet" : "Speech model load"]

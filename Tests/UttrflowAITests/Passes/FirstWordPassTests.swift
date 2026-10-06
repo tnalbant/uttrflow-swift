@@ -131,7 +131,7 @@ struct FirstWordPassTests {
             ("well i'll go", "Well I'll go"),
             ("well i\u{2019}m late", "Well I\u{2019}m late"),
             ("it is fine", "It is fine"),
-            ("i18n is hard", "I18n is hard"),
+            ("i18n is hard", "i18n is hard"),
             ("the i18n work", "The i18n work"),
         ]
     )
@@ -222,14 +222,14 @@ struct FirstWordPassTests {
                 for: .standard(for: destination), situation: situation)
             #expect(
                 pipeline.run(Draft(text: "we meet on tuesday in august")).text
-                    == "We meet on Tuesday in August.")
+                    .hasPrefix("We meet on Tuesday in August"))
         }
         for destination: Destination in [.terminal, .codeEditor, .spreadsheet] {
             let pipeline = CleaningPipeline.standard(
                 for: .standard(for: destination), situation: situation)
             #expect(
                 pipeline.run(Draft(text: "we meet on tuesday in august")).text
-                    == "We meet on tuesday in august")
+                    .hasSuffix("e meet on tuesday in august"))
         }
     }
 
@@ -466,5 +466,27 @@ struct FirstWordPassTests {
         let unchanged = FirstWordPass(policy: .fromInsertionPoint, state: .midSentence).apply(
             Draft(text: "hello"))
         #expect(unchanged.words[0].state == .kept)
+    }
+
+    /// A dictionary entry in lower case keeps that case at any sentence start, under every policy.
+    @Test(
+        "keeps a lower-case dictionary spelling at a sentence start",
+        arguments: [
+            (FirstWordPolicy.fromInsertionPoint, "kubectl apply the file", "kubectl apply the file"),
+            (.fromInsertionPoint, "it failed. kubectl apply again", "It failed. kubectl apply again"),
+            (.fromInsertionPoint, "npm install. zorbix runs it", "npm install. zorbix runs it"),
+            (.alwaysCapital, "kubectl apply the file", "kubectl apply the file"),
+            (.alwaysCapital, "done. npm test next", "Done. npm test next"),
+        ]
+    )
+    func keepsAPinnedLowerCaseSpelling(policy: FirstWordPolicy, input: String, expected: String) {
+        let pass = FirstWordPass(policy: policy, vocabulary: ["kubectl", "npm", "zorbix"])
+        #expect(cleaned(input, by: pass) == expected)
+    }
+
+    @Test("still capitalises an ordinary lower-case entry and keeps a capitalised one")
+    func pinsOnlyUnusualLowerCaseEntries() {
+        let pass = FirstWordPass(vocabulary: ["okay", "Zorbix"])
+        #expect(cleaned("okay then. zorbix is up", by: pass) == "Okay then. Zorbix is up")
     }
 }

@@ -7,7 +7,9 @@ import Testing
 struct SpeechModelLoadHistoryTests {
     private let start = Date(timeIntervalSinceReferenceDate: 800_000_000)
 
-    private func history(_ seconds: [Double], build: String = "25A100", revision: String = "abc") -> SpeechModelLoadHistory {
+    private func history(
+        _ seconds: [Double], build: String = "25A100", revision: String = "abc"
+    ) -> SpeechModelLoadHistory {
         var history = SpeechModelLoadHistory()
         for (index, value) in seconds.enumerated() {
             history.append(
@@ -29,7 +31,8 @@ struct SpeechModelLoadHistoryTests {
     func systemUpdateExpectsSlowLoad() {
         var loads = history([2, 2])
         let record = loads.append(
-            date: start.addingTimeInterval(10), seconds: 80, parts: nil, systemBuild: "25B200", modelRevision: "abc")
+            date: start.addingTimeInterval(10), seconds: 80, parts: nil, systemBuild: "25B200",
+            modelRevision: "abc")
         #expect(record.change == .systemUpdated)
         #expect(record.change.expectsSlowLoad)
     }
@@ -43,8 +46,10 @@ struct SpeechModelLoadHistoryTests {
     func likelyRecompile() {
         var loads = history([2, 3, 2, 100])
         #expect(loads.medianSeconds == 2.5)
-        let slow = loads.append(date: start, seconds: 13, parts: nil, systemBuild: "25A100", modelRevision: "abc")
-        let usual = loads.append(date: start, seconds: 2, parts: nil, systemBuild: "25A100", modelRevision: "abc")
+        let slow = loads.append(
+            date: start, seconds: 13, parts: nil, systemBuild: "25A100", modelRevision: "abc")
+        let usual = loads.append(
+            date: start, seconds: 2, parts: nil, systemBuild: "25A100", modelRevision: "abc")
         #expect(slow.isLikelyRecompile)
         #expect(!usual.isLikelyRecompile)
         #expect(!history([90]).records[0].isLikelyRecompile)
@@ -55,7 +60,9 @@ struct SpeechModelLoadHistoryTests {
         let loads = history((1...14).map(Double.init)).records
         #expect(loads.count == SpeechModelLoadHistory.capacity)
         #expect(loads.first?.seconds == 5)
-        #expect(SpeechModelLoadHistory(records: history((1...14).map(Double.init)).records + loads).records.count == 10)
+        #expect(
+            SpeechModelLoadHistory(records: history((1...14).map(Double.init)).records + loads).records.count
+                == 10)
     }
 
     @Test("The log keeps loads across reads and judges a new build against the last one on disk.")
@@ -65,9 +72,11 @@ struct SpeechModelLoadHistoryTests {
         let log = SpeechModelLoadLog(file: folder.appending(path: LocalStoreEntry.speechModelLoads.name))
         #expect(log.history().records.isEmpty)
         let parts = SpeechModelLoadParts(
-            prewarm: 1, specialiseEncoder: 2, specialiseDecoder: 3, loadEncoder: 4, loadDecoder: 5, tokenizer: 6)
+            prewarm: 1, specialiseEncoder: 2, specialiseDecoder: 3, loadEncoder: 4, loadDecoder: 5,
+            tokenizer: 6)
         try log.record(seconds: 2, parts: parts, modelRevision: "abc", systemBuild: "25A100", at: start)
-        let after = try log.record(seconds: 70, parts: nil, modelRevision: "abc", systemBuild: "25B200", at: start)
+        let after = try log.record(
+            seconds: 70, parts: nil, modelRevision: "abc", systemBuild: "25B200", at: start)
         #expect(after.change == .systemUpdated)
         #expect(after.isLikelyRecompile)
         #expect(log.history().records.map(\.parts) == [parts, nil])

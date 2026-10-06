@@ -169,8 +169,8 @@ public enum DictationState: Sendable, Equatable {
     case recording
     case transcribing
     case tidying
-    /// The words have been handed to the app, which has not yet shown them.
-    case inserting
+    /// The words have been handed to the app, named when known, which has not yet shown them.
+    case inserting(into: String?)
     case inserted(DictationOutcome)
     case failed(DictationFailure)
     /// Cancelled while recording, past ``DictationPipeline/restoreThreshold``; nothing was typed.

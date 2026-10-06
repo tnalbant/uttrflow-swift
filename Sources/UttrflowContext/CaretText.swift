@@ -10,8 +10,13 @@ enum CaretText {
         let following: String
     }
 
-    /// `selection` is in UTF-16 units, as Accessibility reports it; out-of-range ends are clamped.
-    static func around(_ value: String?, selection: Range<Int>?) -> Sides? {
+    /// `selection` and `marked` are UTF-16 ranges; an input method's unconfirmed run is left out of both sides.
+    static func around(_ value: String?, selection: Range<Int>?, marked: Range<Int>? = nil) -> Sides? {
+        var selection = selection
+        if let marked, !marked.isEmpty, let current = selection {
+            let lower = min(current.lowerBound, marked.lowerBound)
+            selection = lower..<max(current.upperBound, marked.upperBound)
+        }
         guard let value, let ends = ends(of: selection, in: value) else { return nil }
         return Sides(
             preceding: suffix(value[..<ends.caret], limit: InsertionPoint.precedingLimit),
@@ -40,6 +45,13 @@ enum CaretText {
         let start = min(max(selection.lowerBound, 0), length)
         let end = min(max(selection.upperBound, start), length)
         return (String.Index(utf16Offset: start, in: value), String.Index(utf16Offset: end, in: value))
+    }
+
+    /// Moves a field-offset range into a read window by the distance the selection moved, or nil when either end is unknown.
+    static func shift(_ range: Range<Int>?, from fieldCaret: Int?, to windowCaret: Int?) -> Range<Int>? {
+        guard let range, let fieldCaret, let windowCaret else { return nil }
+        let offset = fieldCaret - windowCaret
+        return (range.lowerBound - offset)..<(range.upperBound - offset)
     }
 
     /// Keeps a UTF-16-bounded suffix without cutting a surrogate pair.

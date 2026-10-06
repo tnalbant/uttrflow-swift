@@ -109,8 +109,8 @@ by editing the table. Adding an app is a row, and the classifier has no `if` on 
 anywhere in code.
 
 The focused field's Accessibility role and multiline capability travel with the situation.
-`DestinationFormatter.standard(for: Situation)` reads them: an `AXSearchField` keeps the first
-word's heard casing, takes no terminal stop and turns line breaks into spaces; an
+`DestinationFormatter.standard(for: Situation)` reads them: an `AXSearchField`, or any field of
+an app whose row says `field: .search` (the launcher panels), keeps the first word's heard casing, takes no terminal stop and turns line breaks into spaces; an
 `AXTextField`, or any field Accessibility reports as single-line, also turns line breaks into
 spaces. Multiline fields keep the destination's layout.
 
@@ -140,7 +140,7 @@ The eight shipped values (`DestinationFormatter.registry`):
 | spreadsheet | as spoken | never | single line | as spoken | always numerals | 12,000 |
 | sqlEditor | from caret | always | preserve newlines | as spoken | always numerals | 12000 |
 | codeEditor | from caret | never in code, always in a comment | preserve newlines | as spoken | always numerals | 12000 |
-| terminal | as spoken | never | preserve newlines | as spoken | always numerals | 12000 |
+| terminal | as spoken | never | single line | as spoken | always numerals | 12000 |
 | messaging | from caret | off for ≤2 sentences | paragraphs | as spoken | numerals ≥10 | 12,000 |
 | email | from caret | always | paragraphs, lists | repair | numerals ≥10 | 12,000 |
 | plain | from caret | always | paragraphs, lists | repair | numerals ≥10 | 12,000 |
