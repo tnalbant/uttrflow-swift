@@ -319,6 +319,7 @@ final class SuggestionCoordinator {
     func forgetSuggestions(from bundleIdentifier: String) async throws {
         let capture = self.capture
         let store = self.store
+        rejectedSuggestionRecorder.forget(bundleIdentifier: bundleIdentifier)
         try await forgetWhatThisLoopRemembers(clearingCorpus: {
             await capture.forgetLearned(from: bundleIdentifier)
             try await store.forget(bundleIdentifier: bundleIdentifier)
@@ -329,6 +330,7 @@ final class SuggestionCoordinator {
     func forgetEverySuggestion() async throws {
         let capture = self.capture
         let store = self.store
+        rejectedSuggestionRecorder.forget()
         try await forgetWhatThisLoopRemembers(clearingCorpus: {
             await capture.forgetLearnedLines()
             try await store.forgetEverything()
