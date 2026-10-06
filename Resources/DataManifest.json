@@ -196,8 +196,8 @@
       "licence": "MIT",
       "redistribution": true,
       "note": "read through DataTable; see Docs/data-tables.md",
-      "sha256": "514e2c1276e58c8459d4049c0e96024dbad2ffba838b9eaca5ff400f4d1f88c3",
-      "bytes": 7359
+      "sha256": "596fe020406cf28311358f6cb088adb79caa732c6a7153c591091566057c9368",
+      "bytes": 7855
     },
     {
       "path": "Sources/UttrflowCore/Resources/Tables/kinship-words.json",
