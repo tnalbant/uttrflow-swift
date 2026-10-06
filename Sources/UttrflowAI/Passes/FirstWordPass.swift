@@ -16,7 +16,7 @@ public struct FirstWordPass: WholeTextCleaningPass {
     public let capitaliseCalendarWords: Bool
     /// Each word of the user's dictionary entries for this dictation, lower-cased; a capital on one of them is kept.
     public let ownWords: Set<String>
-    /// Known spellings that start with a lower-case letter, keyed in lower case; a sentence start keeps that spelling.
+    /// Known spellings a first word keeps, keyed in lower case: lower-case ones, and the user's own where the heard case stands.
     public let pinnedSpellings: [String: String]
 
     public init(
@@ -33,7 +33,10 @@ public struct FirstWordPass: WholeTextCleaningPass {
             vocabulary.flatMap { $0.split(whereSeparator: \.isWhitespace) }.map {
                 WordShape(String($0)).core.lowercased()
             })
-        self.pinnedSpellings = (casing ?? AcronymCasingPass(vocabulary: vocabulary)).lowerCaseForms
+        let known = casing ?? AcronymCasingPass(vocabulary: vocabulary)
+        // A heard case gives no capital, so there the user's own capitalised spellings are pinned as well.
+        let own = policy == .asSpoken ? known.forms.filter { [ownWords] in ownWords.contains($0.key) } : [:]
+        self.pinnedSpellings = known.lowerCaseForms.merging(own) { kept, _ in kept }
     }
 
     /// The word in the user's own spelling when that spelling starts lower case; otherwise unchanged.

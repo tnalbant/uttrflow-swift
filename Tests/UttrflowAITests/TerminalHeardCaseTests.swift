@@ -12,10 +12,10 @@ struct TerminalHeardCaseTests {
         applicationName: "Xcode", bundleIdentifier: "com.apple.dt.Xcode",
         documentName: "AppDelegate.swift")
 
-    private func cleaned(_ spoken: String, into app: AppContext) -> String {
+    private func cleaned(_ spoken: String, into app: AppContext, vocabulary: [String] = []) -> String {
         let situation = SituationResolver.resolve(from: app)
         let formatter = DestinationFormatter.standard(for: situation.destination)
-        return CleaningPipeline.standard(for: formatter, situation: situation)
+        return CleaningPipeline.standard(for: formatter, situation: situation, vocabulary: vocabulary)
             .run(Draft(text: spoken)).text
     }
 
@@ -68,6 +68,9 @@ struct TerminalHeardCaseTests {
     func codeEditorKeepsFirstWordAsSpoken() {
         #expect(cleaned("the build failed", into: codeEditor) == "the build failed")
         #expect(cleaned("function do thing", into: codeEditor) == "function do thing")
+        #expect(
+            cleaned("paymentsheet crashed again", into: codeEditor, vocabulary: ["PaymentSheet"])
+                == "PaymentSheet crashed again")
     }
 
     /// A capitalised word mid-sentence in a code editor is left alone; a terminal never capitalises anyway.
