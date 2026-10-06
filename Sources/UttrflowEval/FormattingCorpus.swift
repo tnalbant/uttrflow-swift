@@ -611,7 +611,7 @@ extension EvaluationCorpus {
             id: "fmt-code-markdown-heading-kept", category: .technical,
             spoken: "# Release notes",
             expected: "# Release notes",
-            mustKeep: ["#", "Release"], classes: [.codeAndMarkdown]
+            mustKeep: ["#", "Release"], mustEndWith: "notes", classes: [.codeAndMarkdown]
         ),
     ]
 

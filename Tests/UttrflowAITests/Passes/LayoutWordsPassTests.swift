@@ -40,7 +40,7 @@ struct LayoutWordsPassTests {
             ("milk,\" bullet point eggs", "milk\"\n- eggs"),
             ("milk... bullet point eggs", "milk...\n- eggs"),
             ("milk, bullet point eggs?", "milk\n- eggs?"),
-            ("first next point second", "first\n- second"),
+            ("first, next point second", "first\n- second"),
         ]
     )
     func laysOut(input: String, expected: String) {

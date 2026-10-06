@@ -32,6 +32,8 @@ struct InputShapeCorpusTests {
         "document-bullet-caret-capitalises",
         "document-numbered-caret-capitalises", "document-list-only-when-spoken",
         "document-numbered-items-after-a-sentence",
+        // A terminal writes the first word as heard, so the recogniser's own capital survives on a command.
+        "terminal-command-writes-double-dash-flag",
     ]
 
     @Test("capitalises the first letter and closes with the mark the expected text ends in")

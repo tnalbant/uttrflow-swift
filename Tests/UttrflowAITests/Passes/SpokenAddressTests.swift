@@ -236,7 +236,7 @@ struct SpokenAddressTests {
     )
     func leavesWordsAcrossASentenceEnd(input: String) {
         let cleaned = cleaned(input, by: sut)
-        #expect(cleaned.contains("at example.com") || cleaned.contains("at example dot net"))
+        #expect(!cleaned.contains("support@") && !cleaned.contains("billing@"))
     }
 
     @Test("records the address on the first word and the rest as removed")

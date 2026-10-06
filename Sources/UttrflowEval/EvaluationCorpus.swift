@@ -2389,7 +2389,7 @@ public enum EvaluationCorpus {
         .init(
             id: "code-editor-comment-gets-a-stop", category: .contextual,
             spoken: "um the comment explains why the cache clears",
-            expected: "the comment explains why the cache clears.",
+            expected: "The comment explains why the cache clears.",
             mustKeep: ["comment", "cache clears"],
             context: AppContext(
                 applicationName: "Xcode",
@@ -2399,13 +2399,13 @@ public enum EvaluationCorpus {
             ),
             mustNotAdd: ["um"],
             destination: .codeEditor,
-            mustBeginWith: "the",
+            mustBeginWith: "The",
             mustEndWith: "clears."
         ),
         .init(
             id: "code-editor-comment-keeps-its-stop", category: .contextual,
             spoken: "um the retry count resets after a failure.",
-            expected: "the retry count resets after a failure.",
+            expected: "The retry count resets after a failure.",
             mustKeep: ["retry count", "failure"],
             context: AppContext(
                 applicationName: "Xcode",
@@ -2415,7 +2415,7 @@ public enum EvaluationCorpus {
             ),
             mustNotAdd: ["um", ".."],
             destination: .codeEditor,
-            mustBeginWith: "the",
+            mustBeginWith: "The",
             mustEndWith: "failure."
         ),
         .init(
@@ -2716,14 +2716,105 @@ public enum EvaluationCorpus {
         .init(
             id: "code-comment-keeps-spoken-commands", category: .contextual,
             spoken: "camel case user id open paren close paren.",
-            expected: "camel case user id open paren close paren.",
+            expected: "Camel case user id open paren close paren.",
             mustKeep: ["camel", "user", "paren"],
             context: AppContext(
                 applicationName: "Xcode", bundleIdentifier: DestinationRules.xcode,
                 documentName: "Example.swift", precedingText: "// "),
             destination: .codeEditor,
-            mustBeginWith: "camel",
+            mustBeginWith: "Camel",
             mustEndWith: "paren."
+        ),
+        .init(
+            id: "prose-spoken-parentheses-as-marks", category: .contextual,
+            spoken: "the budget open parentheses draft two close parentheses is due friday",
+            expected: "The budget (draft two) is due Friday.",
+            context: AppContext(applicationName: "Pages", bundleIdentifier: DestinationRules.pages),
+            destination: .document
+        ),
+        .init(
+            id: "dictation-keeps-markdown-words-heading-one", category: .contextual,
+            spoken: "the report needs a heading one above the summary",
+            expected: "The report needs a heading one above the summary.",
+            context: AppContext(applicationName: "Notes", bundleIdentifier: DestinationRules.notes),
+            destination: .plain
+        ),
+        .init(
+            id: "dictation-keeps-markdown-words-heading-digit-one", category: .contextual,
+            spoken: "the slide said heading 1 in large letters",
+            expected: "The slide said heading 1 in large letters.",
+            context: AppContext(applicationName: "Notes", bundleIdentifier: DestinationRules.notes),
+            destination: .plain
+        ),
+        .init(
+            id: "dictation-keeps-markdown-words-heading-two", category: .contextual,
+            spoken: "add a heading two for the results section",
+            expected: "Add a heading two for the results section.",
+            context: AppContext(applicationName: "Notes", bundleIdentifier: DestinationRules.notes),
+            destination: .plain
+        ),
+        .init(
+            id: "dictation-keeps-markdown-words-heading-digit-two", category: .contextual,
+            spoken: "the outline calls it heading 2 for now",
+            expected: "The outline calls it heading 2 for now.",
+            context: AppContext(applicationName: "Notes", bundleIdentifier: DestinationRules.notes),
+            destination: .plain
+        ),
+        .init(
+            id: "dictation-keeps-markdown-words-heading-three", category: .contextual,
+            spoken: "the notes have a heading three under methods",
+            expected: "The notes have a heading three under methods.",
+            context: AppContext(applicationName: "Notes", bundleIdentifier: DestinationRules.notes),
+            destination: .plain
+        ),
+        .init(
+            id: "dictation-keeps-markdown-words-heading-digit-three", category: .contextual,
+            spoken: "the template labels that heading 3 by default",
+            expected: "The template labels that heading 3 by default.",
+            context: AppContext(applicationName: "Notes", bundleIdentifier: DestinationRules.notes),
+            destination: .plain
+        ),
+        .init(
+            id: "dictation-keeps-markdown-words-block-quote", category: .contextual,
+            spoken: "the editor wants a block quote from the interview",
+            expected: "The editor wants a block quote from the interview.",
+            context: AppContext(applicationName: "Notes", bundleIdentifier: DestinationRules.notes),
+            destination: .plain
+        ),
+        .init(
+            id: "dictation-keeps-markdown-words-bold", category: .contextual,
+            spoken: "she wrote the warning in bold on the board",
+            expected: "She wrote the warning in bold on the board.",
+            context: AppContext(applicationName: "Notes", bundleIdentifier: DestinationRules.notes),
+            destination: .plain
+        ),
+        .init(
+            id: "dictation-keeps-markdown-words-italic", category: .contextual,
+            spoken: "the title goes in italic in the reference list",
+            expected: "The title goes in italic in the reference list.",
+            context: AppContext(applicationName: "Notes", bundleIdentifier: DestinationRules.notes),
+            destination: .plain
+        ),
+        .init(
+            id: "dictation-keeps-markdown-words-italics", category: .contextual,
+            spoken: "put the book names in italics please",
+            expected: "Put the book names in italics please.",
+            context: AppContext(applicationName: "Notes", bundleIdentifier: DestinationRules.notes),
+            destination: .plain
+        ),
+        .init(
+            id: "dictation-keeps-markdown-words-inline-code", category: .contextual,
+            spoken: "the guide shows inline code in a grey box",
+            expected: "The guide shows inline code in a grey box.",
+            context: AppContext(applicationName: "Notes", bundleIdentifier: DestinationRules.notes),
+            destination: .plain
+        ),
+        .init(
+            id: "dictation-keeps-markdown-words-code-block", category: .contextual,
+            spoken: "paste the error into a code block for the team",
+            expected: "Paste the error into a code block for the team.",
+            context: AppContext(applicationName: "Notes", bundleIdentifier: DestinationRules.notes),
+            destination: .plain
         ),
     ]
 

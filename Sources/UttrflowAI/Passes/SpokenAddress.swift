@@ -355,10 +355,19 @@ struct SpokenAddress: Equatable {
         guard let host = part(from: hostPosition, within: run, in: live, of: draft),
             host.labels.count > 1, let top = host.labels.last, topLevels.contains(top.lowercased())
         else { return nil }
-        return finishHost(
+        let address = finishHost(
             prefix + host.spelled.lowercased(), from: position, hostEnd: hostPosition + host.length,
             within: run,
             in: live, of: draft)
+        // A bare name that a noun follows names a company, not a site: "at Example dot com offices".
+        let after = position + address.length
+        let isBare = prefix.isEmpty && after == hostPosition + host.length
+        if isBare, after < run.upperBound, !draft.shape(at: live[after - 1]).endsClause,
+            FunctionWords.isContent(draft.shape(at: live[after]).key)
+        {
+            return nil
+        }
+        return address
     }
 
     /// Reads a slash-led path whose segments are words, bare of the marks its ends stood with, which the caller writes once.
