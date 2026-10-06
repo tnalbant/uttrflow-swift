@@ -364,6 +364,11 @@ Evidence for rules 7 to 10: [measurement-claims.md](../measurement-claims.md).
 7. A test injects a fake for the Keychain, the pasteboard and `UserDefaults`; `make test` shows 0
    macOS permission prompts. A new `sleep` to fix a race is 0: wait on the event, and a `sleep` that
    must stay carries a one-line reason.
+8. A test that fails on today's code by design lands as a ratchet, never skipped or red: a
+   `knownFailures` table in the suite maps each failing group to its count and issue, and the test
+   asserts `failed <= known` per group (`NumberRoundTripTests` is the model). A fix lowers the
+   count in the same commit; a rise fails CI. An audit counts through `Scripts/ratchet.py`, whose
+   `--update` refuses a rise and whose own tests are `make ratchet-test`.
 
 ## Protected files
 
