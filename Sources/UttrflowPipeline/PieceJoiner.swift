@@ -96,21 +96,24 @@ enum PieceJoiner {
         return seamed
     }
 
-    /// Seams pieces that all have words, each judged against its neighbours.
+    /// Seams pieces that all have words; each seam is judged once, and that verdict both ends the piece before it and opens the one after.
     private static func seamedWorded(
         _ pieces: [String], heard: [String], under formatter: DestinationFormatter
     ) -> [String] {
-        pieces.enumerated().map { index, text in
-            guard index > 0,
-                sentenceRunsOn(pieces[index - 1], into: text)
-                    || groupRunsAcross(
-                        pieces[index - 1], into: text,
-                        previousWasHeardEndingOnScale: heardScaleEnding(heard, at: index - 1))
-            else {
-                return index == pieces.count - 1
-                    ? text : endedAtSeam(text, before: pieces[index + 1], under: formatter)
+        let runsOn = pieces.indices.dropLast().map { index in
+            sentenceRunsOn(pieces[index], into: pieces[index + 1])
+                || groupRunsAcross(
+                    pieces[index], into: pieces[index + 1],
+                    previousWasHeardEndingOnScale: heardScaleEnding(heard, at: index))
+        }
+        return pieces.enumerated().map { index, text in
+            var seamed = text
+            // Each piece on its own line, so the opening word itself never reads as a name capitalised mid-line.
+            if index > 0, runsOn[index - 1] {
+                seamed = lowercasedOpening(seamed, in: pieces[index - 1] + "\n" + seamed)
             }
-            return lowercasedOpening(text, in: pieces[index - 1] + " " + text)
+            guard index < pieces.count - 1 else { return seamed }
+            return endedAtSeam(seamed, before: pieces[index + 1], runsOn: runsOn[index], under: formatter)
         }
     }
 
@@ -313,7 +316,7 @@ enum PieceJoiner {
 
     /// One piece ended at a seam, unless the words on either side of the cut say the sentence ran through it. See `Docs/cleanup-design.md` §7.
     private static func endedAtSeam(
-        _ text: String, before next: String, under formatter: DestinationFormatter
+        _ text: String, before next: String, runsOn: Bool, under formatter: DestinationFormatter
     ) -> String {
         if endsWithSpokenLineCommand(text, before: next) { return WordShape.withoutTrailingStop(text) }
         if formatter.terminalStop == .never { return WordShape.withoutTrailingStop(text) }
@@ -322,8 +325,7 @@ enum PieceJoiner {
         guard let last = text.last, !last.isNewline, !piece.endsInListItem,
             !(formatter.layout.contains(.preserveNewlines) && text.contains(where: \.isNewline))
         else { return text }
-        return sentenceRunsOn(text, into: next)
-            ? WordShape.withoutTrailingStop(text) : WordShape.finished(text)
+        return runsOn ? WordShape.withoutTrailingStop(text) : WordShape.finished(text)
     }
 
     /// Whether a piece ends with the spoken command that opens a new line, read with the piece after it.
