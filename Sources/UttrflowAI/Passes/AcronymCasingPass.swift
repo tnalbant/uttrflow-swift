@@ -8,7 +8,7 @@ public struct AcronymCasingPass: WholeTextCleaningPass {
     /// Each known written form, keyed by its lower-cased letters; an ordinary word is never a key.
     public let forms: [String: String]
     /// Each known file name or file-name stem, keyed by its lower-cased form: AGENTS.md, README.
-    public let fileForms: [String: String]
+    let fileForms: [String: String]
 
     public init(destination: Destination = .plain, vocabulary: [String] = [], onScreen: [String] = []) {
         let lexicon = TechnicalLexicon.terms
@@ -75,7 +75,7 @@ public struct AcronymCasingPass: WholeTextCleaningPass {
     private static let namedCategories: Set<TechnicalTerm.Category> = [.acronym, .tool, .language]
 
     /// The forms whose first letter is lower case, kept as written at a sentence start.
-    public var lowerCaseForms: [String: String] {
+    var lowerCaseForms: [String: String] {
         forms.filter { $0.value.first(where: \.isLetter)?.isLowercase == true }
     }
 
