@@ -291,6 +291,7 @@ public actor ClipboardStore {
     /// Removes every clip, pinned ones included, which is what resetting personalisation promises.
     public func forgetEverything() throws(ClipboardStoreError) {
         try save([])
+        forgetHeldPictures()
         do {
             try LocalStore.removeSetAside(file)
             try LocalStore.removeSetAside(savedFile)
