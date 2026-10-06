@@ -673,6 +673,25 @@ struct CaptureSessionTests {
         #expect(await recorder.texts.count == 2)
     }
 
+    @Test("A shell history import whose write fails is not marked done, and the next call finishes it.")
+    func failedShellHistoryImportIsRetried() async throws {
+        let scratch = Scratch()
+        try scratch.write("git status\nmake verify\nswift build\n", to: ".bash_history")
+        let sink = FlakySink(recordFailures: 1)
+        let session = try await session(scratch, sink, allowing: ["com.example.terminal"])
+        let surface = try #require(terminal.surface)
+        await #expect(throws: (any Error).self) {
+            try await session.importShellHistory(
+                forHomeDirectory: scratch.directory, into: surface, at: start)
+        }
+        #expect(await !session.decisions().hasImportedShellHistory)
+        let imported = try await session.importShellHistory(
+            forHomeDirectory: scratch.directory, into: surface, at: start)
+        #expect(imported == 3)
+        #expect(await sink.recorded == ["git status", "make verify", "swift build"])
+        #expect(await session.decisions().hasImportedShellHistory)
+    }
+
     @Test("Imported commands are stamped oldest first, ending at the import, so eviction keeps the newest.")
     func importedCommandsKeepTheirOrderInTime() async throws {
         let scratch = Scratch()
