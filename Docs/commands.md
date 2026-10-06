@@ -90,6 +90,11 @@ last dictation out. Every edit refuses, changing nothing, when another field is 
 dictation is no longer exactly where it was written (`Docs/insertion.md`).
 `Tests/UttrflowInputTests/RecordedEditTests.swift` pins each edit and the refusals.
 
+"replace X with Y" under the command key is planned by `ReplaceCommand` (X found as a word
+sequence by `WordForms`, the match nearest the end) and written by `RecordedEditor.rewrite` over
+the same span, so "undo that" puts the dictation back. When X is not in the last dictation the
+command refuses and nothing is written.
+
 ## Evaluation
 
 `EvaluationCorpus.commandCases` (`Sources/UttrflowEval/CommandCorpus.swift`) holds 20 cases per
