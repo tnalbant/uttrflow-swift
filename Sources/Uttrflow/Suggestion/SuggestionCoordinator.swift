@@ -292,7 +292,12 @@ final class SuggestionCoordinator {
             for application in preferences.turnedOff.subtracting(before.turnedOff) {
                 try? await capture.record(.declined, for: application)
             }
-            for application in preferences.turnedOn.subtracting(before.turnedOn) {
+            let newlyAllowed = preferences.turnedOn.subtracting(before.turnedOn)
+                .union(
+                    before.turnedOff.subtracting(preferences.turnedOff).filter {
+                        preferences.state(of: $0).isOn
+                    })
+            for application in newlyAllowed {
                 try? await capture.record(.allowed, for: application)
             }
         }
