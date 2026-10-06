@@ -48,6 +48,8 @@ struct CommandCredentialTests {
             "curl -H'Authorization: Bearer sunshine' https://api.example.com",
             "curl -H 'Proxy-Authorization: Digest sunshine' https://api.example.com",
             "curl -H 'X-Api-Key: sunshine' https://api.example.com",
+            "curl -H 'Ocp-Apim-Subscription-Key: sunshine' https://api.example.com",
+            "az storage blob list --account-key sunshine",
             "Authorization: token sunshine",
             "Authorization: CustomScheme sunshine",
             "\"Authorization\": \"Bearer sunshine\",",

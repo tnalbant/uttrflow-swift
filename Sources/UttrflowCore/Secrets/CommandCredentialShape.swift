@@ -252,7 +252,7 @@ enum CommandCredentialShape {
 
     /// Words that, anywhere before a final `key`, make the name a secret key's, as `AWS_SECRET_ACCESS_KEY` and `--private-key` do.
     private static let secretKeyQualifiers: Set<String> = [
-        "secret", "private", "access", "api", "auth", "cert",
+        "secret", "private", "access", "api", "auth", "cert", "account", "storage", "subscription",
     ]
 
     /// Whether a flag or header name, split at `-` and `_`, ends in a secret's name, as `--db-password` and `x-api-key` do.
