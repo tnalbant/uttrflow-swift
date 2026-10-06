@@ -241,3 +241,7 @@ back over the characters already typed.
 **Tab still takes the whole suggestion.** What is cut is the drawing, not the offer: the
 gates judged a whole line and the acceptance applies that line, and VoiceOver reads it in
 full. Taking only what is visible would cut a word wherever the field happens to end.
+
+**An expanded list keeps the ghost on the caret line.** When the list is taller than the room below that
+line, the panel uses the available height and clips the lower rows. It does not lift the ghost over the
+text being typed.
