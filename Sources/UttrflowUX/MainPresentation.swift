@@ -1,6 +1,7 @@
 // The main window's shared vocabulary: intents, actions, empty states, figures, and formatting.
 public import Foundation
 public import UttrflowCore
+public import UttrflowHistory
 
 /// What clicking something in the main window means, named so a page compares in a test.
 public enum MainIntent: Sendable, Equatable {
@@ -23,6 +24,8 @@ public enum MainIntent: Sendable, Equatable {
 
     /// This dictation came out wrong: the honest input to teaching.
     case flagDictation(UUID)
+    /// This dictation came out wrong in this way: a flag that names its error class.
+    case flagDictationAs(UUID, FlagReason)
     /// Open the word editor with this spelling as "Say it like", so the right spelling is typed once.
     case fixWord(String)
     /// Keep this dictation in clipboard history by choice.
@@ -42,14 +45,16 @@ public enum MainIntent: Sendable, Equatable {
 
     /// Open the inline word editor; the word arrives on ``saveWord(word:pronunciation:)``.
     case addWord
-    /// Commit the inline word editor; it only ever adds, since a dictionary row never offers Edit.
+    /// Commit the inline word editor as a new word; an edited word arrives as ``replaceWord(_:word:pronunciation:)``.
     case saveWord(word: String, pronunciation: String)
+    /// Open the inline word editor on this word, keeping its identity and counters on save.
+    case editWord(UUID)
     /// Close the inline word editor unchanged.
     case cancelWordEdit
-    /// Delete a word from the dictionary.
-    case forgetWord(UUID)
-    /// Trust a word that retired itself, and let it start earning its place again.
-    case restoreWord(UUID)
+    /// Delete the named words from the dictionary in one write, refusing each one.
+    case forgetWords(Set<UUID>)
+    /// Trust the named retired words again, and let them start earning their place.
+    case restoreWords(Set<UUID>)
     /// Respell an existing word as typed in the editor, keeping its counters.
     case replaceWord(UUID, word: String, pronunciation: String)
     /// Fold the second spelling of one word into the first, summing their counters.

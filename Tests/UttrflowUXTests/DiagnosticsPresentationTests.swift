@@ -702,6 +702,28 @@ struct DiagnosticsRecorderTests {
 
         #expect(await recorder.vocabularyPrompt.isEmpty)
     }
+
+    @Test("keeps each recording's capture quality, dropping the oldest once full")
+    func keepsCaptureQualityBounded() async throws {
+        let recorder = DiagnosticsRecorder(capacity: 2)
+        let qualities = try [0.1, 0.2, 0.4].map { level in
+            let steady = [Float](repeating: Float(level), count: 640)
+            return try #require(CaptureQuality.measure(samples: steady, sampleRate: 16_000))
+        }
+        for quality in qualities { await recorder.recordCaptureQuality(quality) }
+
+        #expect(await recorder.captureQualities == Array(qualities.suffix(2)))
+    }
+
+    @Test("a capacity that makes no sense keeps no capture quality")
+    func keepsNoCaptureQualityWithoutCapacity() async throws {
+        let recorder = DiagnosticsRecorder(capacity: 0)
+        let steady = [Float](repeating: 0.1, count: 640)
+        await recorder.recordCaptureQuality(
+            try #require(CaptureQuality.measure(samples: steady, sampleRate: 16_000)))
+
+        #expect(await recorder.captureQualities.isEmpty)
+    }
 }
 
 @Suite("Diagnostics says what needs doing, above what it measured")

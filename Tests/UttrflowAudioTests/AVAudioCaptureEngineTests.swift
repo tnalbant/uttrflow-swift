@@ -553,6 +553,8 @@ private final class MicrophoneWatchingCue: RecordingCueing {
 
     func playWarning() {}
 
+    func playDiscarded() {}
+
     var starts: Int { log.withLock(\.starts) }
     var stopsHeardWhileDelivering: [Bool] { log.withLock(\.stops) }
 }

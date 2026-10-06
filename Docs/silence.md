@@ -106,8 +106,8 @@ what the same speech costs with no padding at all.
 
 ## Recording conditions the loudness measure does not separate
 
-The measure is plain RMS over the whole spectrum, and the floor is one 10th percentile for the
-whole recording. Probed with `VoiceActivityConditionTests` (`swift test --filter
+The measure is each frame's RMS about its own mean, over the whole spectrum, and the floor is one
+10th percentile for the whole recording. Probed with `VoiceActivityConditionTests` (`swift test --filter
 VoiceActivityConditionTests`, which prints one `TRIMGRID` line per cell): ten seconds of room noise
 at −65 dBFS, two 2-second phrases (a 180 Hz tone with a 3 Hz swell) at 2–4 s and 6–8 s, and one
 added condition each. "Clip" is speech cut off; "over" is audio kept beyond speech plus `margin`.
@@ -115,18 +115,21 @@ added condition each. "Clip" is speech cut off; "over" is audio kept beyond spee
 | Speech level | clean | DC offset 0.01 | 60 Hz rumble at −30 dBFS | noise up 15 dB at 5 s |
 |---|---|---|---|---|
 | −25 dBFS | 0 / 0 ms | 0 / 0 ms | 0 / 0 ms | over 1800 ms |
-| −40 dBFS | 0 / 0 ms | **rejected** | **rejected** | over 1800 ms |
-| −55 dBFS | 0 / 0 ms | **rejected** | **rejected** | over 1800 ms |
+| −40 dBFS | 0 / 0 ms | 0 / 0 ms | **rejected** | over 1800 ms |
+| −55 dBFS | 0 / 0 ms | 0 / 0 ms | **rejected** | over 1800 ms |
 
-A DC offset or rumble lifts every frame, so the 95th percentile no longer stands three times above
-the 10th and the whole dictation is refused as nothing heard. A floor that steps up mid-recording
+Taking each frame's mean out before its RMS removes a DC offset without touching anything that
+moves: before it, the DC cells at −40 and −55 dBFS were rejected, and no other cell changed.
+Rumble still lifts every frame, so the 95th percentile no longer stands three times above the 10th
+and the whole dictation is refused as nothing heard. A floor that steps up mid-recording
 keeps the louder second half's noise as speech to the end of the recording.
 
 The same grid run through a first- or second-order high-pass at 100 Hz before the measure fixes
 DC offset at −40 dBFS but not rumble at either level, and loses −55 dBFS speech that passes
 unfiltered (660 ms clipped at first order, rejected at second), because the probe's voice sits at
-180 Hz, inside the filter's skirt. Neither filter touches the stepped floor. The measure is
-unchanged until a real-speech grid decides between the two candidate changes.
+180 Hz, inside the filter's skirt. Neither filter touches the stepped floor, so neither is used:
+rumble and the stepped floor wait for a real-speech grid to decide between a steeper filter and a
+trailing-window floor.
 
 ## The bracketed markers
 
