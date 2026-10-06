@@ -59,7 +59,7 @@ public enum TextInsertion {
             strategies: [
                 AccessibilityTextInsertionEngine(focus: focus),
                 TypedTextInsertionEngine(focus: focus, typist: typist),
-            ], focus: focus, ledger: ledger)
+            ], focus: focus, ledger: ledger ?? InsertionLedger())
     }
 
     /// The route an accepted suggestion takes, which has no clipboard in it at all. See `Docs/predict-accept.md`.

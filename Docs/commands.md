@@ -89,3 +89,20 @@ A span mark with nothing selected has no span, so it writes nothing.
 last dictation out. Every edit refuses, changing nothing, when another field is in front or the
 dictation is no longer exactly where it was written (`Docs/insertion.md`).
 `Tests/UttrflowInputTests/RecordedEditTests.swift` pins each edit and the refusals.
+
+## Evaluation
+
+`EvaluationCorpus.commandCases` (`Sources/UttrflowEval/CommandCorpus.swift`) holds 20 cases per
+Markdown command, all said under the command key: 10 that must run (the phrase alone, in five
+written forms, in two Markdown documents) and 10 that must not (the phrase inside a longer
+utterance, and the phrase alone in five documents that are not Markdown). `CommandReport` gives
+recall per command, every false execution, and false executions by document.
+
+| Gate | Limit |
+|---|---|
+| false executions | 0, since every command rewrites the selection |
+| recall per command | 100% over the corpus's written forms |
+
+`Tests/UttrflowEvalTests/CommandCorpusTests.swift` holds the shipped reader to the gate and shows
+that a reader matching the phrase anywhere in the utterance, or one that ignores the document,
+fails it. The corpus is text: recognition of the phrase on audio is not measured yet.

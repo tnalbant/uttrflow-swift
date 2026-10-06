@@ -136,6 +136,7 @@
     "UttrflowAI let insertionPoint": 1,
     "UttrflowAI let isSameSpelling": 1,
     "UttrflowAI let kind": 2,
+    "UttrflowAI let laws": 18,
     "UttrflowAI let layout": 1,
     "UttrflowAI let mark": 1,
     "UttrflowAI let matched": 1,
@@ -1018,6 +1019,7 @@
     "UttrflowCore enum Origin": 1,
     "UttrflowCore enum Outcome": 2,
     "UttrflowCore enum OutputSafety": 1,
+    "UttrflowCore enum PassLaw": 1,
     "UttrflowCore enum PauseLength": 1,
     "UttrflowCore enum PermissionError": 1,
     "UttrflowCore enum PermissionKind": 1,
@@ -1927,6 +1929,7 @@
     "UttrflowCore var kind": 1,
     "UttrflowCore var last": 1,
     "UttrflowCore var lastUsed": 1,
+    "UttrflowCore var laws": 1,
     "UttrflowCore var line": 1,
     "UttrflowCore var logged": 1,
     "UttrflowCore var longPause": 1,
@@ -5239,5 +5242,5 @@
     "UttrflowUX var weeks": 1,
     "UttrflowUX var words": 2
   },
-  "total": 7266
+  "total": 7286
 }
