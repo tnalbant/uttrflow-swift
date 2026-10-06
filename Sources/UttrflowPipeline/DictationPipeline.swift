@@ -99,7 +99,17 @@ public actor DictationPipeline {
     }
 
     /// What the clean-up steps did to each piece of the dictation under way, reported as one when it ends.
-    private var cleaningRecords: [CleaningRecord] = []
+    private var cleaningRecords: [KeptRecord] = []
+    /// Early spans the release join dropped, whose records are not part of the dictation's account.
+    private var droppedSpans: Set<UUID> = []
+    /// The early span the running task tidies, so its record can be withdrawn if the span is dropped.
+    @TaskLocal static var tidiedSpan: UUID?
+
+    /// One piece's cleaning record and the early span it came from, if any.
+    private struct KeptRecord {
+        let span: UUID?
+        let record: CleaningRecord
+    }
     /// Runs what is said while the command key is held, in place of inserting it.
     private let commands: EditCommandRegistry
     /// Where the next recording goes, set by the key that opens it and spent when it opens.
@@ -351,6 +361,7 @@ public actor DictationPipeline {
         insertedIntoIdentifier = nil
         destinationIsSecure = false
         cleaningRecords = []
+        droppedSpans = []
         transition(to: .recording)
         beginWorkingAhead(mine)
     }
@@ -443,6 +454,7 @@ public actor DictationPipeline {
         insertedIntoIdentifier = recordingDestination?.bundleIdentifier
         destinationIsSecure = false
         cleaningRecords = []
+        droppedSpans = []
         openRecording = recording
         forgetTheLastAttempt()
         await process(audio, mine, delivery: .copy)
@@ -541,7 +553,7 @@ public actor DictationPipeline {
                 let piece = await earlyTidyTask.value
                 guard state == .recording, generation == mine, !wasCancelled(mine), !Task.isCancelled
                 else { return }
-                early.spans.append(.done(piece))
+                early.spans.append(.done(piece, span: early.tidyTask?.span))
                 early.tidyTask = nil
             }
 
@@ -575,12 +587,15 @@ public actor DictationPipeline {
             if let heard {
                 // The piece before is read as heard, which every path has once it is recognised.
                 let preceding = early.spans.last?.heard
+                let span = UUID()
                 let tidy = Task {
-                    await self.finish(
-                        heard, seeing: seeing, correctionSeeing: seeing, after: preceding,
-                        recording: NoOpMetricsRecorder(), for: mine)
+                    await Self.$tidiedSpan.withValue(span) {
+                        await self.finish(
+                            heard, seeing: seeing, correctionSeeing: seeing, after: preceding,
+                            recording: NoOpMetricsRecorder(), for: mine)
+                    }
                 }
-                early.tidyTask = Span.Tidying(task: tidy, heard: heard)
+                early.tidyTask = Span.Tidying(task: tidy, heard: heard, span: span)
                 // Warm for the next piece after this one finishes, without making key-up wait for warm-up.
                 Task {
                     let piece = await tidy.value
@@ -658,13 +673,31 @@ public actor DictationPipeline {
     /// Hands the dictation's account to its page when anything was tidied or skipped; never a secure field.
     private func reportCleaning(for delivery: Delivery) async {
         if !cleaningRecords.isEmpty, !destinationIsSecure, delivery != .command {
-            await cleaningRecorder.record(CleaningRecord.merging(cleaningRecords))
+            await cleaningRecorder.record(CleaningRecord.merging(cleaningRecords.map(\.record)))
         }
+    }
+
+    /// Stops a span the release join re-decodes, and takes its record out of the dictation's account.
+    private func withdraw(_ span: Span) async {
+        let id: UUID?
+        switch span {
+        case .done(_, let span): id = span
+        case .tidying(let running):
+            id = running.span
+            running.task.cancel()
+            _ = await running.task.value
+        case .pending: id = nil
+        }
+        guard let id else { return }
+        droppedSpans.insert(id)
+        cleaningRecords.removeAll { $0.span == id }
     }
 
     /// Keeps a piece's cleaning record for the dictation's account, unless that dictation has ended.
     func keep(_ cleaning: CleaningRecord, for mine: Int) {
-        if isStillRunning(mine) { cleaningRecords.append(cleaning) }
+        let span = Self.tidiedSpan
+        guard isStillRunning(mine), !(span.map(droppedSpans.contains) ?? false) else { return }
+        cleaningRecords.append(KeptRecord(span: span, record: cleaning))
     }
 
     /// Whether the dictation that started at `mine` is still the one under way.
@@ -710,7 +743,7 @@ public actor DictationPipeline {
 
     /// One span of a recording: the words a pass finished it with, or audio a later pass still has to do.
     private enum Span {
-        case done(Piece)
+        case done(Piece, span: UUID?)
         case pending(Range<Int>)
         /// Still being tidied when the key came up; joined by the release pass instead of waited on at the hand-off.
         case tidying(Tidying)
@@ -719,12 +752,13 @@ public actor DictationPipeline {
         struct Tidying {
             let task: Task<Piece, Never>
             let heard: Transcription
+            let span: UUID
         }
 
         /// The words recognised for this span, or `nil` for audio not yet recognised.
         var heard: Transcription? {
             switch self {
-            case .done(let piece): piece.heard
+            case .done(let piece, _): piece.heard
             case .pending: nil
             case .tidying(let tidying): tidying.heard
             }
@@ -814,6 +848,7 @@ public actor DictationPipeline {
         let earlyContext = handed.context
         // Pieces cut from other audio than this cannot be joined to it.
         if delivery == .copy || cut > audio.samples.count {
+            for span in spans { await withdraw(span) }
             spans = []
             cut = 0
             cleaningRecords = []
@@ -823,8 +858,8 @@ public actor DictationPipeline {
             in: audio.samples, sampleRate: audio.sampleRate, from: cut,
             joiningPreviousWindowFrom: delivery != .copy ? previousWindowStart : nil,
             boundaries: audio.discontinuities)
-        if let first = remainder.first, first.lowerBound < cut {
-            if !spans.isEmpty { spans.removeLast() }
+        if let first = remainder.first, first.lowerBound < cut, let dropped = spans.popLast() {
+            await withdraw(dropped)
         }
         // Nothing at all still goes to the recogniser, whose refusal names the reason.
         if spans.isEmpty, remainder.isEmpty { remainder = [cut..<audio.samples.count] }
@@ -859,7 +894,7 @@ public actor DictationPipeline {
                 let window: Range<Int>
                 if let heard = span.heard { precedingHeard = heard }
                 switch span {
-                case .done(let piece):
+                case .done(let piece, _):
                     if let earlier = await tidying.next() { pieces.append(earlier) }
                     pieces.append(piece)
                     continue

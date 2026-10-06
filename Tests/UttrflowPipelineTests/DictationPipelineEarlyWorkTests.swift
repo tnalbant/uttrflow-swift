@@ -133,6 +133,43 @@ private actor HeldCleaner: TranscriptCleaning {
     var isHolding: Bool { held != nil }
 }
 
+/// A tidier that holds its second tidy until that tidy is cancelled, and accounts for each piece by its first word.
+private final class CancelWatchingCleaner: TranscriptCleaning, Sendable {
+    private let state = Mutex((calls: 0, holding: false, cancelled: [String](), finished: [String]()))
+
+    func clean(_ request: TransformationRequest) async throws(TransformationError) -> TransformationResult {
+        let text = request.transcription.text
+        let call = state.withLock { state -> Int in
+            state.calls += 1
+            return state.calls
+        }
+        if call == 2 {
+            state.withLock { $0.holding = true }
+            while !Task.isCancelled { await Task.yield() }
+            state.withLock { $0.cancelled.append(text) }
+            throw .outputRejected(reason: "cancelled", kind: .lostWord)
+        }
+        state.withLock { $0.finished.append(text) }
+        let first = text.split(separator: " ").first.map(String.init) ?? ""
+        return TransformationResult(
+            text: text.uppercased(), producedBy: .foundationModels,
+            cleaning: CleaningRecord(changes: [CleaningRecord.Change(step: .fillers, removed: [first])]))
+    }
+
+    func warm(for situation: Situation?) async {}
+
+    var isHolding: Bool { state.withLock(\.holding) }
+    var cancelled: [String] { state.withLock(\.cancelled) }
+    var finished: [String] { state.withLock(\.finished) }
+}
+
+/// Keeps what the pipeline reported as each dictation's cleaning account.
+private actor KeptCleaningAccounts: CleaningRecording {
+    private(set) var records: [CleaningRecord] = []
+
+    func record(_ record: CleaningRecord) async { records.append(record) }
+}
+
 /// A tidier that shouts, so its work on each piece can be seen, and remembers where it was warmed for.
 private final class ShoutingCleaner: TranscriptCleaning, Sendable {
     private let state = Mutex((warmed: [Destination?](), seen: [String](), contexts: [AppContext]()))
@@ -708,6 +745,29 @@ struct DictationPipelineEarlyWorkTests {
 
         #expect(await pipeline.currentState.outcome?.text == "W2 X")
         #expect(await speech.calls == 2)
+    }
+
+    @Test("a tidy the release join drops is cancelled and leaves nothing in the account")
+    func droppedTidyIsCancelledAndUnaccounted() async throws {
+        let capture = FakeAudioCaptureEngine(stopOutcome: .success(Take.fragmentTail))
+        await capture.setCaptured(Take.fragmentTail)
+        let speech = NumberingSpeechEngine()
+        let cleaner = CancelWatchingCleaner()
+        let accounts = KeptCleaningAccounts()
+        let pipeline = DictationPipeline(
+            capture: capture, speech: speech, cleaner: cleaner,
+            context: FakeContextEngine(context: .fixture()), inserter: FakeTextInserter(),
+            cleaningRecorder: accounts, windowing: quick, earlyPoll: .milliseconds(2))
+
+        await pipeline.startRecording()
+        try await eventually { cleaner.isHolding }
+        await pipeline.finishRecording()
+
+        #expect(await pipeline.currentState.outcome?.text == "W1 X. W3 X")
+        #expect(cleaner.cancelled == ["w2 x"], "the dropped span's tidy is cancelled")
+        #expect(!cleaner.finished.contains("w2 x"))
+        let removed = await accounts.records.flatMap(\.changes).flatMap(\.removed)
+        #expect(removed.sorted() == ["w1", "w3"], "only inserted pieces are in the account")
     }
 
     @Test("a silent early window does not remove the preceding finished span")
