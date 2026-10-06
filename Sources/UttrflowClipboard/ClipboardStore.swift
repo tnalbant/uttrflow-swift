@@ -374,7 +374,7 @@ public actor ClipboardStore {
 
     /// Whether a picture's file is still a file where the clip expects it.
     private func isOnDisk(_ image: ClipImage) -> Bool {
-        let url = imagesFolder.appending(path: image.file, directoryHint: .notDirectory)
+        guard let url = pictureURL(image.file) else { return false }
         return (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true
     }
 
@@ -410,15 +410,13 @@ public actor ClipboardStore {
 
     /// Whether a clip's picture file is still present without opening the file.
     public func hasImage(for image: ClipImage) -> Bool {
-        FileManager.default.fileExists(
-            atPath: imagesFolder.appending(path: image.file, directoryHint: .notDirectory)
-                .path(percentEncoded: false))
+        guard let url = pictureURL(image.file) else { return false }
+        return FileManager.default.fileExists(atPath: url.path(percentEncoded: false))
     }
 
     /// The bytes of a clip's picture, or `nil` when the file has gone from under the app.
     public func imageData(for image: ClipImage) -> Data? {
-        let url = imagesFolder.appending(path: image.file, directoryHint: .notDirectory)
-        guard let data = try? Data(contentsOf: url) else { return nil }
+        guard let url = pictureURL(image.file), let data = try? Data(contentsOf: url) else { return nil }
         guard let encryptedStore else { return data }
         if EncryptedStore.isSealed(data) {
             do { return try encryptedStore.open(data, for: image.file) } catch {
@@ -446,7 +444,7 @@ public actor ClipboardStore {
 
     /// Writes PNG bytes sealed with the shared key and the image filename as authenticated data.
     private func writeImage(_ data: Data, named name: String) throws {
-        let url = imagesFolder.appending(path: name, directoryHint: .notDirectory)
+        guard let url = pictureURL(name) else { throw CocoaError(.fileWriteInvalidFileName) }
         guard let encryptedStore else { return try PrivateFile.write(data, to: url) }
         try PrivateFile.write(try encryptedStore.seal(data, for: name), to: url)
     }
@@ -474,9 +472,15 @@ public actor ClipboardStore {
     /// Deletes pictures by name; best-effort, so a stuck file cannot cost the write that asked.
     private func removePictures(_ names: Set<String>) {
         for name in names {
-            try? FileManager.default.removeItem(
-                at: imagesFolder.appending(path: name, directoryHint: .notDirectory))
+            guard let url = pictureURL(name) else { continue }
+            try? FileManager.default.removeItem(at: url)
         }
+    }
+
+    /// Where a picture named by the index lives, or nil when the name is not one file inside the Images folder.
+    private func pictureURL(_ name: String) -> URL? {
+        guard ClipImage.isConfinedFileName(name) else { return nil }
+        return imagesFolder.appending(path: name, directoryHint: .notDirectory)
     }
 
     /// Replaces a clip's formatted note, leaving its plain form recoverable.
@@ -854,8 +858,7 @@ public actor ClipboardStore {
 
     /// Seals a plaintext image after confirming the migration has not raced with another store write.
     private func sealLegacyPicture(_ data: Data, named name: String) {
-        let url = imagesFolder.appending(path: name, directoryHint: .notDirectory)
-        guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)),
+        guard let url = pictureURL(name), FileManager.default.fileExists(atPath: url.path(percentEncoded: false)),
             let header = try? FileHandle(forReadingFrom: url),
             let prefix = try? header.read(upToCount: EncryptedStore.sealedHeaderLength)
         else { return }
