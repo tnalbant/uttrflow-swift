@@ -908,6 +908,7 @@ public enum SettingsPresenter {
         case .on: nil
         case .turnedOff: "You turned AI suggestions off here."
         case .offByDefault: "Off here by default (it has its own suggestions)"
+        case .offAsPrivate: "Off here by default (it holds private information)"
         }
     }
 

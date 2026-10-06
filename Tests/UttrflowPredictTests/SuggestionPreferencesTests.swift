@@ -27,6 +27,19 @@ struct SuggestionPreferencesTests {
         #expect(!preferences.isEnabled(in: bundleIdentifier, at: moment))
     }
 
+    @Test("Ships switched off in every listed private application, and the user's choice turns it on.")
+    func privateApplicationsShipOff() {
+        for application in SuggestionApplications.privateByDefault {
+            var preferences = SuggestionPreferences(isEnabled: true)
+            #expect(preferences.state(of: application.bundleIdentifier) == .offAsPrivate)
+            #expect(!preferences.isEnabled(in: application.bundleIdentifier, at: moment))
+            #expect(preferences.knownApplications().contains(application))
+            preferences.set(application.bundleIdentifier, isOn: true)
+            #expect(preferences.state(of: application.bundleIdentifier) == .on)
+            #expect(preferences.isEnabled(in: application.bundleIdentifier, at: moment))
+        }
+    }
+
     @Test("Ships switched on in every other editor.", arguments: ["com.apple.dt.Xcode", "dev.zed.Zed"])
     func otherEditorsShipOn(bundleIdentifier: String) {
         let preferences = SuggestionPreferences(isEnabled: true)

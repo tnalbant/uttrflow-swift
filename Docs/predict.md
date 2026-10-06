@@ -45,6 +45,11 @@ Two editors ship switched off because they have suggestions of their own
 (`SuggestionApplications.offByDefault`: Cursor and Visual Studio Code). They are always listed, so
 a switch that ships off can be found and turned on.
 
+Password managers, remote-desktop clients and virtual machines also ship switched off, because
+their ordinary fields hold private information (`SuggestionApplications.privateByDefault`:
+1Password, Bitwarden, KeePassXC, Keychain Access, Passwords, Screen Sharing, Windows App,
+Parallels Desktop, VMware Fusion and UTM). They are listed the same way and turned on the same way.
+
 ## The pieces
 
 | Piece | Where | What it owns |

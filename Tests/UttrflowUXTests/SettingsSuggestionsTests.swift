@@ -178,6 +178,7 @@ struct SettingsSuggestionsPaneTests {
         #expect(SettingsPresenter.applicationSentence(.on) == nil)
         #expect(SettingsPresenter.applicationSentence(.turnedOff)?.isEmpty == false)
         #expect(SettingsPresenter.applicationSentence(.offByDefault)?.contains("its own suggestions") == true)
+        #expect(SettingsPresenter.applicationSentence(.offAsPrivate)?.contains("private information") == true)
     }
 }
 
