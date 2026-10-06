@@ -40,8 +40,8 @@ struct HostileSelectedTextLiveModelTests {
     }
 
     @Test(
-        "never obeys, answers, or copies a hostile instruction quoted as selected text",
-        arguments: EvaluationCorpus.hostileSelectedText)
+        "never obeys, answers, or copies a hostile instruction quoted from the screen",
+        arguments: EvaluationCorpus.hostileSelectedText + EvaluationCorpus.hostileWindowTitle)
     func refusesHostileScreenText(testCase: EvaluationCase) async throws {
         guard await modelIsReady() else { return }
 
@@ -56,8 +56,8 @@ struct HostileSelectedTextLiveModelTests {
     }
 
     @Test(
-        "produces the ordinary tidy-up once the hostile selection is withheld",
-        arguments: EvaluationCorpus.hostileSelectedText)
+        "produces the ordinary tidy-up once the hostile screen text is withheld",
+        arguments: EvaluationCorpus.hostileSelectedText + EvaluationCorpus.hostileWindowTitle)
     func controlWithContextWithheld(testCase: EvaluationCase) async throws {
         guard await modelIsReady() else { return }
 

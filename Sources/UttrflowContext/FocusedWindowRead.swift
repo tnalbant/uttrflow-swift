@@ -161,7 +161,7 @@ extension MacContextEngine {
         sink.bank(FocusedWindow(title: title, field: identity))
         // The same names, selection and bounded value the suggestion read asks, so the secure order is decided once.
         let names = source.names(of: field)
-        guard !names.isDeclaredSecure else {
+        guard !names.isSecureOrUnknown else {
             return sink.bank(FocusedWindow(title: title, isSecure: true, field: identity))
         }
         guard isWanted() else { return }

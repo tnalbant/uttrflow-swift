@@ -330,7 +330,13 @@ public actor PersonalDictionaryStore {
     /// Clears a retired entry's undo count, keeping its uses. See `Docs/app-dictionary-store.md`.
     @discardableResult
     public func restore(_ id: UUID) throws(DictionaryStoreError) -> DictionaryEntry? {
-        try update(id) { $0.timesReverted = 0 }
+        try restore(Set([id])).first
+    }
+
+    /// Clears every named entry's undo count with one write; an identifier that is not there changes nothing.
+    @discardableResult
+    public func restore(_ ids: Set<UUID>) throws(DictionaryStoreError) -> [DictionaryEntry] {
+        try update(ids) { $0.timesReverted = 0 }
     }
 
     /// Respells every stored Devanagari word in Latin letters once, answering each change as before and after.

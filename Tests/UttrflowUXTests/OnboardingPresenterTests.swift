@@ -408,6 +408,12 @@ struct OnboardingPresenterTests {
                 identifier: "user-3", displayName: nil, emailAddress: "sam@example.com", provider: .apple),
             next: .setup)
         #expect(byAddress.initials == "S" && byAddress.firstName == nil)
+
+        let lowerCase = OnboardingWelcome(
+            account: Account(
+                identifier: "user-4", displayName: "sam rivers", emailAddress: nil, provider: .apple),
+            next: .setup)
+        #expect(lowerCase.firstName == "Sam")
     }
 
     @Test("names every page the welcome can lead to")

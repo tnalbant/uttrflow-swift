@@ -122,9 +122,20 @@ struct CaptureGateTests {
         }
     }
 
-    @Test("Malformed groups and values over eight digits remain ordinary text.")
-    func malformedOrLongGroupedNumbersPass() {
-        for value in ["1--2", "-1234", "1234.", "1 2 3 4 5 6 7 8 9"] {
+    @Test(
+        "Identity, phone, account and card numbers of any length are refused, with or without separators.",
+        arguments: [
+            "123456789", "123 45 6789", "9876543210", "98765-43210", "123456789012", "1234 5678 9012",
+            "4000123412341234", "4000-1234-1234-1234", "1 2 3 4 5 6 7 8 9",
+        ])
+    func longNumericWebValuesAreRefused(value: String) {
+        let browser = FieldReading(bundleIdentifier: "com.example.browser", role: "AXTextField")
+        #expect(CaptureGate.refusal(toRecord: value, from: browser, given: allowed) == .sensitiveValue)
+    }
+
+    @Test("Malformed digit groups remain ordinary text.")
+    func malformedGroupedNumbersPass() {
+        for value in ["1--2", "-1234", "1234."] {
             #expect(CaptureGate.refusal(toRecord: value, from: field(), given: allowed) == nil)
         }
     }
@@ -134,6 +145,9 @@ struct CaptureGateTests {
     func shortNumericTerminalValuesPass() {
         let terminalAllowed = CapturePreferences(consent: ["com.apple.terminal": .allowed])
         #expect(CaptureGate.refusal(toRecord: "123456", from: terminalField(), given: terminalAllowed) == nil)
+        #expect(
+            CaptureGate.refusal(toRecord: "123456789012", from: terminalField(), given: terminalAllowed)
+                == nil)
     }
 
     @Test("A destructive command is refused, so it can never be stored to complete later.")
@@ -190,6 +204,27 @@ struct CaptureGateTests {
     func secretRuleIsShared() {
         #expect(CaptureGate.looksLikeSecret("AKIAIOSFODNN7EXAMPLE"))
         #expect(!CaptureGate.looksLikeSecret("git commit -m 'fix the thing'"))
+    }
+
+    @Test(
+        "A credential on any line of a multi-line value is a secret, as it is on one line.",
+        arguments: [
+            ("docker run", "  -e DB=a8Kd93jfLq02xZpVnQ7r", "  img"),
+            ("curl https://api.example.com", "  -d a8Kd93jfLq02xZpVnQ7rT5", "  --fail"),
+            ("echo start", "Bearer a8Kd93jfLq02xZpVnQ7r", "echo done"),
+            ("echo start", "secret a8Kd93jfLq02xZpV", "echo done"),
+        ])
+    func continuationLineSecretIsRefused(lines: (String, String, String)) {
+        let oneLine = [lines.0, lines.1, lines.2].joined(separator: " ")
+        let continued = [lines.0, lines.1, lines.2].joined(separator: "\n")
+        #expect(CaptureGate.looksLikeSecret(oneLine))
+        #expect(CaptureGate.looksLikeSecret(continued))
+        #expect(CaptureGate.refusal(toRecord: continued, from: field(), given: allowed) == .looksLikeSecret)
+    }
+
+    @Test("A multi-line value with no credential on any line is not a secret.")
+    func multiLineOrdinaryValuePasses() {
+        #expect(!CaptureGate.looksLikeSecret("docker run \\\n  -e MODE=production \\\n  img"))
     }
 }
 
