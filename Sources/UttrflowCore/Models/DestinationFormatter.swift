@@ -229,6 +229,9 @@ public struct DestinationFormatter: Sendable, Equatable {
             // A statement opens no sentence, so source takes its first word as spoken, as a terminal does.
             if region.isCode, preceding != nil { return withFirstWord(.asSpoken, base) }
         }
+        if situation.destination == .email, let header = emailHeader(situation.app.fieldRole, base) {
+            return header
+        }
         let rule = DestinationClassifier.rule(for: situation.app)
             .flatMap { $0.destination == situation.destination ? $0 : nil }
         let ruleStop = rule?.terminalStop
@@ -245,6 +248,21 @@ public struct DestinationFormatter: Sendable, Equatable {
             layout: isSingleLine ? .singleLine : base.layout,
             grammar: base.grammar, numbers: base.numbers, digits: base.digits,
             promptBlock: base.promptBlock, consequence: isSearch ? .navigates : base.consequence)
+    }
+
+    /// A recipient or subject field's one-line, stopless formatter; `nil` keeps the email policy for any other field.
+    private static func emailHeader(_ role: FieldRole, _ base: DestinationFormatter) -> DestinationFormatter?
+    {
+        let firstWord: FirstWordPolicy
+        switch role {
+        case .recipient: firstWord = .asSpoken
+        case .subject: firstWord = base.firstWord
+        default: return nil
+        }
+        return DestinationFormatter(
+            destination: base.destination, firstWord: firstWord, terminalStop: .never,
+            layout: .singleLine, grammar: base.grammar, numbers: base.numbers, digits: base.digits,
+            promptBlock: base.promptBlock, consequence: base.consequence)
     }
 
     /// The same formatter with another first-word policy.
