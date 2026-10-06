@@ -365,7 +365,7 @@ struct GenerativeTextTransformerTests {
                 RuleBasedTransformer(),
             ], preference: [.foundationModels, .rules])
         #expect(
-            try await commentRouter.transform(request(preceding: "// ")).text == "this invalidates the cache."
+            try await commentRouter.transform(request(preceding: "// ")).text == "This invalidates the cache."
         )
 
         let codeRouter = TransformerRouter(

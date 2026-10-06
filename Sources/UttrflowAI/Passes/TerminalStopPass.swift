@@ -174,10 +174,15 @@ public struct TerminalStopPass: WholeTextCleaningPass {
                 paragraph.append(index)
                 continue
             }
-            if word.text.hasPrefix("\n\n"), let last = paragraph.last, paragraph.count >= 3,
+            let greetsOrSignsOff =
+                destination == .email && Self.isEmailGreetingOrSignOff(paragraph, in: draft)
+            if word.text.hasPrefix("\n\n"), let last = paragraph.last, greetsOrSignsOff {
+                // A greeting or a closing takes no stop, a stop the model wrote included.
+                let unstopped = WordShape.withoutTrailingStop(draft.words[last].text)
+                if unstopped != draft.words[last].text { draft.replace(at: last, with: unstopped, by: id) }
+            } else if word.text.hasPrefix("\n\n"), let last = paragraph.last, paragraph.count >= 3,
                 !(opening?.isListMark ?? false), !isLiteral(paragraph, in: draft),
-                MarkLegality.verdict(.stop, after: draft.words[last].text) != .illegal,
-                !(destination == .email && Self.isEmailGreetingOrSignOff(paragraph, in: draft))
+                MarkLegality.verdict(.stop, after: draft.words[last].text) != .illegal
             {
                 let preceding = paragraph.dropLast().map { draft.words[$0].text }.joined(separator: " ")
                 draft.replace(
