@@ -279,7 +279,11 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
 
     /// Whether a number, spoken or in digits, directly precedes the run at `position` in the same clause.
     private static func followsNumber(_ position: Int, in live: [Int], draft: Draft) -> Bool {
-        guard position > 0, live[position] == live[position - 1] + 1 else { return false }
+        guard position > 0 else { return false }
+        // Only the words a written number took in may stand between: "eighty one m g" is 81 then mg.
+        let between = (live[position - 1] + 1)..<live[position]
+        guard between.allSatisfy({ draft.words[$0].state == .removed(by: NumberFormsPass.id) })
+        else { return false }
         let previous = draft.shape(at: live[position - 1])
         return !previous.endsClause && NumberWords.isNumber(previous.key)
     }
