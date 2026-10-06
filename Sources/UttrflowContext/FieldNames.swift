@@ -1,5 +1,4 @@
 import UttrflowCore
-import UttrflowPredict
 
 /// The names a focused field publishes for itself, which the secure check reads before any of its text.
 public struct FieldNames: Sendable, Equatable {

@@ -1,6 +1,6 @@
 import Testing
 
-@testable import UttrflowPredict
+@testable import UttrflowCore
 
 @Suite("Recognising a field that hides what is typed")
 struct SecureFieldTests {

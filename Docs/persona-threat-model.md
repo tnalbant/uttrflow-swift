@@ -63,7 +63,7 @@ residual risks here when it lands, and is held to the rules below.
 | A word is learned only after three sightings that were also spoken, never from window chrome | `Tests/UttrflowDictionaryTests/DictionaryLearningTests.swift`, `Tests/UttrflowDictionaryTests/LearnableWordsTests.swift` |
 | Secure and one-time-code fields are refused before consent is consulted; unasked applications are refused | `Tests/UttrflowPredictCaptureTests/CaptureGateTests.swift` |
 | Secrets are swept out of captured lines | `Tests/UttrflowPredictCaptureTests/SecretSweepTests.swift` |
-| Nothing is read in or around a secure field | `Tests/UttrflowContextTests/SurroundingsSecureTests.swift`, `Tests/UttrflowPredictTests/SecureFieldTests.swift` |
+| Nothing is read in or around a secure field | `Tests/UttrflowContextTests/SurroundingsSecureTests.swift`, `Tests/UttrflowCoreTests/SecureFieldTests.swift` |
 | Dictation into a secure field is marked as kept nowhere | `Tests/UttrflowPipelineTests/DictationSecureFieldTests.swift` |
 | A credential-shaped dictation is inserted and kept nowhere | `Tests/UttrflowPipelineTests/DictationCredentialTests.swift` |
 | No log line carries typed, read or said text | `make log-audit`, `Tests/UttrflowTests/SuggestionLogTests.swift` |
