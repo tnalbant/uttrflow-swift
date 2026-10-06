@@ -7,7 +7,7 @@ enum CredentialPrompt {
         "passcode", "code", "otp", "token", "पासवर्ड", "पासफ़्रेज़", "पिन", "कोड", "टोकन",
     ]
 
-    private static let ambiguousBareTerms: Set<String> = ["code", "token"]
+    private static let ambiguousBareTerms: Set<String> = ["code"]
 
     private static let introducers: Set<String> = [
         "a", "again", "authentication", "confirm", "current", "de", "empty", "enter", "factor",
