@@ -9,6 +9,12 @@ private func joined(_ pieces: [String], _ destination: Destination) -> String {
     PieceJoiner.laidOut(pieces, under: .standard(for: destination))
 }
 
+/// The pieces as a dictation joins them: each seam judged, then the whole laid out; the message's own stop is the cleaner's.
+private func seamedAndLaidOut(_ pieces: [String], _ destination: Destination) -> String {
+    let formatter = DestinationFormatter.standard(for: destination)
+    return PieceJoiner.laidOut(PieceJoiner.seamed(pieces, under: formatter), under: formatter)
+}
+
 /// A piece carrying only its cleaned words, for the tests that are about the layout.
 private func piece(
     _ text: String, heard: String? = nil, by producedBy: TransformerKind = .rules,
@@ -274,8 +280,8 @@ struct PieceJoinerParagraphTests {
             joined(["Guide.", "New paragraph", "open questions."], .email)
                 == "Guide.\n\nopen questions.")
         #expect(
-            joined(["First item new line", "second item"], .document)
-                == "First item\nsecond item.")
+            seamedAndLaidOut(["First item new line", "second item"], .document)
+                == "First item\nsecond item")
     }
 
     @Test("keeps a named new line at the end of a piece as words")
@@ -359,20 +365,20 @@ struct PieceJoinerRestatementTests {
     @Test("drops a replaced phrase when its correction trigger ends the previous piece")
     func triggerAtEndOfPreviousPiece() {
         #expect(
-            joined(["Let's move it to Tuesday no wait", "Wednesday afternoon"], .document)
-                == "Let's move it to Wednesday afternoon.")
+            seamedAndLaidOut(["Let's move it to Tuesday no wait", "Wednesday afternoon"], .document)
+                == "Let's move it to Wednesday afternoon")
         #expect(
-            joined(["Let's move it to Tuesday sorry", "Wednesday afternoon"], .document)
-                == "Let's move it to Wednesday afternoon.")
+            seamedAndLaidOut(["Let's move it to Tuesday sorry", "Wednesday afternoon"], .document)
+                == "Let's move it to Wednesday afternoon")
         #expect(
-            joined(["Let's move it to Tuesday I mean", "Wednesday afternoon"], .document)
-                == "Let's move it to Wednesday afternoon.")
+            seamedAndLaidOut(["Let's move it to Tuesday I mean", "Wednesday afternoon"], .document)
+                == "Let's move it to Wednesday afternoon")
     }
 
     @Test("keeps a trailing apology when the next piece does not restate the phrase")
     func trailingSorryIsAnApology() {
         #expect(
-            joined(["I am sorry", "Thank you for waiting"], .document)
+            seamedAndLaidOut(["I am sorry", "Thank you for waiting"], .document)
                 == "I am sorry. Thank you for waiting")
     }
 
