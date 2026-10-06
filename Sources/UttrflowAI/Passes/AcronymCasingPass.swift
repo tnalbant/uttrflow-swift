@@ -1,12 +1,14 @@
 public import UttrflowCore
 import UttrflowDictionary
 
-/// Writes an acronym, tool or language name in its known casing from the lexicon, dictionary and screen.
+/// Writes an acronym, tool, language or file name in its known casing from the lexicon, dictionary and screen.
 public struct AcronymCasingPass: WholeTextCleaningPass {
     public static let id: PassID = .acronymCasing
 
     /// Each known written form, keyed by its lower-cased letters; an ordinary word is never a key.
     public let forms: [String: String]
+    /// Each known file name or file-name stem, keyed by its lower-cased form: AGENTS.md, README.
+    public let fileForms: [String: String]
 
     public init(destination: Destination = .plain, vocabulary: [String] = [], onScreen: [String] = []) {
         let lexicon = TechnicalLexicon.terms
@@ -16,12 +18,22 @@ public struct AcronymCasingPass: WholeTextCleaningPass {
             .map { WordShape(String($0)).core }
         var forms: [String: String] = [:]
         // Later sources win: the user's spelling beats the screen's, and the screen's beats the lexicon's.
-        for form in lexicon.filter(Self.isOneWord) + sighted.filter(Self.isAcronym) + own.filter(Self.isOneWord) {
+        for form in lexicon.filter(Self.isOneWord) + sighted.filter(Self.isAcronym)
+            + own.filter(Self.isOneWord)
+        {
             let key = form.lowercased()
             guard !GeneralVocabulary.isOrdinary(key) else { continue }
             forms[key] = form
         }
         self.forms = forms
+        let stems = TechnicalLexicon.terms
+            .filter { $0.category == .fileFormat && $0.applies(in: destination) }.map(\.id).filter(
+                Self.isOneWord)
+        var fileForms: [String: String] = [:]
+        for form in stems + sighted.filter(Self.isFileName) + own.filter(Self.isFileName) {
+            fileForms[form.lowercased()] = form
+        }
+        self.fileForms = fileForms
     }
 
     public func apply(_ draft: Draft) -> Draft {
@@ -37,11 +49,26 @@ public struct AcronymCasingPass: WholeTextCleaningPass {
     /// The written form of a word in lower case or as said at a sentence start, plural "apis" included.
     func cased(_ core: String) -> String? {
         guard core.dropFirst().allSatisfy({ !$0.isUppercase }) else { return nil }
+        if Self.isFileName(core) { return casedFileName(core) }
         let key = core.lowercased()
         if let form = forms[key] { return form }
         guard key.hasSuffix("s"), let form = forms[String(key.dropLast())], form.last?.isUppercase == true
         else { return nil }
         return form + "s"
+    }
+
+    /// A file name as seen whole, else its stem's known casing with the ending kept as spoken: "readme.md" is README.md.
+    private func casedFileName(_ core: String) -> String? {
+        if let form = fileForms[core.lowercased()] { return form }
+        guard let dot = core.lastIndex(of: "."), !core[..<dot].contains(".") else { return nil }
+        let stem = core[..<dot].lowercased()
+        guard let form = fileForms[stem] else { return nil }
+        return form + core[dot...]
+    }
+
+    /// Whether a written word is a file name: a name, a dot and a known ending.
+    private static func isFileName(_ word: String) -> Bool {
+        TechnicalToken.classify(word) == .fileName
     }
 
     /// The lexicon categories whose written form is a name with its own casing.

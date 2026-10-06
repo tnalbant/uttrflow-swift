@@ -80,4 +80,32 @@ struct AcronymCasingPassTests {
         #expect(AcronymCasingPass(destination: .terminal).forms["api"] == "API")
         #expect(AcronymCasingPass().forms["go"] == nil)
     }
+
+    @Test(
+        "writes a spoken file name in the lexicon's casing, keeping the ending as spoken",
+        arguments: [
+            ("update the readme dot md first", "Update the README.md first."),
+            ("add a line to the changelog dot md", "Add a line to the CHANGELOG.md."),
+            ("open package dot json", "Open package.json."),
+            ("rename it to app dot tsx", "Rename it to app.tsx."),
+        ])
+    func fileNameCased(input: String, expected: String) {
+        #expect(CleaningPipeline.standard.run(Draft(text: input)).text == expected)
+    }
+
+    @Test("takes a file name's casing from the screen or dictionary, else keeps it lower case")
+    func fileNameFromScreen() {
+        let pass = AcronymCasingPass(vocabulary: ["Podfile.lock"], onScreen: ["See AGENTS.md, then build."])
+        #expect(
+            pass.apply(Draft(text: "read agents.md and podfile.lock and notes.md")).text
+                == "read AGENTS.md and Podfile.lock and notes.md")
+        #expect(AcronymCasingPass().apply(Draft(text: "read agents.md")).text == "read agents.md")
+    }
+
+    @Test(
+        "leaves an ordinary sentence with dot in it as words",
+        arguments: ["she wore a polka dot dress", "connect the dot to the line"])
+    func dotProseKept(input: String) {
+        #expect(CleaningPipeline.standard.run(Draft(text: input)).text.lowercased() == input + ".")
+    }
 }
