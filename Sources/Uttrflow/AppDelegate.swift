@@ -583,7 +583,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             suggestions: PredictCorpus(
                 container: container, running: running, encryptedStore: encryptedStore),
             met: { AppDelegate.applicationsTheLoopHasMet(in: container) },
-            elsewhere: elsewhere, evidence: evidence)
+            elsewhere: elsewhere, ledger: .shared, evidence: evidence)
     }
 
     /// Applications the completion loop has met, so the Suggestions list can offer a switch for each.

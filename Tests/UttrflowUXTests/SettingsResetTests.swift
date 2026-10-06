@@ -178,7 +178,7 @@ struct FilePersonalisationStoreTests {
 
             let counts = await FilePersonalisationStore(
                 dictionary: dictionary, history: history,
-                clipboard: clipboardStore(in: directory)
+                clipboard: clipboardStore(in: directory), ledger: NetworkActivityLedger(file: nil)
             )
             .personalisation(keeping: Retention(days: 7, now: now))
             #expect(counts == SettingsPersonalisation(learnedWords: 3, addedWords: 2, transcripts: 4))
@@ -197,7 +197,7 @@ struct FilePersonalisationStoreTests {
 
             let counts = await FilePersonalisationStore(
                 dictionary: dictionary, history: history,
-                clipboard: clipboardStore(in: directory)
+                clipboard: clipboardStore(in: directory), ledger: NetworkActivityLedger(file: nil)
             )
             .personalisation(keeping: Retention(days: 7, now: now))
             #expect(counts.transcripts == 0)
@@ -213,7 +213,7 @@ struct FilePersonalisationStoreTests {
             try await fill(dictionary, history, now: now)
             let store = FilePersonalisationStore(
                 dictionary: dictionary, history: history,
-                clipboard: clipboardStore(in: directory))
+                clipboard: clipboardStore(in: directory), ledger: NetworkActivityLedger(file: nil))
 
             try await store.carryOut(.learnedWords)
 
@@ -235,7 +235,8 @@ struct FilePersonalisationStoreTests {
             let store = FilePersonalisationStore(
                 dictionary: dictionary, history: history,
                 clipboard: clipboardStore(in: directory),
-                elsewhere: KeptElsewhere(revokeEncryptionKey: { await tracker.revoke() }))
+                elsewhere: KeptElsewhere(revokeEncryptionKey: { await tracker.revoke() }),
+                ledger: NetworkActivityLedger(file: nil))
 
             try await store.carryOut(.everything)
 
@@ -252,7 +253,8 @@ struct FilePersonalisationStoreTests {
             let store = FilePersonalisationStore(
                 dictionary: dictionary, history: history,
                 clipboard: clipboardStore(in: directory),
-                elsewhere: KeptElsewhere(revokeEncryptionKey: { throw CocoaError(.fileWriteUnknown) }))
+                elsewhere: KeptElsewhere(revokeEncryptionKey: { throw CocoaError(.fileWriteUnknown) }),
+                ledger: NetworkActivityLedger(file: nil))
 
             await #expect(throws: SettingsResetFailure.self) {
                 try await store.carryOut(.everything)
@@ -271,7 +273,7 @@ struct FilePersonalisationStoreTests {
 
             let store = FilePersonalisationStore(
                 dictionary: dictionary, history: history,
-                clipboard: clipboardStore(in: directory))
+                clipboard: clipboardStore(in: directory), ledger: NetworkActivityLedger(file: nil))
             await #expect(throws: SettingsResetFailure.self) {
                 try await store.carryOut(.learnedWords)
             }
@@ -690,7 +692,8 @@ struct SettingsResetLeftoverTests {
                 elsewhere: KeptElsewhere(
                     recordings: { await calls.add("recordings") },
                     snippets: { await calls.add("snippets") },
-                    suggestionConsent: { await calls.add("consent") }))
+                    suggestionConsent: { await calls.add("consent") }),
+                ledger: NetworkActivityLedger(file: nil))
             let copies = [
                 "history.json", "clipboard.json", "saved.v1.json", "dictionary.json",
             ].map { directory.appending(path: "\($0).unreadable-1") }
@@ -717,7 +720,7 @@ struct SettingsResetLeftoverTests {
                 dictionary: PersonalDictionaryStore(file: directory.appending(path: "dictionary.json")),
                 history: DictationHistoryStore(file: directory.appending(path: "history.json")),
                 clipboard: ClipboardStore(file: directory.appending(path: "clipboard.json")),
-                evidence: evidence)
+                ledger: NetworkActivityLedger(file: nil), evidence: evidence)
 
             try await evidence.append([row], keeping: always)
             try await store.carryOut(.learnedWords)
@@ -738,7 +741,8 @@ struct SettingsResetLeftoverTests {
                 dictionary: PersonalDictionaryStore(file: directory.appending(path: "dictionary.json")),
                 history: DictationHistoryStore(file: directory.appending(path: "history.json")),
                 clipboard: ClipboardStore(file: directory.appending(path: "clipboard.json")),
-                elsewhere: KeptElsewhere(recordings: { throw Refused() }))
+                elsewhere: KeptElsewhere(recordings: { throw Refused() }),
+                ledger: NetworkActivityLedger(file: nil))
             await #expect(throws: SettingsResetFailure.self) {
                 try await store.carryOut(.everything)
             }
@@ -756,7 +760,8 @@ struct SettingsResetLeftoverTests {
                 elsewhere: KeptElsewhere(
                     recordings: { throw Refused() },
                     snippets: { await calls.add("snippets") },
-                    suggestionConsent: { await calls.add("consent") }))
+                    suggestionConsent: { await calls.add("consent") }),
+                ledger: NetworkActivityLedger(file: nil))
             await #expect(throws: SettingsResetFailure.self) {
                 try await store.carryOut(.everything)
             }

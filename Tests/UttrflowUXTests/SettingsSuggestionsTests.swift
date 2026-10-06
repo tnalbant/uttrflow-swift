@@ -2,6 +2,7 @@ import Foundation
 import Synchronization
 import Testing
 import UttrflowClipboard
+import UttrflowCore
 import UttrflowDictionary
 import UttrflowHistory
 import UttrflowPredict
@@ -475,7 +476,7 @@ private func personalisationStore(
         dictionary: PersonalDictionaryStore(file: directory.appending(path: "dictionary.json")),
         history: DictationHistoryStore(file: directory.appending(path: "history.json")),
         clipboard: ClipboardStore(file: directory.appending(path: "clipboard.json")),
-        suggestions: corpus)
+        suggestions: corpus, ledger: NetworkActivityLedger(file: nil))
 }
 
 // MARK: - The menu bar's three switches

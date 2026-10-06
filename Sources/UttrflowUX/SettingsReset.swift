@@ -223,7 +223,7 @@ public struct FilePersonalisationStore: SettingsPersonalisationStore {
         suggestions: (any SuggestionCorpus)? = nil,
         met: @escaping @Sendable () -> Set<String> = { [] },
         elsewhere: KeptElsewhere = KeptElsewhere(),
-        ledger: NetworkActivityLedger = .shared,
+        ledger: NetworkActivityLedger,
         evidence: EvidenceLedgerStore? = nil
     ) {
         self.ledger = ledger
