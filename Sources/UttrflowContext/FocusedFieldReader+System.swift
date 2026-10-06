@@ -275,8 +275,8 @@ public enum FocusedFieldReader {
             stable = value
         }
         let identity = stable.identity
-        // Decided before the value is fetched, so a declared secure field's contents are never read at all.
-        let declaredSecure = identity.isDeclaredSecure
+        // Decided before any field text or marker read, so secure or unknown fields are not read further.
+        let secureOrUnknown = identity.isSecureOrUnknown
         guard goOn() else { return nil }
         let selected = SurfaceProbe.selection(field)
         if case .discontinuous = selected { return nil }
@@ -285,7 +285,7 @@ public enum FocusedFieldReader {
             range = value
         } else {
             range =
-                declaredSecure || !goOn()
+                secureOrUnknown || !goOn()
                 ? nil
                 : markerSelection(field).map {
                     CFRange(location: $0.range.location, length: $0.range.length)
