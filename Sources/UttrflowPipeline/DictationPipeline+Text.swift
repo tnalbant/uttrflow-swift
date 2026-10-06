@@ -21,9 +21,17 @@ extension Transcription {
 
     /// The same speech with the dictionary's spellings in it, settled, and every word keeping the score it was heard with.
     func saying(_ corrected: CorrectedTranscript) -> Transcription {
-        guard corrected.text != text else { return self }
+        guard corrected.text != text || !corrected.held.isEmpty else { return self }
         let heard = Draft(transcription: self)
         guard heard.confidencesAreReal else { return saying(corrected.text) }
+        // A run the corrector weighed and kept is settled as heard, so no later layer reads it as half-heard.
+        let settled = Set(corrected.held.flatMap { $0 })
+        func standing(_ index: Int) -> TranscribedWord {
+            let word = heard.words[index]
+            return settled.contains(index)
+                ? TranscribedWord(text: word.text, confidence: 1, start: word.start, end: word.end)
+                : word.scored
+        }
 
         var scored: [TranscribedWord] = []
         var next = 0
@@ -34,14 +42,17 @@ extension Transcription {
             guard range.lowerBound >= next, range.upperBound <= heard.words.count else {
                 return saying(corrected.text)
             }
-            scored += heard.words[next..<range.lowerBound].map(\.scored)
-            // Settled so nothing downstream rewrites them; the score stays the heard one, never a stand-in of 1.
+            scored += (next..<range.lowerBound).map(standing)
+            // Keep the recogniser's score and audio span while marking the dictionary reading final.
+            let replaced = heard.words[range]
             scored += correction.wrote.split(whereSeparator: \.isWhitespace).map {
-                TranscribedWord(text: String($0), confidence: correction.heardConfidence, settled: true)
+                TranscribedWord(
+                    text: String($0), confidence: correction.heardConfidence, settled: true,
+                    start: replaced.first?.start, end: replaced.last?.end)
             }
             next = range.upperBound
         }
-        scored += heard.words[next...].map(\.scored)
+        scored += (next..<heard.words.count).map(standing)
 
         // The words have to spell the text, or the confidences would be read onto the wrong ones.
         let spelling = corrected.text.split(whereSeparator: \.isWhitespace).joined()
@@ -59,6 +70,6 @@ extension Transcription {
 extension Draft.Word {
     /// The word as the recogniser reported it, so a rebuilt transcription can carry its score.
     fileprivate var scored: TranscribedWord {
-        TranscribedWord(text: text, confidence: confidence)
+        TranscribedWord(text: text, confidence: confidence, start: start, end: end)
     }
 }

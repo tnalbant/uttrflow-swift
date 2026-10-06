@@ -54,9 +54,6 @@ public struct SettingsCapabilities: Sendable, Equatable {
     /// Whether this build has an update feed; false without `SUFeedURL` or `SUPublicEDKey`.
     public var canCheckForUpdates: Bool
 
-    /// The speech engines whose model is present and usable right now.
-    public var readySpeechEngines: Set<SpeechEngineKind>
-
     /// The clean-up engines above the floor that are usable now; the floor itself is always ready.
     public var readyTransformers: Set<TransformerKind>
 
@@ -81,13 +78,15 @@ public struct SettingsCapabilities: Sendable, Equatable {
     /// What macOS does when the Globe or Fn key is pressed by itself.
     public var globeKeyAction: GlobeKeyAction
 
+    /// The input devices present, as UID and name, for the microphone choice.
+    public var microphones: [SettingsMicrophone]
+
     /// Builds the answers; updates and the version default to absent.
     public init(
         launchAtLogin: LaunchAtLoginStatus,
         canPlayRecordingSound: Bool,
         canCheckForUpdates: Bool = false,
         versionDescription: String? = nil,
-        readySpeechEngines: Set<SpeechEngineKind>,
         readyTransformers: Set<TransformerKind>,
         foundationModelAvailability: TransformerAvailability? = nil,
         transformerAvailability: [TransformerKind: TransformerAvailability] = [:],
@@ -95,13 +94,13 @@ public struct SettingsCapabilities: Sendable, Equatable {
         suggestionRuntime: SuggestionRuntimeStatus = .idle,
         unarmedShortcuts: [ShortcutAction: HotkeyError] = [:],
         clipboardCapturePaused: Bool = false,
-        globeKeyAction: GlobeKeyAction = .doNothing
+        globeKeyAction: GlobeKeyAction = .doNothing,
+        microphones: [SettingsMicrophone] = []
     ) {
         self.launchAtLogin = launchAtLogin
         self.canPlayRecordingSound = canPlayRecordingSound
         self.canCheckForUpdates = canCheckForUpdates
         self.versionDescription = versionDescription
-        self.readySpeechEngines = readySpeechEngines
         self.readyTransformers = readyTransformers
         self.foundationModelAvailability = foundationModelAvailability
         self.transformerAvailability = transformerAvailability
@@ -110,6 +109,7 @@ public struct SettingsCapabilities: Sendable, Equatable {
         self.unarmedShortcuts = unarmedShortcuts
         self.clipboardCapturePaused = clipboardCapturePaused
         self.globeKeyAction = globeKeyAction
+        self.microphones = microphones
     }
 
     /// A Mac that can do everything: the start of a real probe, and a test's default.
@@ -118,7 +118,6 @@ public struct SettingsCapabilities: Sendable, Equatable {
         canPlayRecordingSound: true,
         canCheckForUpdates: true,
         versionDescription: "1.0.0 (1)",
-        readySpeechEngines: Set(SpeechEngineKind.allCases),
         readyTransformers: Set(TransformerKind.selectable),
         suggestionModel: .ready
     )
@@ -132,6 +131,17 @@ public struct SettingsCapabilities: Sendable, Equatable {
     public func globeKeyWarning(for binding: HotkeyBinding) -> String? {
         guard binding.isFunctionHold else { return nil }
         return globeKeyAction.warning
+    }
+}
+
+/// An input device as the microphone choice offers it: a stable UID and the name macOS gives it.
+public struct SettingsMicrophone: Sendable, Equatable {
+    public let uid: String
+    public let name: String
+
+    public init(uid: String, name: String) {
+        self.uid = uid
+        self.name = name
     }
 }
 

@@ -5,6 +5,7 @@ import Testing
 import UttrflowTestSupport
 
 @testable import UttrflowClipboard
+@testable import UttrflowCore
 
 /// The one detection rule with a cost attached to being wrong; every credential below is invented.
 @Suite("What must not be legible on a shared screen")
@@ -337,6 +338,12 @@ struct SecretDetectionTests {
             "X=123\nJWT_KEY=" + hexKey,
             "X=123\njwt-key=" + hexKey,
             "X=123\njwtkey=" + hexKey,
+            "Endpoint=https://example.invalid/\nAccountKey=" + hexKey + "==",
+            "X=123\nSharedAccessKey=" + hexKey,
+            "X=123\nSharedAccessSignature=sv2023" + hexKey,
+            "X=123\nAZURE_STORAGE_KEY=" + hexKey,
+            "Accept: */*\nOcp-Apim-Subscription-Key: " + hexKey,
+            "Accept: */*\nX-Auth-Key: " + hexKey,
         ])
     func namedSecrets(_ text: String) {
         #expect(ClipKindDetector.kind(of: text) == .secret)
@@ -698,6 +705,9 @@ struct SecretDetectionTests {
         arguments: [
             "var password: String",
             "var signing_key: String",
+            "var key: String",
+            "var accountKey: String",
+            "X=123\npublic_key=" + hexKey,
             "let apiKey: String?",
             "password = nil",
             "Change your password: now",
@@ -818,7 +828,7 @@ struct SecretDetectionTests {
             "123456789012",
             "123e4567-e89b-12d3-a456-426614174000",
             "com.uttrflow.clipboard.watcher.queue1",
-            "/Users/naveen/Library/Application1",
+            "/Users/avery/Library/Application1",
             "~/Developer/uttrflow/Sources/Clipboard2",
             "https://example.com/a/verylongpathsegment12345",
             "The quick brown fox jumps over the lazy dog again and again for 24 chars.",

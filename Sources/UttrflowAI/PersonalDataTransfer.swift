@@ -2,6 +2,7 @@
 
 public import UttrflowDictionary
 public import struct Foundation.Data
+public import struct Foundation.Date
 public import struct Foundation.URL
 public import class Foundation.FileHandle
 
@@ -20,7 +21,8 @@ public enum PersonalDataTransfer {
     public static func importArchive(
         _ data: Data,
         into dictionary: PersonalDictionaryStore,
-        and snippets: SnippetStore
+        and snippets: SnippetStore,
+        importedAt: Date = Date()
     ) async throws -> PersonalDataImportReport {
         let archive = try PersonalDataArchive.decode(data)
         guard
@@ -37,7 +39,7 @@ public enum PersonalDataTransfer {
         let words: (kept: [DictionaryEntry], outcome: PersonalDataMerge<DictionaryEntry>)
         do {
             words = try await dictionary.replaceAll { current in
-                let merge = archive.mergedDictionary(into: current)
+                let merge = archive.mergedDictionary(into: current, importedAt: importedAt)
                 return (merge.records, merge)
             }
         } catch {

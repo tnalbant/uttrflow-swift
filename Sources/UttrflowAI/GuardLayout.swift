@@ -37,37 +37,47 @@ extension MeaningPreservationGuard {
         return (paragraphs, lines)
     }
 
-    /// Accepts a rewrite unless it is empty, chatty (unless excused), far longer, mostly dropped, invents a number, or adds quotation or exclamation marks.
+    /// Accepts a rewrite unless it is empty, chatty (unless excused), far longer, mostly dropped, invents a number, or adds a symbol.
     static func textVerdict(original: String, rewritten: String, excusingPreamble: Bool) -> GuardVerdict {
-        let originalWords = TextTidy.words(original)
-        let rewrittenWords = TextTidy.words(rewritten)
+        let input = GuardInput(text: original, rewritten: rewritten, excusingPreamble: excusingPreamble)
+        return verdict(of: textChecks, on: input)
+    }
 
-        if !originalWords.isEmpty, rewrittenWords.isEmpty {
-            return .rejected(reason: "the rewrite is empty", kind: .emptyRewrite)
-        }
-        if case .rejected(let reason, let kind) = Self.spokenAmpersandVerdict(
-            original: original, rewritten: rewritten)
-        {
-            return .rejected(reason: reason, kind: kind)
-        }
+    /// Refuses an empty rewrite of something said.
+    static func emptyVerdict(original: String, rewritten: String) -> GuardVerdict {
+        guard !TextTidy.words(original).isEmpty, TextTidy.words(rewritten).isEmpty else { return .accepted }
+        return .rejected(reason: "the rewrite is empty", kind: .emptyRewrite)
+    }
+
+    /// Refuses a chat-like opening the speaker did not say.
+    static func preambleVerdict(original: String, rewritten: String) -> GuardVerdict {
         // A speaker who opens with "I have" or "sure" gets their words; the entry's punctuation is the model's, not theirs.
-        if !excusingPreamble,
+        guard
             let preamble = Self.preambles.first(where: {
                 rewritten.lowercased().hasPrefix($0)
                     && !original.lowercased().hasPrefix($0.trimmingCharacters(in: .punctuationCharacters))
             })
-        {
-            return .rejected(reason: "the rewrite begins with '\(preamble)'", kind: .preamble)
-        }
+        else { return .accepted }
+        return .rejected(reason: "the rewrite begins with '\(preamble)'", kind: .preamble)
+    }
+
+    /// Refuses a rewrite far longer than what was said, or one that kept too little of it.
+    static func lengthVerdict(original: String, rewritten: String) -> GuardVerdict {
+        let originalWords = TextTidy.words(original)
+        let rewrittenWords = TextTidy.words(rewritten)
         if Double(rewrittenWords.count) > Double(originalWords.count) * Self.maximumGrowthFactor + 4 {
             return .rejected(reason: "the rewrite is far longer than what was said", kind: .tooLong)
         }
-        if originalWords.count > Self.shortUtteranceWords {
-            let retained = Double(rewrittenWords.count) / Double(originalWords.count)
-            if retained < Self.minimumRetainedFraction {
-                return .rejected(reason: "the rewrite dropped most of what was said", kind: .tooShort)
-            }
+        if originalWords.count > Self.shortUtteranceWords,
+            Double(rewrittenWords.count) / Double(originalWords.count) < Self.minimumRetainedFraction
+        {
+            return .rejected(reason: "the rewrite dropped most of what was said", kind: .tooShort)
         }
+        return .accepted
+    }
+
+    /// Refuses a number the speaker did not say, another amount, or changed Indian grouping.
+    static func numberVerdict(original: String, rewritten: String) -> GuardVerdict {
         if let invented = Self.inventedNumber(original: original, rewritten: rewritten) {
             return .rejected(reason: "the rewrite introduced the number \(invented)", kind: .inventedNumber)
         }
@@ -78,23 +88,67 @@ extension MeaningPreservationGuard {
             return .rejected(
                 reason: "the rewrite changed the Indian grouping in \(changed)", kind: .changedNumber)
         }
-        if Self.addsQuotationPair(original: original, rewritten: rewritten) {
-            return .rejected(reason: "the rewrite added quotation marks", kind: .inventedQuotation)
-        }
-        if rewritten.count(where: { $0 == "!" }) > original.count(where: { $0 == "!" }) {
-            return .rejected(reason: "the rewrite added an exclamation mark", kind: .inventedExclamation)
-        }
         return .accepted
     }
 
-    /// Refuses a rewrite that spells a spoken ampersand as "and" or turns "and" into an ampersand.
-    static func spokenAmpersandVerdict(original: String, rewritten: String) -> GuardVerdict {
-        let heard = original.filter { $0 == "&" }.count
-        let written = rewritten.filter { $0 == "&" }.count
-        guard heard == written else {
-            return .rejected(reason: "the rewrite changed a spoken ampersand", kind: .lostWord)
+    /// One row of the symbol table: what the rewrite may not do with one kind of symbol, and how a refusal reads.
+    struct SymbolCheck: Sendable {
+        let name: String
+        let reason: String
+        let kind: RefusalKind
+        let violates: @Sendable (_ original: String, _ rewritten: String) -> Bool
+    }
+
+    /// Every symbol kind the guard holds a rewrite to, in the order a refusal names them.
+    static let symbolChecks: [SymbolCheck] = [
+        SymbolCheck(
+            name: "ampersand", reason: "the rewrite changed a spoken ampersand", kind: .lostWord,
+            violates: { original, rewritten in count("&", in: original) != count("&", in: rewritten) }),
+        SymbolCheck(
+            name: "quotation", reason: "the rewrite added quotation marks", kind: .inventedQuotation,
+            violates: { original, rewritten in addsQuotationPair(original: original, rewritten: rewritten) }),
+        SymbolCheck(
+            name: "exclamation", reason: "the rewrite added an exclamation mark", kind: .inventedExclamation,
+            violates: { original, rewritten in count("!", in: rewritten) > count("!", in: original) }),
+        addedKind("emoji", "an emoji", isEmoji),
+        addedKind("dash", "a dash") { $0 == "\u{2014}" || $0 == "\u{2013}" },
+        addedKind("ellipsis", "an ellipsis character") { $0 == "\u{2026}" },
+        addedKind("asterisk", "an asterisk") { $0 == "*" },
+        addedKind("hash", "a hash sign") { $0 == "#" },
+        addedKind("at", "an at sign") { $0 == "@" },
+        addedKind("bullet", "a bullet") { $0 == "\u{2022}" },
+    ]
+
+    /// A row refusing a symbol kind the rewrite holds and the draft neither holds nor names.
+    private static func addedKind(
+        _ name: String, _ noun: String, _ member: @escaping @Sendable (Character) -> Bool
+    ) -> SymbolCheck {
+        SymbolCheck(
+            name: name, reason: "the rewrite added \(noun)", kind: .inventedSymbol,
+            violates: { original, rewritten in
+                rewritten.contains(where: member) && !original.contains(where: member)
+                    && !TextTidy.words(original).contains { word in
+                        symbolNames[word.lowercased()].map { $0.contains(where: member) } ?? false
+                    }
+            })
+    }
+
+    /// How many times a symbol occurs in a text.
+    private static func count(_ symbol: Character, in text: String) -> Int {
+        text.count(where: { $0 == symbol })
+    }
+
+    /// Refuses a rewrite that breaks any row of the symbol table, naming the first.
+    static func symbolVerdict(original: String, rewritten: String) -> GuardVerdict {
+        guard let broken = symbolChecks.first(where: { $0.violates(original, rewritten) }) else {
+            return .accepted
         }
-        return .accepted
+        return .rejected(reason: broken.reason, kind: broken.kind)
+    }
+
+    /// Whether a character draws as an emoji, by default or through its presentation selector.
+    private static func isEmoji(_ character: Character) -> Bool {
+        character.unicodeScalars.contains { $0.properties.isEmojiPresentation || $0 == "\u{FE0F}" }
     }
 
     /// Whether the rewrite adds a quoted word span that has no counterpart in the draft.
