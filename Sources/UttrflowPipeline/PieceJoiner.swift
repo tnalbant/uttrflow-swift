@@ -31,10 +31,12 @@ enum PieceJoiner {
                 removableStops.append(original.count - 1)
             }
         }
-        let source = original
-        let exact = source == text
-        return SeamSnippetInput(
-            text: text, removableStops: exact ? removableStops : [], source: exact ? source : text)
+        // The message's finishing cases the openings and adds a closing stop, which leaves every seam stop where it was.
+        let head = String(text.prefix(original.count))
+        let exact =
+            head.lowercased() == original.lowercased() && head.count == original.count
+            && text.dropFirst(original.count).allSatisfy { ".!?".contains($0) }
+        return SeamSnippetInput(text: text, removableStops: exact ? removableStops : [], source: text)
     }
 
     /// Every piece as one, with the corrections' word ranges moved to where their piece begins.
