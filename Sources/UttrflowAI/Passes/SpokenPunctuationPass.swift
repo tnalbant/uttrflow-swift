@@ -66,6 +66,12 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
                 position += 1
                 continue
             }
+            if let echoed = echoedName(at: position, in: live, of: draft) {
+                for index in live[position..<(position + echoed)] { draft.remove(at: index, by: Self.id) }
+                live.removeSubrange(position..<(position + echoed))
+                sentenceEnd = nil
+                continue
+            }
             guard
                 let found = SpokenCommands.marks.first(where: {
                     draft.spells($0.words, at: position, in: live)
@@ -355,6 +361,18 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
         draft.replace(at: live[position], with: address.text, by: Self.id)
         for index in live[(position + 1)..<after] { draft.remove(at: index, by: Self.id) }
         live.removeSubrange((position + 1)..<after)
+    }
+
+    /// How many words name a mark already written on the word before, as a model writes ", comma,"; nil when none does.
+    private func echoedName(at position: Int, in live: [Int], of draft: Draft) -> Int? {
+        guard position > 0,
+            let found = SpokenCommands.marks.first(where: { draft.spells($0.words, at: position, in: live) }),
+            !found.placement.attachesAfter, found.placement != .standalone,
+            draft.shape(at: live[position - 1]).suffix.hasSuffix(found.text)
+        else { return nil }
+        // The name's own mark must be nothing or the same mark, so removing it loses nothing the model wrote.
+        let own = draft.shape(at: live[position + found.words.count - 1]).suffix
+        return own.isEmpty || own == found.text ? found.words.count : nil
     }
 
     /// Whether an ordinary name stands at a seam: it is sentence-final, follows punctuation, or has a continuation.
