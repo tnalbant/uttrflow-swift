@@ -97,7 +97,7 @@ struct OnboardingPresenterTests {
 
         #expect(page.buttons.map(\.title) == ["Keep off", "Share"])
         #expect(page.buttons.map(\.intent) == [.setUsageStatistics(false), .setUsageStatistics(true)])
-        #expect(page.buttons[0].isProminent)
+        #expect(page.buttons.map(\.isSelected) == [true, false])
     }
 
     // MARK: Rules that hold on every page
