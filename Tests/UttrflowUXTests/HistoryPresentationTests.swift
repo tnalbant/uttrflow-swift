@@ -247,7 +247,8 @@ struct HistoryRowActionsTests {
         let row = HistoryPresenter.row(
             for: entry, relativeTo: HistoryFixture.now, locale: HistoryFixture.locale)
 
-        #expect(row.more.map(\.title) == ["Flag: Wrong Words", "Flag: Formatting", "Flag: Spacing", "Delete"])
+        #expect(
+            row.more.map(\.title) == ["Flag: Wrong Words", "Flag: Formatting", "Flag: Spacing", "Delete"])
         #expect(row.more.last?.intent == .forgetDictation(entry.id))
         #expect(row.more.last?.isDestructive == true)
     }
@@ -273,7 +274,10 @@ struct HistoryRowActionsTests {
             calendar: HistoryFixture.calendar, locale: HistoryFixture.locale)
         let row = page.days.first?.rows.first
 
-        #expect(row?.more.map(\.title) == ["Flag: Wrong Words", "Flag: Formatting", "Flag: Spacing", "Keep as clip", "Delete"])
+        #expect(
+            row?.more.map(\.title) == [
+                "Flag: Wrong Words", "Flag: Formatting", "Flag: Spacing", "Keep as clip", "Delete",
+            ])
         #expect(row?.more.dropLast().last?.intent == .keepDictationAsClip(entry.id))
     }
 

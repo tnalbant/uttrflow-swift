@@ -434,13 +434,14 @@ public enum HistoryPresenter {
                     symbolName: entry.isFlagged ? "flag.fill" : "flag",
                     intent: .flagDictation(entry.id)),
             ],
-            more: flagReasons(for: entry.id) + (canKeepAsClip
-                ? [
-                    MainAction(
-                        title: "Keep as clip", symbolName: "doc.on.clipboard",
-                        intent: .keepDictationAsClip(entry.id))
-                ]
-                : []) + [.delete(.forgetDictation(entry.id))],
+            more: flagReasons(for: entry.id)
+                + (canKeepAsClip
+                    ? [
+                        MainAction(
+                            title: "Keep as clip", symbolName: "doc.on.clipboard",
+                            intent: .keepDictationAsClip(entry.id))
+                    ]
+                    : []) + [.delete(.forgetDictation(entry.id))],
             fixes: fixes(for: entry.text))
     }
 
