@@ -9,6 +9,9 @@ public protocol FocusedTextField: Sendable {
     func replaceSelection(
         replacing replaced: String, with text: String
     ) throws(TextInsertionError)
+
+    /// Moves the caret `units` back from the end of a recorded insertion, refusing what it cannot verify.
+    func placeCaret(in target: EditTarget, back units: Int) throws(TextInsertionError)
 }
 
 extension FocusedTextField {
@@ -20,6 +23,11 @@ extension FocusedTextField {
             throw .insertionRejected(description: "the field cannot select backwards")
         }
         try replaceSelection(with: text)
+    }
+
+    /// A field that cannot select a range cannot move its caret, so the caret stays after the words.
+    public func placeCaret(in target: EditTarget, back units: Int) throws(TextInsertionError) {
+        guard units == 0 else { throw .insertionRejected(description: "the field cannot move the caret") }
     }
 }
 

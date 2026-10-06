@@ -54,4 +54,16 @@ struct PictureUndoTests {
 
         #expect(await folder.store.imageData(for: image) == nil)
     }
+
+    @Test("resetting removes a picture held for an undo")
+    func resetRemovesAHeldPicture() async throws {
+        let folder = try TemporaryFolder()
+        let clip = try await recorded(in: folder)
+        let image = try #require(clip.image)
+
+        _ = try await folder.store.delete(clip.id, keeping: folder.retention, holdingPicture: true)
+        try await folder.store.forgetEverything()
+
+        #expect(await folder.store.imageData(for: image) == nil)
+    }
 }

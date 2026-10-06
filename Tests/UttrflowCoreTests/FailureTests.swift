@@ -115,7 +115,7 @@ struct FailurePresentationTests {
         #expect(SpeechEngineError.transcriptionFailed(description: "x").recovery == .retry)
 
         #expect(TextInsertionError.noFocusedTextField.recovery == .showHistory)
-        #expect(TextInsertionError.noFocusedTextField.userMessage.contains("Recent"))
+        #expect(TextInsertionError.noFocusedTextField.userMessage.contains("History"))
         #expect(TextInsertionError.accessibilityDenied.recovery == .openSystemSettings(.accessibility))
         #expect(TextInsertionError.insertionTimedOut.recovery == .showHistory)
         #expect(TextInsertionError.insertionRejected(description: "x").recovery == .pasteManually)
@@ -143,14 +143,14 @@ struct FailurePresentationTests {
         let failure = TextInsertionError.clipboardUnavailable
         #expect(failure.recovery == .showHistory)
         #expect(!failure.userMessage.lowercased().contains("paste"))
-        #expect(failure.userMessage.contains("Recent"))
+        #expect(failure.userMessage.contains("History"))
     }
 
     @Test("an unconfirmed insertion offers the saved transcript, not an assumed clipboard copy")
     func insertionTimeoutDoesNotOfferAPaste() {
         let failure = TextInsertionError.insertionTimedOut
         #expect(failure.recovery == .showHistory)
-        #expect(failure.userMessage.contains("Recent"))
+        #expect(failure.userMessage.contains("History"))
         #expect(
             failure.userMessage
                 == "Your dictation didn't arrive in time. It's saved in History.")

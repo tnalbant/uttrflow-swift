@@ -154,8 +154,11 @@ A value that is an unquoted variable, substitution or placeholder (`$TOKEN`, `${
 `<token>`) is left alone, since it names where the credential is rather than being it. Quoted
 shell punctuation is part of the value; a redirect operator outside quotes ends the word first.
 
-A `.netrc` password is read in the context of its machine or default block across lines. `account`
-fields are consumed as values, and a `macdef` body is skipped through its blank-line terminator.
+A `.netrc` password is read as a whitespace-delimited value in its machine or default block,
+independent of shell punctuation in the value. `account` fields are consumed as values, and a
+blank line ends the block or a `macdef` body. A `#` at the start of a line begins a comment; a
+`#` inside a password value is part of the value. A whole-value variable, substitution or
+placeholder is left alone.
 
 ### Lines already learned
 
