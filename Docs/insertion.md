@@ -49,7 +49,11 @@ the captured destination or, without one, the application in front at the first 
 or typist failure after the first chunk throws `insertionInterrupted(typed:total:)`, since the
 posted characters cannot be taken back.
 
-A strategy that throws `insertionUnconfirmed`, `insertionTargetChanged`, `insertionInterrupted` or
+Before every write the target check also asks the window server whether the window the field was
+read in still exists; a closed window refuses with `insertionFieldClosed`, which keeps the words in
+History and posts nothing.
+
+A strategy that throws `insertionUnconfirmed`, `insertionTargetChanged`, `insertionFieldClosed`, `insertionInterrupted` or
 `clipboardChanged` stops the route (`TextInsertionError.stopsFallback`): the words may already be in the field, or the
 clipboard now belongs to somebody else, and another strategy could duplicate or overwrite them.
 
@@ -80,12 +84,17 @@ decided per route by the line-break probe, and is not yet part of this check.
 Some applications built on a bundled browser engine publish a focused text field, accept a write
 to its selected text, answer `.success`, and change nothing. `SelectionWriter.replaceSelection(with:)`
 therefore reads the selection back after every write and requires it to be a collapsed caret at
-the old start plus the text's UTF-16 length. A missing or different selection throws
-`insertionUnconfirmed`, which stops the route and asks the user to check the field before
-retrying. A write that moves the caret but leaves the surrounding text unchanged throws
-`insertionRejected` ("the field accepted the text and did not change"), and the next strategy runs.
-A selection that already held the same text is the exception: replacing it changes nothing by
-definition, so the moved caret alone confirms the write and no fallback writes the words again.
+the old start plus the text's UTF-16 length. A selection and text both still as they were
+before the write, read again after `SelectionWriter.settleDelay` (250 ms), throw
+`insertionUnconfirmed`; this stops the route so the typed fallback cannot land the words a second
+time on a field that applies the write a little later than the settle read. A write that lands
+within that delay leaves the selection moved and stays unconfirmed for the same reason.
+Any other missing or different selection throws `insertionUnconfirmed`, which stops the route
+and asks the user to check the field before retrying. A write that moves the caret but leaves
+the surrounding text unchanged throws `insertionRejected` ("the field accepted the text and did
+not change"), and the next strategy runs. A selection that already held the same text is the
+exception: replacing it changes nothing by definition, so the moved caret alone confirms the
+write and no fallback writes the words again.
 
 ## A web field's own state
 
@@ -107,7 +116,7 @@ ships), macOS 26.5.1:
 
 | Attribute | Engine | Field | Shown after the write | Page state | Caret check | After `x` |
 |---|---|---|---|---|---|---|
-| `AXSelectedText` | both | all three | unchanged | unchanged | unconfirmed | `start x` |
+| `AXSelectedText` | both | all three | unchanged | unchanged | refused after the settle read | `start x` |
 | `AXValue` | Chrome | input | written | written, one `input` event | confirmed | appended |
 | `AXValue` | Chrome | contenteditable | written | **old**, no event | unconfirmed (caret at 0) | `xstart one two three` |
 | `AXValue` | Chrome | model editor | written | **old**, no event | unconfirmed (caret at 0) | **`start x`: the write is undone** |
@@ -117,8 +126,8 @@ ships), macOS 26.5.1:
 **The attribute dictation writes cannot produce a visible but uncommitted field.** Both
 engines answer an `AXSelectedText` write with `.success` and change nothing at all, shown
 or held, and `SelectionWriter`'s caret check reports it. The Chrome input, re-run with its
-window in front, behaved the same. That unconfirmed answer stops the dictation before the
-typed route runs, although nothing landed.
+window in front, behaved the same. Selection and text both unchanged after the settle read
+count as a refusal, so the typed route runs.
 
 **`AXValue` is not a fix to reach for.** It is the write that produces exactly that defect:
 in a Chrome `contenteditable` the text appears, the page never hears of it, and a model
@@ -188,9 +197,14 @@ reached whether or not anyone is listening; `uttrflow-dev insert` uses it to pri
 **A doubtful paste is not a failed one.** An application that rewrites quotes, dashes or
 capitalisation as it takes a paste never matches the tail, and treating that as a failure would
 demote a large class of successful pastes. The words are on the clipboard either way, so
-"not confirmed" is said and nothing retries or re-pastes. A strategy that cannot check answers
-**not reported**, which draws the plain tick: the Accessibility write verifies itself inside the
-field, and typing reads nothing back.
+"not confirmed" is said and nothing retries or re-pastes. The typed route runs the same wait
+after its last key, from a tail read before its first, so keys a target drops end **unconfirmed**
+rather than in a tick; a field that will not answer stays **not reported**. The Accessibility write
+answers **confirmed**, since it returns only once the caret has collapsed after the words.
+
+On a route with no clipboard floor (`clipboardFallback: false`), the engine first asks whether macOS
+lets it post the paste key; where it does not, the clipboard is never written and the route falls
+through to typing with the user's copy intact. Every other route keeps the words on a refused key.
 
 If cancellation arrives before the paste key is posted, the engine discards its clipboard
 generation only if it still owns that generation. It never restores the previous clipboard or
@@ -198,7 +212,7 @@ clears a newer copy. Once the key is posted, arrival can be uncertain, so the cl
 written.
 
 The panel's paste route skips the wait (`confirmsArrival: false`) because the panel shows no
-arrival notice. If the insertion stage itself times out (`StageTimeout.quick`, 15 s), the failure
+arrival notice. If the insertion stage itself times out (`StageTimeout.insertion`, 15 s), the failure
 is `insertionTimedOut` and points to the transcript in History, never to a manual paste that
 could insert an older clipboard item.
 
@@ -389,7 +403,7 @@ waits until nobody has touched the Mac for 30 s, and needs Accessibility granted
 | Mode | Field, route | What the field does | Expected |
 |---|---|---|---|
 | `faithful` | text, Accessibility | takes every edit | written, field holds the words |
-| `changes-nothing` | text, Accessibility | answers the write with success and changes nothing | `insertionUnconfirmed`, field empty |
+| `changes-nothing` | text, Accessibility | answers the write with success and changes nothing | `insertionUnconfirmed` after the settle read, field empty |
 | `drops-keys` | text, paste | never receives posted keys | pasted, unconfirmed, field empty |
 | `substitutes` | multi-line, paste | curls quotes and turns `--` into an em dash | pasted, unconfirmed, field holds the rewritten words |
 | `caps-length` | text, Accessibility | keeps 16 characters | `insertionUnconfirmed`, field holds the first 16 |

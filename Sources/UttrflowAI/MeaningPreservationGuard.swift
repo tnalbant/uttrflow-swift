@@ -37,45 +37,15 @@ public struct MeaningPreservationGuard: Sendable {
         grammar: GrammarPolicy = .repair,
         grants: [PassID: RemovalGrant] = CleaningPipeline.standard.grants
     ) -> GuardVerdict {
-        let rewritten = Self.respellingClockTimes(rewritten, as: draft.text)
-        let excusingPreamble = Self.rewriteStartsWithOfferedReading(
-            draft: draft, rewritten: rewritten, offering: doubtful)
-        if case .rejected(let reason, let kind) = Self.textVerdict(
-            original: draft.text, rewritten: rewritten, excusingPreamble: excusingPreamble)
-        {
-            return .rejected(reason: reason, kind: kind)
-        }
-        if case .rejected(let reason, let kind) = Self.spokenPunctuationVerdict(
-            draft: draft, rewritten: rewritten)
-        {
-            return .rejected(reason: reason, kind: kind)
-        }
-        let restored = Self.restored(RemovalAudit.unauthorised(in: draft, grants: grants))
-        if case .rejected(let reason, let kind) = Self.removalVerdict(
-            restored, kept: draft.text, rewritten: rewritten, echoed: echoed)
-        {
-            return .rejected(reason: reason, kind: kind)
-        }
-        let alignment = RewriteAlignment(kept: draft.text, rewritten: rewritten)
-        let readings = Self.readingVerdict(doubtful, in: alignment)
-        if case .rejected(let reason, let kind) = readings.verdict {
-            return .rejected(reason: reason, kind: kind)
-        }
-        if case .rejected(let reason, let kind) = Self.confidentHomophoneVerdict(draft, aligned: alignment) {
-            return .rejected(reason: reason, kind: kind)
-        }
-        if case .rejected(let reason, let kind) = Self.layoutVerdict(
-            kept: draft.text, rewritten: rewritten, layout: layout)
-        {
-            return .rejected(reason: reason, kind: kind)
-        }
-        return Self.grammarVerdict(
-            alignment, excusing: readings.excused, echoed: echoed, allowing: doubtful,
-            restoring: restored.map(\.token), policy: grammar)
+        Self.verdict(
+            of: Self.checks,
+            on: GuardInput(
+                draft: draft, rewritten: rewritten, doubtful: doubtful, echoed: echoed, layout: layout,
+                grammar: grammar, grants: grants))
     }
 
     /// Allows a chat-like opening only when it is the offered reading of the doubtful first run.
-    private static func rewriteStartsWithOfferedReading(
+    static func rewriteStartsWithOfferedReading(
         draft: Draft, rewritten: String, offering doubtful: [DoubtfulSpan]
     ) -> Bool {
         guard let first = doubtful.first,
@@ -108,16 +78,23 @@ public struct MeaningPreservationGuard: Sendable {
         return .accepted
     }
 
-    /// Refuses a sound-alike substitution when the recogniser was sure of the kept word.
-    private static func confidentHomophoneVerdict(_ draft: Draft, aligned: RewriteAlignment) -> GuardVerdict {
+    /// Refuses a sound-alike substitution over a kept word the recogniser was sure of or an override settled.
+    static func confidentHomophoneVerdict(
+        _ draft: Draft, aligned: RewriteAlignment, excusing excused: Set<Int>
+    ) -> GuardVerdict {
         guard draft.confidencesAreReal else { return .accepted }
         let heard = draft.words
             .filter { $0.isPresent && !$0.isLayoutMark && !$0.heard.isEmpty }
-            .flatMap { word in grammarTokens(word.text).map { (token: $0, confidence: word.confidence) } }
+            .flatMap { word in
+                grammarTokens(word.text).map {
+                    (token: $0, isProtected: DoubtPolicy.isProtected(confidence: word.confidence, settled: word.settled))
+                }
+            }
         for change in aligned.changes {
-            for index in change.kept where index < heard.count {
+            // A word written as a reading offered for it is the speaker's doubt, not the recogniser's certainty.
+            for index in change.kept where index < heard.count && !excused.contains(index) {
                 let token = aligned.kept[index]
-                guard heard[index].confidence >= WordCorrectionEngine.certaintyThreshold else { continue }
+                guard heard[index].isProtected else { continue }
                 if change.rewritten.contains(where: {
                     Homophones.share(token.matching, aligned.rewritten[$0].matching)
                 }) {
@@ -322,9 +299,15 @@ public struct MeaningPreservationGuard: Sendable {
     static func hasRomanisedHindiContext(_ tokens: [GrammarToken]) -> Bool {
         tokens.contains { token in
             let word = token.matching
-            return isNegation(word) || WordForms.hindiVerbStems.contains(word)
-                || WordForms.hindiVerbStems.contains { WordForms.hindiForms(of: $0).contains(word) }
+            return isNegation(word) || isHindiVerbForm(word)
         }
+    }
+
+    /// Whether a word is a Hindi verb stem or one of its forms, and not an English small word spelled the same ("a", "so").
+    private static func isHindiVerbForm(_ word: String) -> Bool {
+        guard !FunctionWords.holds(word) else { return false }
+        return WordForms.hindiVerbStems.contains(word)
+            || WordForms.hindiVerbStems.contains { WordForms.hindiForms(of: $0).contains(word) }
     }
 
     /// How many words in `tokens` turn a sentence's meaning around.

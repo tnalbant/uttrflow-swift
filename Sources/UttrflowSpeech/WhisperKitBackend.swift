@@ -12,6 +12,7 @@ public actor WhisperKitBackend: TranscriptionBackend {
     /// On: only prewarm holds the first compile's peak down, and that peak is still unread (#481).
     private let prewarm: Bool
     private let compute: SpeechComputePlan
+    private let fallback: SpeechFallbackPlan
     private var kit: LoadedKit?
     private var modelUseLease: ModelDirectoryUseLease?
     /// Where each finished load is kept for the Diagnostics page; `nil` in a measurement harness.
@@ -21,13 +22,15 @@ public actor WhisperKitBackend: TranscriptionBackend {
 
     public init(
         model: SpeechModel, modelFolder: URL, prewarm: Bool = true, compute: SpeechComputePlan = .shipping,
-        loadLog: SpeechModelLoadLog? = nil, phraseBias: Float = 0
+        fallback: SpeechFallbackPlan = .shipping, loadLog: SpeechModelLoadLog? = nil,
+        phraseBias: Float = 0
     ) {
         self.phraseBias = phraseBias
         self.model = model
         self.modelFolder = modelFolder
         self.prewarm = prewarm
         self.compute = compute
+        self.fallback = fallback
         self.loadLog = loadLog
     }
 
@@ -97,7 +100,7 @@ public actor WhisperKitBackend: TranscriptionBackend {
             // Detection may only answer in a language the product transcribes, so Hindi is never heard as Urdu.
             whisper.textDecoder = LanguageHeldDecoder(
                 wrapping: whisper.textDecoder, languages: LanguageCode.transcribed)
-            kit = LoadedKit(whisper, phraseBias: phraseBias)
+            kit = LoadedKit(whisper, fallback: fallback, phraseBias: phraseBias)
         } catch {
             modelUseLease = nil
             throw WeightsAssets.loadFailure(
@@ -127,7 +130,7 @@ public actor WhisperKitBackend: TranscriptionBackend {
             try loadLog?.record(
                 seconds: elapsed.inSeconds, parts: parts, modelRevision: model.weightsRevision)
         } catch {
-            Self.log.error("speech model load not kept: \(error.localizedDescription, privacy: .public)")
+            Self.log.error("speech model load not kept: \(ErrorLog.failure(error), privacy: .public)")
         }
         guard let timings else {
             Self.log.info("speech model loaded in \(elapsed.inSeconds, format: .fixed(precision: 2))s")
@@ -154,13 +157,21 @@ public actor WhisperKitBackend: TranscriptionBackend {
     public func transcribe(
         _ samples: [Float], languageHint: LanguageCode?, biasedTowards vocabulary: [String]
     ) async throws(SpeechEngineError) -> RawTranscript {
+        try await transcribe(samples, languageHint: languageHint, biasedTowards: vocabulary, after: nil)
+    }
+
+    public func transcribe(
+        _ samples: [Float], languageHint: LanguageCode?, biasedTowards vocabulary: [String],
+        after precedingText: String?
+    ) async throws(SpeechEngineError) -> RawTranscript {
         try await load()
         guard let kit else { throw .modelLoadFailed(description: "the recogniser did not load") }
         let backend = RetryBackend(kit: kit)
 
         do {
             let transcript = try await CappedDecodeRetry.transcribeRecoveringEmptyPrompt(
-                samples: samples, languageHint: languageHint, vocabulary: vocabulary, using: backend)
+                samples: samples, languageHint: languageHint, vocabulary: vocabulary,
+                precedingText: precedingText, using: backend)
             Self.report(transcript.effort)
             return transcript
         } catch {
@@ -183,7 +194,8 @@ public actor WhisperKitBackend: TranscriptionBackend {
 
 /// Flattens WhisperKit's per-window results into one transcript.
 fileprivate func rawTranscript(
-    from results: [TranscriptionResult], vocabularyPrompt: [String] = []
+    from results: [TranscriptionResult], promptPositions: Int = 0, vocabularyPrompt: [String] = [],
+    conditioning: DecodeConditioning = .available
 ) -> RawTranscript {
     TranscriptAssembly.whisper(
         results.map { result in
@@ -207,7 +219,9 @@ fileprivate func rawTranscript(
                 },
                 effort: effort(of: [result]),
                 tokensUsed: result.segments.reduce(0) { $0 + $1.tokens.count },
-                vocabularyPrompt: vocabularyPrompt)
+                promptPositions: promptPositions,
+                vocabularyPrompt: vocabularyPrompt,
+                conditioning: conditioning)
         })
 }
 
@@ -246,10 +260,20 @@ private struct RetryBackend: TranscriptionBackend {
     func transcribe(
         _ samples: [Float], languageHint: LanguageCode?, biasedTowards vocabulary: [String]
     ) async throws(SpeechEngineError) -> RawTranscript {
+        try await transcribe(samples, languageHint: languageHint, biasedTowards: vocabulary, after: nil)
+    }
+
+    func transcribe(
+        _ samples: [Float], languageHint: LanguageCode?, biasedTowards vocabulary: [String],
+        after precedingText: String?
+    ) async throws(SpeechEngineError) -> RawTranscript {
         do {
             let decoded = try await kit.transcribe(
-                samples, languageHint: languageHint, biasedTowards: vocabulary)
-            return rawTranscript(from: decoded.results, vocabularyPrompt: decoded.vocabularyPrompt)
+                samples, languageHint: languageHint, biasedTowards: vocabulary, after: precedingText)
+            return rawTranscript(
+                from: decoded.results, promptPositions: decoded.promptPositions,
+                vocabularyPrompt: decoded.vocabularyPrompt,
+                conditioning: decoded.conditioning)
         } catch {
             throw .transcriptionFailed(description: error.localizedDescription)
         }
@@ -274,10 +298,12 @@ extension FileSystemSpeechModelStore {
 /// Owns the loaded recogniser; `WhisperKit` is not `Sendable`, and `BackedSpeechEngine` admits one call at a time.
 private final class LoadedKit: @unchecked Sendable {
     private let kit: WhisperKit
+    private let fallback: SpeechFallbackPlan
     private let phraseBias: Float
 
-    init(_ kit: WhisperKit, phraseBias: Float) {
+    init(_ kit: WhisperKit, fallback: SpeechFallbackPlan, phraseBias: Float) {
         self.kit = kit
+        self.fallback = fallback
         self.phraseBias = phraseBias
     }
 
@@ -285,16 +311,24 @@ private final class LoadedKit: @unchecked Sendable {
     var timings: TranscriptionTimings { kit.currentTimings }
 
     func transcribe(
-        _ samples: [Float], languageHint: LanguageCode?, biasedTowards vocabulary: [String]
-    ) async throws -> (results: [TranscriptionResult], vocabularyPrompt: [String]) {
-        // Passed through optional, so a half-loaded kit gives an unbiased dictation, not a crash.
+        _ samples: [Float], languageHint: LanguageCode?, biasedTowards vocabulary: [String],
+        after precedingText: String?
+    ) async throws -> (
+        results: [TranscriptionResult], promptPositions: Int, vocabularyPrompt: [String],
+        conditioning: DecodeConditioning
+    ) {
+        // Passed through optional, so a half-loaded kit gives an unbiased dictation, reported as unconditioned.
         let tokenizer = kit.tokenizer
         let promptTokenizer = tokenizer.map { WhisperPromptTokenizer(tokenizer: $0) }
-        let packing = promptTokenizer.map { VocabularyPrompt.packing(for: vocabulary, using: $0) }
+        let packing = promptTokenizer.map {
+            VocabularyPrompt.packing(for: vocabulary, after: precedingText, using: $0)
+        }
         let options = VocabularyPrompt.decodingOptions(
             languageHint: languageHint,
             vocabulary: vocabulary,
-            tokenizer: promptTokenizer
+            precedingText: precedingText,
+            tokenizer: promptTokenizer,
+            fallback: fallback
         )
         // Reassigned on every call, including to nothing, so a rule never outlives the prompt it was measured for.
         kit.textDecoder.logitsFilters = Self.rules(
@@ -307,7 +341,14 @@ private final class LoadedKit: @unchecked Sendable {
         return (
             try await kit.transcribe(
                 audioArray: samples, decodeOptions: options, callback: Self.loopStop(windowOf: samples.count)),
-            packing?.words ?? []
+            tokenizer.map {
+                DecoderPrefill(
+                    promptTokens: options.promptTokens, specialTokenBegin: $0.specialTokens.specialTokenBegin,
+                    isMultilingual: !$0.allLanguageTokens.isEmpty
+                ).transcriptStart
+            } ?? 0,
+            packing?.words ?? [],
+            tokenizer == nil ? .unavailable(.tokenizerUnavailable) : .available
         )
     }
 

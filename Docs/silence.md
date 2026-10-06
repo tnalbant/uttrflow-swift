@@ -106,8 +106,8 @@ what the same speech costs with no padding at all.
 
 ## Recording conditions the loudness measure does not separate
 
-The measure is plain RMS over the whole spectrum, and the floor is one 10th percentile for the
-whole recording. Probed with `VoiceActivityConditionTests` (`swift test --filter
+The measure is each frame's RMS about its own mean, over the whole spectrum, and the floor is one
+10th percentile for the whole recording. Probed with `VoiceActivityConditionTests` (`swift test --filter
 VoiceActivityConditionTests`, which prints one `TRIMGRID` line per cell): ten seconds of room noise
 at −65 dBFS, two 2-second phrases (a 180 Hz tone with a 3 Hz swell) at 2–4 s and 6–8 s, and one
 added condition each. "Clip" is speech cut off; "over" is audio kept beyond speech plus `margin`.
@@ -115,18 +115,21 @@ added condition each. "Clip" is speech cut off; "over" is audio kept beyond spee
 | Speech level | clean | DC offset 0.01 | 60 Hz rumble at −30 dBFS | noise up 15 dB at 5 s |
 |---|---|---|---|---|
 | −25 dBFS | 0 / 0 ms | 0 / 0 ms | 0 / 0 ms | over 1800 ms |
-| −40 dBFS | 0 / 0 ms | **rejected** | **rejected** | over 1800 ms |
-| −55 dBFS | 0 / 0 ms | **rejected** | **rejected** | over 1800 ms |
+| −40 dBFS | 0 / 0 ms | 0 / 0 ms | **rejected** | over 1800 ms |
+| −55 dBFS | 0 / 0 ms | 0 / 0 ms | **rejected** | over 1800 ms |
 
-A DC offset or rumble lifts every frame, so the 95th percentile no longer stands three times above
-the 10th and the whole dictation is refused as nothing heard. A floor that steps up mid-recording
+Taking each frame's mean out before its RMS removes a DC offset without touching anything that
+moves: before it, the DC cells at −40 and −55 dBFS were rejected, and no other cell changed.
+Rumble still lifts every frame, so the 95th percentile no longer stands three times above the 10th
+and the whole dictation is refused as nothing heard. A floor that steps up mid-recording
 keeps the louder second half's noise as speech to the end of the recording.
 
 The same grid run through a first- or second-order high-pass at 100 Hz before the measure fixes
 DC offset at −40 dBFS but not rumble at either level, and loses −55 dBFS speech that passes
 unfiltered (660 ms clipped at first order, rejected at second), because the probe's voice sits at
-180 Hz, inside the filter's skirt. Neither filter touches the stepped floor. The measure is
-unchanged until a real-speech grid decides between the two candidate changes.
+180 Hz, inside the filter's skirt. Neither filter touches the stepped floor, so neither is used:
+rumble and the stepped floor wait for a real-speech grid to decide between a steeper filter and a
+trailing-window floor.
 
 ## The bracketed markers
 
@@ -232,3 +235,13 @@ Every refused cell has speech 5 dB or less above the floor, under the three-to-o
 (about 9.5 dB) comparison, so the whole dictation is refused as nothing heard. The constant
 that decides those cells is `signalToNoise`; it stays as it is until a real-speech grid shows
 what lowering it admits from steady room tone.
+
+## Telling the person while they speak
+
+`InputSilence` (`Sources/UttrflowCore/Support/InputSilence.swift`) reads the dock's 20 Hz level
+during a recording and compares it with `VoiceActivity.absoluteFloor`, the same constant the
+refusal applies afterwards. Once every reading has stayed below it for `patience` (2 s), the dock
+shows a second line, "Can't hear you. Check the microphone.", and VoiceOver says it once; the
+recording carries on, and the line clears on the first reading that reaches the floor. A quiet
+room sits near −55 dBFS, far above the −90 dBFS floor, so a natural pause never trips it, and
+neither does quiet speech. Only a muted, zeroed or dead input does. Too-loud input is not its job.

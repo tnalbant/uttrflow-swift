@@ -19,7 +19,7 @@ extension Transcription {
             audioDuration: audioDuration)
     }
 
-    /// The same speech with the dictionary's spellings in it, every other word keeping the score it was heard with.
+    /// The same speech with the dictionary's spellings in it, settled, and every word keeping the score it was heard with.
     func saying(_ corrected: CorrectedTranscript) -> Transcription {
         guard corrected.text != text || !corrected.held.isEmpty else { return self }
         let heard = Draft(transcription: self)
@@ -43,11 +43,12 @@ extension Transcription {
                 return saying(corrected.text)
             }
             scored += (next..<range.lowerBound).map(standing)
-            // Settled by the dictionary, so never half-heard; heard over the replaced words' span.
+            // Keep the recogniser's score and audio span while marking the dictionary reading final.
             let replaced = heard.words[range]
             scored += correction.wrote.split(whereSeparator: \.isWhitespace).map {
                 TranscribedWord(
-                    text: String($0), confidence: 1, start: replaced.first?.start, end: replaced.last?.end)
+                    text: String($0), confidence: correction.heardConfidence, settled: true,
+                    start: replaced.first?.start, end: replaced.last?.end)
             }
             next = range.upperBound
         }

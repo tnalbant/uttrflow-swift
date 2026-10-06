@@ -206,7 +206,10 @@ model is released, reloaded and kept off a Mac under pressure is in
 The speech model fits inside the first two lines with room to spare, so it stays loaded between
 dictations. `AppDelegate` lets the recogniser go under memory pressure unless a dictation is under
 way; the next key-down loads it again, which costs 2–9 s with the Neural Engine compile cached,
-and the app shows the model as loading until it is ready.
+and the app shows the model as loading until it is ready. A critical reading always releases it.
+A warning releases it only once the last reload has held for the wait of the same
+`ModelMemoryPressure` policy the suggestion model uses (120 s, doubling to 1,800 s while reloads
+keep being followed by pressure), so frequent warnings cannot make every dictation pay a reload.
 
 The suggestion model is what the budget is about: on an 8 GB Mac its 3 GB is close to half of all
 memory, so nothing loads it for somebody who never asked, and turning the feature off gives it
@@ -306,6 +309,25 @@ make perf-budget-latency RUN=.build/bench/run.out
 It exits 1 when any stage's p95 is over its budget or has fewer than 3 samples. `--self-test`
 proves a run within budget passes, the same run 50% slower fails every stage, and a budget loosened
 past its p95 plus headroom fails the table check.
+
+### Whole-text passes after release
+
+After key release the pieces are joined (`PieceJoiner.join`), the message-wide passes run once over
+the joined text (`CleaningPipeline.message`, from `TransformerRouter.finishMessage`), and the Latin
+check runs over the result. None has a deadline, and their cost grows with the dictation, not with
+the last piece. `WholeTextCostProbeTests` times them over invented 12-word pieces, one per 5 s of
+speech, document destination, median of 7 runs, and prints one `WHOLETEXT` line per length.
+
+| speech | words | join ms | message passes ms | Latin check ms |
+|---|---|---|---|---|
+| 30 s | 73 | 13.4 | 11.7 | 0.13 |
+| 120 s | 292 | 44.9 | 46.5 | 0.20 |
+| 300 s | 730 | 75.7 | 145.5 | 0.47 |
+
+Measured on Apple M5 Pro, 48 GB, debug test build (`swift test --filter WholeTextCostProbe`), so the
+absolute figures overstate a release build; the growth with length is the finding. At 300 s the two
+whole-text stages add about 0.22 s after release, ten times the 30 s cost, so a new whole-text pass
+must keep running state across pieces rather than run once over everything at the end.
 
 ## Processor
 

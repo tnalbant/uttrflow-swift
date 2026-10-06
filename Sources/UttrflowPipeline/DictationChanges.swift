@@ -16,12 +16,14 @@ public struct DictationCorrection: Sendable, Equatable {
     public let reason: CorrectionReason
     /// What the recogniser scored the replaced words, so a sceptic can see the engine only moved on a guess.
     public let heardConfidence: Double
+    /// How strongly the gate chose the replacement; `nil` when the user's own spelling settled it.
+    public let evidence: OverrideEvidence?
     /// Where the written words begin among the inserted text's words, or `nil` when tidying changed them.
     public let writtenWordIndex: Int?
 
     public init(
         heard: String, wrote: String, wordRange: Range<Int>, entryID: UUID, reason: CorrectionReason,
-        heardConfidence: Double, writtenWordIndex: Int? = nil
+        heardConfidence: Double, evidence: OverrideEvidence? = nil, writtenWordIndex: Int? = nil
     ) {
         self.heard = heard
         self.wrote = wrote
@@ -29,6 +31,7 @@ public struct DictationCorrection: Sendable, Equatable {
         self.entryID = entryID
         self.reason = reason
         self.heardConfidence = heardConfidence
+        self.evidence = evidence
         self.writtenWordIndex = writtenWordIndex
     }
 }
@@ -69,7 +72,7 @@ extension DictationCorrection {
     private func written(as text: String) -> Self {
         Self(
             heard: heard, wrote: text, wordRange: wordRange, entryID: entryID, reason: reason,
-            heardConfidence: heardConfidence)
+            heardConfidence: heardConfidence, evidence: evidence)
     }
 
     /// Each correction with where its words landed in `finished`, aligned from `corrected`. See `Docs/core-history-undo.md`.
@@ -124,7 +127,7 @@ extension DictationCorrection {
     private func landing(at index: Int?) -> Self {
         Self(
             heard: heard, wrote: wrote, wordRange: wordRange, entryID: entryID, reason: reason,
-            heardConfidence: heardConfidence, writtenWordIndex: index)
+            heardConfidence: heardConfidence, evidence: evidence, writtenWordIndex: index)
     }
 }
 
@@ -226,6 +229,20 @@ public struct ExpandedTranscript: Sendable, Equatable {
 
     /// How far the caret moves back from the end of the inserted text, in UTF-16 units; 0 leaves it there.
     public var caretBackFromEnd: Int { caret.map { text.utf16.count - $0 } ?? 0 }
+
+    /// How far back from the end of `written` a snippet's caret goes, matching the words after it up to case and padding.
+    public func caretBack(inWritten written: String) -> Int? {
+        guard let caret, let tailText = String(text.utf16.dropFirst(caret)) else { return nil }
+        let tail = Array(tailText)
+        let core = tail[..<(tail.lastIndex { !$0.isWhitespace }.map { $0 + 1 } ?? 0)]
+        let chars = Array(written)
+        let writtenEnd = chars.lastIndex { !$0.isWhitespace }.map { $0 + 1 } ?? 0
+        guard writtenEnd >= core.count else { return nil }
+        let start = writtenEnd - core.count
+        guard chars[start..<writtenEnd].elementsEqual(core, by: { $0.lowercased() == $1.lowercased() })
+        else { return nil }
+        return String(chars[start...]).utf16.count
+    }
 
     /// The same transcript with every line break a space, as a single-line field wants, firings included.
     public var onOneLine: Self {

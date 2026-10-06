@@ -25,7 +25,7 @@ struct HomophoneDoubtTests {
         ])
     func homophoneWordBecomesASpan(text: String, heard: String, partner: String) {
         let draft = sureDraft(text)
-        let runs = UncertainSpan.spans(in: draft, below: WordCorrectionEngine.certaintyThreshold)
+        let runs = UncertainSpan.spans(in: draft)
         #expect(
             runs.contains(where: { $0.text == heard }),
             "expected an uncertain span for `\(heard)` in \(text), got \(runs.map(\.text))")
@@ -33,7 +33,7 @@ struct HomophoneDoubtTests {
 
     @Test("a non-homophone word at 0.8 still produces no spans")
     func nonHomophoneWordIsNotASpan() {
-        let draft = sureDraft("i ate an apple yesterday")
+        let draft = sureDraft("i peeled an apple yesterday")
         let runs = UncertainSpan.spans(in: draft, below: WordCorrectionEngine.certaintyThreshold)
         #expect(runs.isEmpty)
     }
@@ -41,7 +41,7 @@ struct HomophoneDoubtTests {
     @Test("a homophone word at 0.8 appears as a single-word span, not a multi-word run")
     func homophoneSpanIsSingleWord() {
         let draft = sureDraft("the principal of the school is here")
-        let runs = UncertainSpan.spans(in: draft, below: WordCorrectionEngine.certaintyThreshold)
+        let runs = UncertainSpan.spans(in: draft)
         let principalSpans = runs.filter { $0.text == "principal" }
         #expect(principalSpans.count == 1)
         #expect(principalSpans.first?.range.count == 1)
@@ -68,7 +68,7 @@ struct HomophoneDoubtTests {
     @Test("a homophone word already below threshold is not duplicated")
     func homophoneBelowThresholdIsNotDuplicated() {
         let draft = Draft.heard("the ?principal is here", unsure: 0.2)
-        let runs = UncertainSpan.spans(in: draft, below: WordCorrectionEngine.certaintyThreshold)
+        let runs = UncertainSpan.spans(in: draft)
         let principalRuns = runs.filter { $0.text == "principal" }
         #expect(
             principalRuns.count == 1, "expected one run for `principal`, got \(principalRuns.count)")
@@ -81,7 +81,7 @@ struct HomophoneDoubtTests {
             SpokenWord(text: "principal", confidence: 0.8),
             SpokenWord(text: "spoke", confidence: 0.8),
         ])
-        let runs = UncertainSpan.spans(in: utterance, below: WordCorrectionEngine.certaintyThreshold)
+        let runs = UncertainSpan.spans(in: utterance)
         #expect(
             runs.contains(where: { $0.text == "principal" }),
             "expected a span for `principal`, got \(runs.map(\.text))")

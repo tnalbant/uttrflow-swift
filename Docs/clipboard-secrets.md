@@ -154,8 +154,11 @@ A value that is an unquoted variable, substitution or placeholder (`$TOKEN`, `${
 `<token>`) is left alone, since it names where the credential is rather than being it. Quoted
 shell punctuation is part of the value; a redirect operator outside quotes ends the word first.
 
-A `.netrc` password is read in the context of its machine or default block across lines. `account`
-fields are consumed as values, and a `macdef` body is skipped through its blank-line terminator.
+A `.netrc` password is read as a whitespace-delimited value in its machine or default block,
+independent of shell punctuation in the value. `account` fields are consumed as values, and a
+blank line ends the block or a `macdef` body. A `#` at the start of a line begins a comment; a
+`#` inside a password value is part of the value. A whole-value variable, substitution or
+placeholder is left alone.
 
 ### Lines already learned
 
@@ -332,6 +335,12 @@ the whole-clip patterns' answer; what is bounded is how much of the clip each pa
   connection string, and those readers are skipped. The named-secret reader runs only when the
   bytes hold `:` or `=` and a stem of one of its names (`api`, `secret`, `token`, `pass`, `pwd`,
   `credential`, `private`, `access`, `auth`, `client`), with `token`'s `k` also read as U+212A.
+- **BIP-39 words after a byte prefilter.** A lowercased 64-bit fingerprint lookup first requires a
+  run of twelve short English-list candidates; ordinary prose that cannot form that run never
+  builds per-word strings or computes checksums. The exact parser then sees only those candidate
+  runs, retaining the existing word-list and checksum checks. A clipboard text clip is at most
+  2,000,000 bytes (`ClipboardBudget.largestClip`): the prefilter reads at most that many bytes,
+  and the disjoint candidate runs cover at most that many more.
 - **The vendor-key pattern on windows** (`VendorKeyWindows`). It runs only where one of its
   literal prefixes starts, on the 128 characters from there. Its longest shortest match is 47
   characters, so a window decides every prefix more than 48 characters before its end, and those

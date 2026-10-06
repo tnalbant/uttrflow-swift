@@ -6,6 +6,17 @@ import CryptoKit
 import Security
 private import Synchronization
 
+/// The settled clipboard after undo and whether the restored alias conflicts.
+public struct ClipboardRestoreResult: Sendable, Equatable {
+    public let clips: [Clip]
+    public let aliasWasAlreadyInUse: Bool
+
+    package init(clips: [Clip], aliasWasAlreadyInUse: Bool) {
+        self.clips = clips
+        self.aliasWasAlreadyInUse = aliasWasAlreadyInUse
+    }
+}
+
 /// Counts the files a store writes while this is bound to `ClipboardStore.writes`.
 package final class StoreWriteTally: Sendable {
     private let files = Mutex(0)
@@ -70,8 +81,11 @@ public actor ClipboardStore {
     /// Copies of damaged indexes waiting for the app to tell the user where they were saved.
     private var unreadableIndexSetAsides: [URL] = []
 
-    /// Records that a use is in memory and not yet on disk; the next write, or `flushUse`, carries it.
+    /// Records that memory holds a use or a refused change the disk lacks; the next write, or `flushUse`, carries it.
     private var hasUnwrittenUse = false
+
+    /// Pictures of clips a refused write dropped, removed once a later write lands without naming them.
+    private var picturesAwaitingWrite: Set<String> = []
 
     /// Sets how long a use waits in memory for another write before it is written on its own.
     private let useFlushDelay: Duration
@@ -112,7 +126,7 @@ public actor ClipboardStore {
         return retained(stored, keeping: retention)
     }
 
-    /// Returns each damaged index copy once, so the app can tell the user where it was preserved.
+    /// Returns each damaged index copy once, so the app can tell the user where it is kept.
     public func takeUnreadableIndexSetAsides() -> [URL] {
         defer { unreadableIndexSetAsides = [] }
         return unreadableIndexSetAsides
@@ -150,21 +164,39 @@ public actor ClipboardStore {
         return try settled(updated, keeping: retention)
     }
 
-    /// Restores a deleted clip as it was, unless a newer copy already exists.
+    /// Restores a deleted clip unchanged, unless a newer copy already exists.
     @discardableResult
     public func restore(
         _ clip: Clip, keeping retention: ClipRetention
     ) throws(ClipboardStoreError) -> [Clip] {
+        try restoreReportingAliasConflict(clip, keeping: retention).clips
+    }
+
+    /// Restores a deleted clip and reports whether its former name was already in use.
+    public func restoreReportingAliasConflict(
+        _ clip: Clip, keeping retention: ClipRetention
+    ) throws(ClipboardStoreError) -> ClipboardRestoreResult {
         let existing = loaded()
         guard !existing.contains(where: { $0.id == clip.id }) else {
-            return retained(existing, keeping: retention)
+            return ClipboardRestoreResult(
+                clips: retained(existing, keeping: retention), aliasWasAlreadyInUse: false)
         }
-        guard let matching = Self.previous(for: clip, in: existing) else {
-            return try settled([clip] + existing, keeping: retention)
+        let matching = Self.previous(for: clip, in: existing)
+        let aliasConflict =
+            clip.alias.map { alias in
+                existing.contains { $0.id != matching?.id && $0.alias == alias }
+            } ?? false
+        var deleted = clip
+        if aliasConflict { deleted.alias = nil }
+
+        guard let matching else {
+            let clips = try settled([deleted] + existing, keeping: retention)
+            return ClipboardRestoreResult(clips: clips, aliasWasAlreadyInUse: aliasConflict)
         }
-        let restored = restoring(clip, over: matching)
+        let restored = restoring(deleted, over: matching)
         let updated = existing.map { $0.id == matching.id ? restored : $0 }
-        return try settled(updated, keeping: retention)
+        let clips = try settled(updated, keeping: retention)
+        return ClipboardRestoreResult(clips: clips, aliasWasAlreadyInUse: aliasConflict)
     }
 
     /// Moves a used clip to the top of its history or saved pool; the disk hears of it with the next write.
@@ -190,7 +222,7 @@ public actor ClipboardStore {
         return retained(clips, keeping: retention)
     }
 
-    /// Writes a use still held in memory; a disk that refuses costs only the eviction order.
+    /// Writes a use or a refused change still held in memory, which quitting asks for so a deletion is not undone.
     public func flushUse() {
         useFlush?.cancel()
         useFlush = nil
@@ -262,6 +294,7 @@ public actor ClipboardStore {
     /// Removes every clip, pinned ones included, which is what resetting personalisation promises.
     public func forgetEverything() throws(ClipboardStoreError) {
         try save([])
+        forgetHeldPictures()
         do {
             try LocalStore.removeSetAside(file)
             try LocalStore.removeSetAside(savedFile)
@@ -344,7 +377,7 @@ public actor ClipboardStore {
 
     /// Whether a picture's file is still a file where the clip expects it.
     private func isOnDisk(_ image: ClipImage) -> Bool {
-        let url = imagesFolder.appending(path: image.file, directoryHint: .notDirectory)
+        guard let url = pictureURL(image.file) else { return false }
         return (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true
     }
 
@@ -380,15 +413,13 @@ public actor ClipboardStore {
 
     /// Whether a clip's picture file is still present without opening the file.
     public func hasImage(for image: ClipImage) -> Bool {
-        FileManager.default.fileExists(
-            atPath: imagesFolder.appending(path: image.file, directoryHint: .notDirectory)
-                .path(percentEncoded: false))
+        guard let url = pictureURL(image.file) else { return false }
+        return FileManager.default.fileExists(atPath: url.path(percentEncoded: false))
     }
 
     /// The bytes of a clip's picture, or `nil` when the file has gone from under the app.
     public func imageData(for image: ClipImage) -> Data? {
-        let url = imagesFolder.appending(path: image.file, directoryHint: .notDirectory)
-        guard let data = try? Data(contentsOf: url) else { return nil }
+        guard let url = pictureURL(image.file), let data = try? Data(contentsOf: url) else { return nil }
         guard let encryptedStore else { return data }
         if EncryptedStore.isSealed(data) {
             do { return try encryptedStore.open(data, for: image.file) } catch {
@@ -402,6 +433,13 @@ public actor ClipboardStore {
                 return nil
             }
         }
+        switch encryptedStore.acceptsLegacyPlaintext() {
+        case .open: break
+        case .closed:
+            if LocalStore.setAside(url, now: Date()) == nil { unreplaceable.insert(url) }
+            return nil
+        case .unknown: return nil
+        }
         // A plaintext legacy image remains usable if its one-time sealing write is temporarily unavailable.
         do { try writeImage(data, named: image.file) } catch { return data }
         return data
@@ -409,7 +447,7 @@ public actor ClipboardStore {
 
     /// Writes PNG bytes sealed with the shared key and the image filename as authenticated data.
     private func writeImage(_ data: Data, named name: String) throws {
-        let url = imagesFolder.appending(path: name, directoryHint: .notDirectory)
+        guard let url = pictureURL(name) else { throw CocoaError(.fileWriteInvalidFileName) }
         guard let encryptedStore else { return try PrivateFile.write(data, to: url) }
         try PrivateFile.write(try encryptedStore.seal(data, for: name), to: url)
     }
@@ -437,9 +475,15 @@ public actor ClipboardStore {
     /// Deletes pictures by name; best-effort, so a stuck file cannot cost the write that asked.
     private func removePictures(_ names: Set<String>) {
         for name in names {
-            try? FileManager.default.removeItem(
-                at: imagesFolder.appending(path: name, directoryHint: .notDirectory))
+            guard let url = pictureURL(name) else { continue }
+            try? FileManager.default.removeItem(at: url)
         }
+    }
+
+    /// Where a picture named by the index lives, or nil when the name is not one file inside the Images folder.
+    private func pictureURL(_ name: String) -> URL? {
+        guard ClipImage.isConfinedFileName(name) else { return nil }
+        return imagesFolder.appending(path: name, directoryHint: .notDirectory)
     }
 
     /// Replaces a clip's formatted note, leaving its plain form recoverable.
@@ -762,6 +806,18 @@ public actor ClipboardStore {
             in: Self.interleaving(
                 saved: Self.orderedForDisplay(stored.filter(\.isKept)),
                 history: Self.orderedForDisplay(stored.filter { !$0.isKept })))
+        let normalized = Self.numberedForEviction(list)
+        lastUsedOrder = normalized.compactMap(\.lastUsedOrder).max() ?? 0
+        wholeList = normalized
+        sweepOnce()
+        migrateLegacyImagesOnce()
+        return normalized
+    }
+
+    /// Keeps stored use orders that are whole and distinct, so a reopened list equals the one it was written from.
+    private static func numberedForEviction(_ list: [Clip]) -> [Clip] {
+        let stored = list.compactMap(\.lastUsedOrder)
+        if stored.count == list.count, Set(stored).count == list.count { return list }
         let ordered = list.enumerated().sorted { left, right in
             switch (left.element.lastUsedOrder, right.element.lastUsedOrder) {
             case (let leftOrder?, let rightOrder?):
@@ -780,14 +836,9 @@ public actor ClipboardStore {
         for (order, clip) in ordered.enumerated() {
             orderByIndex[clip.offset] = UInt64(order + 1)
         }
-        let normalized = list.enumerated().map { pair in
+        return list.enumerated().map { pair in
             pair.element.orderedForEviction(orderByIndex[pair.offset])
         }
-        lastUsedOrder = UInt64(normalized.count)
-        wholeList = normalized
-        sweepOnce()
-        migrateLegacyImagesOnce()
-        return normalized
     }
 
     /// Starts the picture pass off the clipboard actor so sealed files do not slow down ⇧⌘V.
@@ -810,13 +861,19 @@ public actor ClipboardStore {
 
     /// Seals a plaintext image after confirming the migration has not raced with another store write.
     private func sealLegacyPicture(_ data: Data, named name: String) {
-        let url = imagesFolder.appending(path: name, directoryHint: .notDirectory)
-        guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)),
+        guard let url = pictureURL(name), FileManager.default.fileExists(atPath: url.path(percentEncoded: false)),
             let header = try? FileHandle(forReadingFrom: url),
             let prefix = try? header.read(upToCount: EncryptedStore.sealedHeaderLength)
         else { return }
         try? header.close()
         guard !EncryptedStore.isSealed(prefix) else { return }
+        switch encryptedStore?.acceptsLegacyPlaintext() {
+        case .open?: break
+        case .closed?:
+            if LocalStore.setAside(url, now: Date()) == nil { unreplaceable.insert(url) }
+            return
+        case .unknown?, nil: return
+        }
         // The atomic replacement leaves the plaintext source in place when sealing or writing fails.
         try? writeImage(data, named: name)
     }
@@ -825,9 +882,13 @@ public actor ClipboardStore {
     private func reclassifyStoredClips(_ clips: [Clip], at url: URL) -> [Clip] {
         guard reclassifiedFiles.insert(url).inserted, !hasUnreadableIndex, !unreplaceable.contains(url)
         else { return clips }
-        guard !LocalStore.hasSetAside(url) else { unreplaceable.insert(url); return clips }
+        // A set-aside copy is left for the user to recover; it never makes this file unwritable.
+        guard !LocalStore.hasSetAside(url) else { return clips }
+        // A picture's kind is decided by the bytes it carries, never by the empty text next to it.
         let updated = clips.map { clip in
-            clip.reclassified(as: ClipKindDetector.classification(of: clip.text))
+            clip.image == nil
+                ? clip.reclassified(as: ClipKindDetector.classification(of: clip.text))
+                : clip
         }
         guard updated != clips else { return clips }
         // A secret clip's picture is removed only after its replacement index is safely written.
@@ -901,7 +962,13 @@ public actor ClipboardStore {
     /// Reads one file, setting an unreadable one aside and remembering that its pictures are unknown.
     private func read(_ url: URL) -> [Clip] {
         guard !unreplaceable.contains(url) else { return [] }
-        let stored = encryptedStore?.read([Clip].self, from: url) ?? LocalStore.read([Clip].self, from: url)
+        let stored: StoredList<[Clip]>
+        if let encryptedStore {
+            stored = encryptedStore.read(
+                [Clip].self, from: url, recoveringPreviousGeneration: true)
+        } else {
+            stored = LocalStore.read([Clip].self, from: url)
+        }
         if case .unreadable(let setAside) = stored {
             hasUnreadableIndex = true
             if let setAside {
@@ -940,21 +1007,32 @@ public actor ClipboardStore {
 
         // Every clip reaches its new file before leaving its old one, so a refusing disk never loses one.
         let bridge = Self.bridging(persistable, from: wasSaved, into: nowHistory)
-        if bridge != wasSaved {
-            try persist(bridge, to: savedFile)
-            savedOnDisk = bridge
+        // The bridge only has to hold every clip somewhere; the same clips in another order are already on disk.
+        let dropped = before.union(picturesAwaitingWrite).subtracting(named)
+        do throws(ClipboardStoreError) {
+            if !Self.holdsTheSameClips(bridge, as: wasSaved) {
+                try persist(bridge, to: savedFile)
+                savedOnDisk = bridge
+            }
+            if nowHistory != historyOnDisk {
+                try persist(nowHistory, to: file)
+                historyOnDisk = nowHistory
+            }
+            if nowSaved != bridge {
+                try persist(nowSaved, to: savedFile)
+                savedOnDisk = nowSaved
+            }
+        } catch {
+            // The change stays in memory and is retried by the next write, the timed flush and quitting.
+            hasUnwrittenUse = true
+            picturesAwaitingWrite = dropped
+            scheduleUseFlush()
+            throw error
         }
-        if nowHistory != historyOnDisk {
-            try persist(nowHistory, to: file)
-            historyOnDisk = nowHistory
-        }
-        if nowSaved != bridge {
-            try persist(nowSaved, to: savedFile)
-            savedOnDisk = nowSaved
-        }
+        picturesAwaitingWrite = []
 
         // Only the files that stopped being referenced, so a picture no read could vouch for is never touched.
-        removePictures(before.subtracting(named).subtracting(heldPictures))
+        removePictures(dropped.subtracting(heldPictures))
     }
 
     /// What the saved file holds while clips move: the new saved list, plus the old copy of any leaving it.
@@ -965,6 +1043,13 @@ public actor ClipboardStore {
         guard !leaving.isEmpty else { return clips.filter(\.isKept) }
         let old = Dictionary(wasSaved.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         return clips.compactMap { $0.isKept ? $0 : leaving.contains($0.id) ? old[$0.id] : nil }
+    }
+
+    /// Whether two lists hold exactly the same clips, whatever their order.
+    private static func holdsTheSameClips(_ one: [Clip], as other: [Clip]) -> Bool {
+        guard one.count == other.count else { return false }
+        let byID = Dictionary(other.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return byID.count == other.count && one.allSatisfy { byID[$0.id] == $0 }
     }
 
     /// Writes a whole list atomically, or removes its file when nothing is left to keep.
@@ -980,7 +1065,7 @@ public actor ClipboardStore {
             let data = try JSONEncoder().encode(clips)
             Self.writes?.record(data)
             if let encryptedStore {
-                try encryptedStore.write(clips, to: url)
+                try encryptedStore.write(clips, to: url, preservingPreviousGeneration: true)
             } else {
                 try PrivateFile.write(data, to: url)
             }
@@ -1001,6 +1086,7 @@ public actor ClipboardStore {
 
     /// Deletes a file if it is there; nothing to delete is success, not a failure.
     private func removeFile(_ url: URL) throws {
+        if let encryptedStore { return try encryptedStore.remove(url) }
         let manager = FileManager.default
         guard manager.fileExists(atPath: url.path(percentEncoded: false)) else { return }
         try manager.removeItem(at: url)

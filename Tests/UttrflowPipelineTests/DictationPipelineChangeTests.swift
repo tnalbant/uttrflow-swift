@@ -328,6 +328,25 @@ struct DictationPipelineDictionaryRestatementTests {
             ]))
     }
 
+    @Test(
+        "rules remove every spoken component of a corrected dictionary term",
+        arguments: [
+            ("push to git hub no wait GitHub", "Push to GitHub"),
+            ("open payment sheet scratch that PaymentSheet", "Open PaymentSheet"),
+            ("open user profile cache no wait UserProfileCache", "Open UserProfileCache"),
+        ]
+    )
+    func rulesRemoveEverySpokenComponent(spoken: String, expected: String) async {
+        let pipeline = makePipeline(
+            spoken: spoken,
+            cleaner: TransformerRouter(engines: [RuleBasedTransformer()], preference: [.rules]))
+
+        await dictate(with: pipeline)
+
+        let actual = await pipeline.outcome?.text
+        #expect(actual == expected, "Actual output: \(actual ?? "<nil>")")
+    }
+
     @Test("removes the old phrase after sorry and keeps the corrected word index")
     func sorryBeforeDictionaryTerm() async {
         let pipeline = correctedPipeline(for: "open the payment form sorry payment sheet")
@@ -768,8 +787,8 @@ struct DictationPipelineVocabularyTests {
 
 @Suite("Dictation pipeline: what it reads off the screen")
 struct DictationPipelineContextTests {
-    /// One Accessibility round trip per dictation; two could describe two different screens.
-    @Test("Reads the screen once and shows the same reading to everything")
+    /// One reading for every tidying step, so none sees another screen; the caret is read again to write.
+    @Test("Reads the screen once for tidying and shows the same reading to everything")
     func readsTheScreenOnce() async {
         let context = FakeContextEngine(context: .fixture())
         let cleaner = FakeTranscriptCleaner(producedBy: .foundationModels)
@@ -778,7 +797,7 @@ struct DictationPipelineContextTests {
 
         await dictate(with: pipeline)
 
-        #expect(await context.calls.count == 1)
+        #expect(await context.calls.count == 2)
         #expect(corrector.contexts == [.fixture()])
         #expect(cleaner.requests.map(\.context) == [.fixture()])
     }
@@ -807,6 +826,23 @@ struct DictationPipelineContextTests {
         #expect(situation?.destination == .messaging)
         #expect(situation?.insertion.sentenceState == .midSentence)
         #expect(situation?.app == cleaner.requests.first?.context)
+    }
+
+    @Test("A lower-case dictionary spelling keeps its case when the caret moves to a sentence start")
+    func pinnedSpellingSurvivesACaretMove() async {
+        let context = CaretMovesBeforeWriting(
+            read: .fixture(precedingText: "we ran "), write: .fixture(precedingText: ""))
+        let inserter = FakeTextInserter()
+        let pipeline = DictationPipeline(
+            capture: FakeAudioCaptureEngine(),
+            speech: FakeSpeechEngine(transcribeOutcome: .success(.fixture(text: "kubectl apply the file"))),
+            cleaner: FakeTranscriptCleaner(producedBy: .foundationModels),
+            context: context, inserter: inserter, speechWords: { _ in ["kubectl"] },
+            metrics: RecordingMetricsRecorder(), clock: ManualClock())
+
+        await dictate(with: pipeline)
+
+        #expect(inserter.received.last?.hasPrefix("kubectl apply") == true)
     }
 
     @Test("Still names the application the words went into")
@@ -855,5 +891,22 @@ extension String {
     fileprivate var capitalisedFirst: String {
         guard let first else { return self }
         return first.uppercased() + dropFirst()
+    }
+}
+
+/// The screen as read when the key goes down, then a different caret once the words are ready to write.
+private actor CaretMovesBeforeWriting: ContextEngine {
+    private let read: AppContext
+    private let write: AppContext
+    private var reads = 0
+
+    init(read: AppContext, write: AppContext) {
+        self.read = read
+        self.write = write
+    }
+
+    func currentContext() async -> AppContext {
+        reads += 1
+        return reads == 1 ? read : write
     }
 }

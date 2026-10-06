@@ -111,6 +111,29 @@ struct RestatementTests {
     }
 
     @Test(
+        "a camel-case dictionary anchor removes every spoken component",
+        arguments: [
+            ("push to git hub no wait GitHub", 4, 6, 2),
+            ("open payment sheet scratch that PaymentSheet", 3, 5, 1),
+            ("open user profile cache no wait UserProfileCache", 4, 6, 1),
+        ]
+    )
+    func camelCaseDictionaryAnchorRemovesEverySpokenComponent(
+        text: String, trigger: Int, restart: Int, expectedStart: Int
+    ) {
+        let (draft, live) = reading(text)
+        #expect(
+            Restatement.discardedStart(before: trigger, after: restart, in: live, of: draft)
+                == expectedStart)
+    }
+
+    @Test("a short whole-word anchor remains valid")
+    func shortWholeWordAnchor() {
+        let (draft, live) = reading("go no wait go")
+        #expect(Restatement.discardedStart(before: 1, after: 3, in: live, of: draft) == 0)
+    }
+
+    @Test(
         "a lone repeated word does not anchor beyond six words",
         arguments: [
             ("at noon we will send the report to them no sorry at one", 9, 11),
@@ -287,6 +310,18 @@ struct RestatementTests {
         #expect(Restatement.discardedStart(before: 2, after: 3, in: actually.live, of: actually.draft) == 1)
         let no = reading("the red, no blue")
         #expect(Restatement.discardedStart(before: 2, after: 3, in: no.live, of: no.draft) == 1)
+    }
+
+    /// A trigger with nothing before it takes nothing back, however the word after it looks.
+    @Test(
+        "a trigger at word 0 takes nothing back, so the call never reads before the start",
+        arguments: [
+            ("actually three", 0, 1),
+            ("actually word", 0, 1),
+        ])
+    func triggerAtStartTakesNothingBack(text: String, trigger: Int, restart: Int) {
+        let (draft, live) = reading(text)
+        #expect(Restatement.discardedStart(before: trigger, after: restart, in: live, of: draft) == nil)
     }
 }
 

@@ -87,32 +87,10 @@ public enum SecretShapes {
         return BearerURLShape.matches(text, read: &read)
     }
 
-    /// Keys whose issuers gave them a prefix, each with a minimum length so prose about `sk-` is not one.
-    nonisolated(unsafe) static let vendorKey =
-        #/
-        \b(?:
-        sk-(?:ant-)?[A-Za-z0-9_\-]{16,}          # OpenAI, Anthropic
-        | (?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9]{10,}   # Stripe
-        | gh[pousr]_[A-Za-z0-9]{16,}             # GitHub, short form
-        | github_pat_[A-Za-z0-9_]{20,}           # GitHub, fine-grained
-        | glpat-[A-Za-z0-9_\-]{16,}              # GitLab
-        | xox[baprse]-[A-Za-z0-9\-]{10,}         # Slack
-        | xapp-[A-Za-z0-9\-]{16,}                # Slack app-level tokens
-        | whsec_[A-Za-z0-9_\-]{16,}              # Stripe webhook signing secrets
-        | hf_[A-Za-z0-9]{16,}                    # Hugging Face
-        | pypi-[A-Za-z0-9_\-]{16,}              # PyPI
-        | dckr_pat_[A-Za-z0-9_\-]{16,}           # Docker Hub
-        | lin_api_[A-Za-z0-9_\-]{16,}            # Linear
-        | sbp_[A-Za-z0-9_\-]{16,}                # Supabase
-        | hvs\.[A-Za-z0-9._\-]{16,}              # HashiCorp Vault service tokens
-        | (?:AKIA|ASIA)[0-9A-Z]{16}              # AWS access key id
-        | AIza[0-9A-Za-z_\-]{35}                 # Google
-        | npm_[A-Za-z0-9]{30,}                   # npm
-        | dop_v1_[a-f0-9]{40,}                   # DigitalOcean
-        | shpat_[a-fA-F0-9]{32}                  # Shopify
-        | SG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}  # SendGrid
-        )
-        /#
+    /// Keys whose issuers gave them a prefix, each with a minimum length so prose about `sk-` is not one; built from `VendorKeyPrefixes`.
+    nonisolated(unsafe) static let vendorKey: Regex<Substring> =
+        (try? Regex(VendorKeyPrefixes.patternSource, as: Substring.self))
+        ?? Regex(verbatim: "\u{0}\u{0}never")
 
     // MARK: - A secret because of what it is called
 

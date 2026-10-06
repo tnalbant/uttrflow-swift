@@ -115,7 +115,7 @@ public struct DoubtfulWords: Sendable {
     public func spans(in draft: Draft, for situation: Situation) async -> [DoubtfulSpan] {
         // A draft whose confidences are a stand-in reads as certain throughout, so the feature must not fire.
         guard draft.confidencesAreReal, !sources.isEmpty else { return [] }
-        let runs = UncertainSpan.spans(in: draft, below: WordCorrectionEngine.certaintyThreshold)
+        let runs = UncertainSpan.spans(in: draft)
         guard !runs.isEmpty else { return [] }
         let said = UncertainSpan.saidWords(in: draft).map(\.text)
 

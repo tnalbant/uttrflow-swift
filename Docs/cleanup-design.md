@@ -140,7 +140,7 @@ The eight shipped values (`DestinationFormatter.registry`):
 | spreadsheet | as spoken | never | single line | as spoken | always numerals | 12,000 |
 | sqlEditor | from caret | always | preserve newlines | as spoken | always numerals | 12000 |
 | codeEditor | from caret | never in code, always in a comment | preserve newlines | as spoken | always numerals | 12000 |
-| terminal | as spoken | never | preserve newlines | as spoken | always numerals | 12000 |
+| terminal | as spoken | never | single line | as spoken | always numerals | 12000 |
 | messaging | from caret | off for ≤2 sentences | paragraphs | as spoken | numerals ≥10 | 12,000 |
 | email | from caret | always | paragraphs, lists | repair | numerals ≥10 | 12,000 |
 | plain | from caret | always | paragraphs, lists | repair | numerals ≥10 | 12,000 |
@@ -267,7 +267,7 @@ whether the repair helped or overreached.
 ## 5. Doubtful words — the "Apple or apples" problem
 
 The recogniser reports a probability for every word (`wordTimestamps: true`), and the
-correction engine acts only on words under `WordCorrectionEngine.certaintyThreshold` (0.5).
+correction engine acts only on words under `DoubtPolicy.certaintyThreshold` (0.5).
 The doubtful-word design generalises that into candidates and a chooser:
 
 ```swift

@@ -41,6 +41,8 @@ public struct Draft: Sendable, Equatable {
         public let heard: String
         /// The recogniser's confidence in the heard word, 0 to 1.
         public let confidence: Double
+        /// Whether an override wrote the word, so no pass or model may rewrite it whatever its score.
+        public let settled: Bool
         /// The script the recogniser wrote the word in, kept after romanising so English-only lists can skip Hindi.
         public let origin: Origin
         /// Where the recogniser heard the word begin; nil when untimed or inserted.
@@ -52,12 +54,14 @@ public struct Draft: Sendable, Equatable {
         public private(set) var edits: [Edit]
 
         public init(
-            text: String, heard: String, confidence: Double = 1, origin: Origin = .latin,
+            text: String, heard: String, confidence: Double = 1, settled: Bool = false,
+            origin: Origin = .latin,
             start: Duration? = nil, end: Duration? = nil, state: State = .kept, edits: [Edit] = []
         ) {
             self.text = text
             self.heard = heard
             self.confidence = confidence
+            self.settled = settled
             self.origin = origin
             self.start = start
             self.end = end
@@ -71,9 +75,13 @@ public struct Draft: Sendable, Equatable {
         }
 
         /// A heard word that nothing has touched yet.
-        public init(_ heard: String, confidence: Double = 1, start: Duration? = nil, end: Duration? = nil) {
+        public init(
+            _ heard: String, confidence: Double = 1, settled: Bool = false,
+            start: Duration? = nil, end: Duration? = nil
+        ) {
             self.init(
-                text: heard, heard: heard, confidence: confidence, start: start, end: end, state: .kept)
+                text: heard, heard: heard, confidence: confidence, settled: settled,
+                start: start, end: end, state: .kept)
         }
 
         /// Whether the word still appears in the text.
@@ -83,7 +91,18 @@ public struct Draft: Sendable, Equatable {
         }
 
         /// Whether the word is a line break, a paragraph break, a bullet or an item number rather than something said.
-        public var isLayoutMark: Bool { text.hasPrefix("\n") || text == Draft.bullet || isListMark }
+        public var isLayoutMark: Bool {
+            text.hasPrefix("\n") || text == Draft.bullet || isListMark || isLabelledItemMark
+        }
+
+        /// Whether the word is a repeated label and its item number, as "Reason 2: ", wherever its line starts.
+        public var isLabelledItemMark: Bool {
+            let mark = text.drop(while: \.isNewline)
+            guard mark.hasSuffix(Draft.labelStop) else { return false }
+            let parts = mark.dropLast(Draft.labelStop.count).split(separator: " ")
+            guard parts.count == 2, let label = parts.first, let digits = parts.last else { return false }
+            return label.allSatisfy(\.isLetter) && digits.allSatisfy(\.isNumber)
+        }
 
         /// Whether the word opens a list item, with a bullet or with a number; neither takes a full stop.
         public var isListMark: Bool {
@@ -114,6 +133,8 @@ public struct Draft: Sendable, Equatable {
     public static let bullet = "- "
     /// What a numbered item begins with once its digits are past: "1. ", "2. ".
     public static let numberStop = ". "
+    /// What follows a repeated label's item number.
+    public static let labelStop = ": "
     /// The tokens a line may open with to be read as a list item; `InsertionPoint` reads the same set.
     public static let bulletTokens: Set<String> = ["-", "\u{2022}", "*"]
 
@@ -169,7 +190,8 @@ public struct Draft: Sendable, Equatable {
     public init(transcription: Transcription) {
         let spoken = Self.split(transcription.text, confidence: 1)
         let timed = transcription.segments.flatMap(\.words).flatMap { word in
-            Self.split(word.text, confidence: word.confidence).map { TimedPiece(word: $0, from: word) }
+            Self.split(word.text, confidence: word.confidence, settled: word.settled)
+                .map { TimedPiece(word: $0, from: word) }
         }
         guard !timed.isEmpty, timed.map(\.word.text).joined() == spoken.map(\.text).joined() else {
             self.init(words: spoken)
@@ -186,15 +208,15 @@ public struct Draft: Sendable, Equatable {
             guard Romaniser.containsDevanagari(word.text) else { return [word] }
             return WordTokens.words(Romaniser.romanised(word.text), .display).map {
                 Word(
-                    text: $0, heard: $0, confidence: word.confidence, origin: .devanagari,
-                    start: word.start, end: word.end)
+                    text: $0, heard: $0, confidence: word.confidence, settled: word.settled,
+                    origin: .devanagari, start: word.start, end: word.end)
             }
         }
         self.init(words: words, confidencesAreReal: heard.confidencesAreReal)
     }
 
-    private static func split(_ text: String, confidence: Double) -> [Word] {
-        WordTokens.words(text, .display).map { Word($0, confidence: confidence) }
+    private static func split(_ text: String, confidence: Double, settled: Bool = false) -> [Word] {
+        WordTokens.words(text, .display).map { Word($0, confidence: confidence, settled: settled) }
     }
 
     /// A piece of one recognised word, with that word's place in the audio.
@@ -210,17 +232,19 @@ public struct Draft: Sendable, Equatable {
         }
     }
 
-    /// Gives each of `spoken` the lowest confidence among the timed words that spell it, letter for letter, and their span.
+    /// Gives each spoken word the lowest confidence, settled state, and audio span among the timed words that spell it.
     private static func confidences(of timed: [TimedPiece], onto spoken: [Word]) -> [Word] {
         var remaining = timed[...]
         var spent = 0
         return spoken.map { word in
             var needed = word.text.count
             var confidence = 1.0
+            var settled = false
             let start = spent == 0 ? remaining.first?.start : nil
             var end: Duration?
             while needed > 0, let next = remaining.first {
                 confidence = min(confidence, next.word.confidence)
+                settled = settled || next.word.settled
                 end = next.end
                 let available = next.word.text.count - spent
                 guard available <= needed else {
@@ -232,7 +256,7 @@ public struct Draft: Sendable, Equatable {
                 spent = 0
                 remaining.removeFirst()
             }
-            return Word(word.text, confidence: confidence, start: start, end: end)
+            return Word(word.text, confidence: confidence, settled: settled, start: start, end: end)
         }
     }
 
@@ -260,8 +284,14 @@ public struct Draft: Sendable, Equatable {
 
     /// Positions in `words` of the words still in the text, in order.
     public var presentIndices: [Int] {
-        presence.indices { words.indices.filter { words[$0].isPresent } }
+        presence.indices {
+            Self.wordsRead?.record(words.count)
+            return words.indices.filter { words[$0].isPresent }
+        }
     }
+
+    /// Counts the words the draft's helpers read, so a scaling test bounds a pass by work rather than time.
+    @TaskLocal package static var wordsRead: WorkTally?
 
     public static func == (lhs: Draft, rhs: Draft) -> Bool {
         lhs.words == rhs.words && lhs.confidencesAreReal == rhs.confidencesAreReal

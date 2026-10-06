@@ -99,7 +99,7 @@ struct DoubtfulWordsTests {
     @Test("reads the screen once a piece, so ten times the words on it costs one encoding each")
     func encodesTheScreenOnce() async {
         let draft = Self.budgetDraft
-        let runs = UncertainSpan.spans(in: draft, below: WordCorrectionEngine.certaintyThreshold).count
+        let runs = UncertainSpan.spans(in: draft).count
         let few = await Self.encodings(for: draft, screenWords: 50)
         let many = await Self.encodings(for: draft, screenWords: 500)
 
@@ -112,8 +112,8 @@ struct DoubtfulWordsTests {
         let one = Draft.heard("the ?order is late")
         let manyRuns = Self.budgetDraft
         let added =
-            UncertainSpan.spans(in: manyRuns, below: WordCorrectionEngine.certaintyThreshold).count
-            - UncertainSpan.spans(in: one, below: WordCorrectionEngine.certaintyThreshold).count
+            UncertainSpan.spans(in: manyRuns).count
+            - UncertainSpan.spans(in: one).count
         let few = await Self.encodings(for: one, screenWords: 200)
         let many = await Self.encodings(for: manyRuns, screenWords: 200)
 

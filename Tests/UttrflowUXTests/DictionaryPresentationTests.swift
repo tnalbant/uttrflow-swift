@@ -141,12 +141,13 @@ struct DictionaryPageTests {
                 .rows[0].undoneIsConcerning)
     }
 
-    @Test("a word in good standing offers only to be deleted")
+    @Test("a word in good standing offers to be edited or deleted")
     func actions() {
         let entry = HistoryFixture.word()
         let row = HistoryFixture.dictionary(entries: [entry]).rows[0]
-        #expect(row.actions.map(\.intent) == [.forgetWord(entry.id)])
-        #expect(row.actions[0].isDestructive)
+        #expect(row.actions.map(\.intent) == [.editWord(entry.id), .forgetWords([entry.id])])
+        #expect(!row.actions[0].isDestructive)
+        #expect(row.actions[1].isDestructive)
         #expect(row.id == entry.id)
     }
 
@@ -219,8 +220,8 @@ struct DictionaryRetirementTests {
     func restore() {
         let entry = HistoryFixture.word(used: 10, reverted: 7)
         let row = HistoryFixture.dictionary(entries: [entry]).rows[0]
-        #expect(row.actions.map(\.title) == ["Restore", "Delete"])
-        #expect(row.actions[0].intent == .restoreWord(entry.id))
+        #expect(row.actions.map(\.title) == ["Restore", "Edit", "Delete"])
+        #expect(row.actions[0].intent == .restoreWords([entry.id]))
         #expect(!row.actions[0].isDestructive)
     }
 
@@ -256,11 +257,12 @@ struct DictionaryRetirementTests {
         try await store.learn(
             heard: "Uttrflow", wrote: "Uttrflow",
             seeing: AppContext(documentName: "notes", selectedText: "utter flow"), at: .now)
-        // Three dictations, because a term seen on screen has to keep coming back.
-        for _ in 1...3 {
+        // Three days, because a term seen on screen has to keep coming back.
+        for day in 1...3 {
             try await store.learn(
                 heard: "try pgvector", wrote: "Try pgvector.",
-                seeing: AppContext(documentName: "pgvector — notes"), at: .now)
+                seeing: AppContext(documentName: "pgvector — notes"),
+                at: .now.addingTimeInterval(Double(day) * 86_400))
         }
 
         let reached = Set(await store.allEntries().map(\.origin))
@@ -393,6 +395,34 @@ struct DictionaryEditorTests {
             HistoryFixture.dictionary(
                 entries: [HistoryFixture.word("Uttrflow")],
                 draft: DictionaryDraft(word: "uttrflow")
+            ).editor)
+        #expect(editor.problem == "“uttrflow” is already in your dictionary.")
+        #expect(!editor.canSave)
+    }
+
+    @Test("editing a word does not refuse its own spelling, and saves over it keeping its identity")
+    func editingKeepsIdentity() throws {
+        let held = HistoryFixture.word("Uttrflow", pronunciation: nil, origin: .learned)
+        let editor = try #require(
+            HistoryFixture.dictionary(
+                entries: [held],
+                draft: DictionaryDraft(editing: held.id, word: "Uttrflow", pronunciation: "utter flow")
+            ).editor)
+        #expect(editor.problem == nil)
+        #expect(editor.canSave)
+        #expect(editor.badge.text == "Editing")
+        #expect(editor.replace == nil)
+        #expect(
+            editor.save.intent == .replaceWord(held.id, word: "Uttrflow", pronunciation: "utter flow"))
+    }
+
+    @Test("editing a word into another held word's spelling is still refused")
+    func editingIntoAnotherWord() throws {
+        let edited = HistoryFixture.word("Nikhil", pronunciation: nil)
+        let other = HistoryFixture.word("Uttrflow", pronunciation: nil)
+        let editor = try #require(
+            HistoryFixture.dictionary(
+                entries: [edited, other], draft: DictionaryDraft(editing: edited.id, word: "uttrflow")
             ).editor)
         #expect(editor.problem == "“uttrflow” is already in your dictionary.")
         #expect(!editor.canSave)

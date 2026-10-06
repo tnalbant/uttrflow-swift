@@ -261,6 +261,23 @@ struct DiagnosticsVocabularyPromptTests {
     }
 }
 
+@Suite("Diagnostics names the quality layers the pipeline runs")
+struct DiagnosticsQualityLayerTests {
+    @Test("every layer has a row saying whether it runs, and an override is marked")
+    func layersAreListed() throws {
+        let layer = try #require(QualityLayer.allCases.first)
+        let layers = QualityLayers { $0 == layer.defaultsKey ? !layer.defaultOn : nil }
+        let snapshot = DiagnosticsSnapshot(qualityLayers: layers)
+        let page = DiagnosticsPresenter.page(for: snapshot, locale: DiagnosticsFixture.locale)
+
+        #expect(page.qualityLayers.map(\.title) == QualityLayer.allCases.map(\.rawValue))
+        let overridden = try #require(page.qualityLayers.first)
+        #expect(overridden.detail == (layer.defaultOn ? "Off, overridden" : "On, overridden"))
+        #expect(overridden.state == .attention)
+        #expect(page.qualityLayers.dropFirst().allSatisfy { $0.state == .good })
+    }
+}
+
 @Suite("Diagnostics reports how often things worked")
 struct DiagnosticsReliabilityTests {
     @Test("a stage's success rate comes from the successes recorded against it")
@@ -343,6 +360,20 @@ struct DiagnosticsEngineTests {
         #expect(page.storage.first?.detail == detail)
         let broken = [SpeechModelReadiness.notInstalled, .incomplete, .loadFailed, .loadFailedAgain]
         #expect((card.state == .attention) == broken.contains(readiness))
+    }
+
+    /// A failed load names its class, so a retry that cannot help is told apart from one that can.
+    @Test("the speech card names why the load failed")
+    func speechCardNamesTheLoadFailure() throws {
+        let page = DiagnosticsPresenter.page(
+            for: DiagnosticsSnapshot(
+                speechModel: DiagnosticsModelPresence(
+                    isInstalled: true, bytesOnDisk: nil, isMultilingual: true),
+                speechReadiness: .loadFailed, speechLoadFailure: .timedOut),
+            locale: DiagnosticsFixture.locale)
+        let card = try #require(page.models.first { $0.title == "Speech" })
+
+        #expect(card.status == "Failed to load: timed out")
     }
 
     /// The first one that can run is the one that runs; the rest are standing by.
@@ -670,6 +701,28 @@ struct DiagnosticsRecorderTests {
         await recorder.forget()
 
         #expect(await recorder.vocabularyPrompt.isEmpty)
+    }
+
+    @Test("keeps each recording's capture quality, dropping the oldest once full")
+    func keepsCaptureQualityBounded() async throws {
+        let recorder = DiagnosticsRecorder(capacity: 2)
+        let qualities = try [0.1, 0.2, 0.4].map { level in
+            let steady = [Float](repeating: Float(level), count: 640)
+            return try #require(CaptureQuality.measure(samples: steady, sampleRate: 16_000))
+        }
+        for quality in qualities { await recorder.recordCaptureQuality(quality) }
+
+        #expect(await recorder.captureQualities == Array(qualities.suffix(2)))
+    }
+
+    @Test("a capacity that makes no sense keeps no capture quality")
+    func keepsNoCaptureQualityWithoutCapacity() async throws {
+        let recorder = DiagnosticsRecorder(capacity: 0)
+        let steady = [Float](repeating: 0.1, count: 640)
+        await recorder.recordCaptureQuality(
+            try #require(CaptureQuality.measure(samples: steady, sampleRate: 16_000)))
+
+        #expect(await recorder.captureQualities.isEmpty)
     }
 }
 

@@ -189,6 +189,8 @@ public enum DestructiveCommand {
         case none
         case unresolved
         case named(String, [String])
+        /// A quoted word in the program's place, which ssh, parallel and similar runners hand to a shell as a line.
+        case line(String)
     }
 
     /// The program a parsed clause runs, read past assignments, reserved words and every wrapper.
@@ -196,6 +198,9 @@ public enum DestructiveCommand {
         var rest = tokens[...]
         while let first = rest.first {
             guard !first.isUnresolved else { return .unresolved }
+            if first.text.contains(where: \.isWhitespace) {
+                return .line(rest.map(\.text).joined(separator: " "))
+            }
             let name = programName(first.text)
             if TerminalLineCheck.isAssignment(first.text) || reservedWords.contains(name), rest.count > 1 {
                 rest.removeFirst()
@@ -231,7 +236,7 @@ public enum DestructiveCommand {
             }
             if carryFlags.contains(candidate.text) {
                 let carried = Array(tokens.dropFirst(index + 1))
-                let text = carried.map(\.text).joined(separator: " ")
+                let text = shellQuoted(carried.map(\.text))
                 guard let clauses = ShellWords.commands(in: text, home: "") else { return false }
                 return clauses.contains { destroys($0.words, failClosedOnUnresolved: false) }
             }
@@ -281,27 +286,33 @@ public enum DestructiveCommand {
                         || (operation == "sync" && arguments.contains("--delete"))
                 }
                 return awsDestructiveOperations.contains(operation)
-                    || operation.hasPrefix("delete-") || operation.hasPrefix("terminate-")
-                    || operation.hasPrefix("deregister-") || operation.hasPrefix("purge-")
-                    || operation.hasPrefix("remove-")
+                    || operation.hasPrefix("delete-") || operation.hasPrefix("batch-delete-")
+                    || operation.hasPrefix("terminate-") || operation.hasPrefix("deregister-")
+                    || operation.hasPrefix("purge-") || operation.hasPrefix("remove-")
             }),
         "gcloud": VerbTool(
             valued: [
                 "--project", "--account", "--configuration", "--format", "--verbosity", "--zone", "--region",
                 "--impersonate-service-account", "--billing-project", "--filter", "--flatten",
             ],
-            destroys: { positionals, _ in positionals.contains("delete") }),
+            destroys: { positionals, _ in
+                positionals.contains("delete") || positionals.contains("rm") || positionals.contains("purge")
+            }),
         "az": VerbTool(
             valued: [
                 "--subscription", "-g", "--resource-group", "-n", "--name", "-o", "--output", "--query", "-l",
                 "--location",
             ],
-            destroys: { positionals, _ in positionals.contains("delete") }),
+            destroys: { positionals, _ in
+                positionals.contains("delete") || positionals.contains("rm") || positionals.contains("purge")
+                    || positionals.contains("delete-batch")
+            }),
         "gsutil": VerbTool(
             valued: ["-o", "-h", "-u"],
             destroys: { positionals, arguments in
                 positionals.first == "rm" || positionals.first == "rb"
-                    || (positionals.first == "rsync" && arguments.contains("-d"))
+                    || (positionals.first == "rsync"
+                        && arguments.contains(where: { shortFlags($0, include: "d", valuesAfter: []) }))
             }),
         "docker": containerTool, "podman": containerTool,
         "docker-compose": VerbTool(valued: composeValued, destroys: composeDownDeletesVolumes),
@@ -524,9 +535,14 @@ public enum DestructiveCommand {
             // The carried command begins after the `--` terminator.
             guard let termIndex = rest.firstIndex(of: term) else { return nil }
             rest = Array(rest.dropFirst(termIndex + 1))
-            return rest.isEmpty ? nil : rest.joined(separator: " ")
+            return rest.isEmpty ? nil : shellQuoted(rest)
         }
-        return rest.isEmpty ? nil : rest.joined(separator: " ")
+        return rest.isEmpty ? nil : shellQuoted(rest)
+    }
+
+    /// Parsed words joined back into a line the parser reads as the same words, so a quoted script stays one argument.
+    private static func shellQuoted(_ words: [String]) -> String {
+        words.map { "'" + $0.replacingOccurrences(of: "'", with: "'\\''") + "'" }.joined(separator: " ")
     }
 
     /// The global flags docker and podman take before any subcommand, with their values, lowercased.
@@ -553,6 +569,9 @@ public enum DestructiveCommand {
         if let carrier = carriesDestructive(tokens) { return carrier }
         let parsed = command(in: tokens)
         if case .unresolved = parsed { return failClosedOnUnresolved }
+        if case .line(let line) = parsed {
+            return matches(line, failClosedOnUnresolved: failClosedOnUnresolved, files: files)
+        }
         guard case .named(let command, let arguments) = parsed else { return false }
         let lowered = arguments.map { $0.lowercased() }
         if destroyers.contains(command) || command.hasPrefix("mkfs.") { return true }
