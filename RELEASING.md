@@ -67,6 +67,7 @@ tag the release:
 | Crash-free sessions in the opt-in report | at or above the previous release | the release-health view described in [`Docs/crash-reporting.md`](Docs/crash-reporting.md) |
 | `make verify` on the tagged commit | exit 0 | the release workflow's verify step for the `-rc` tag |
 | Transcription accuracy against `Scripts/accuracy_baseline.json` | no slice worse | `make accuracy-gate` on the tagged commit, with the shipping model installed |
+| Live-model suites (`*LiveModelTests`) on a Mac with Apple Intelligence | 0 skipped, 0 failed | `make verify` prints `live-model tests: N run, 0 skipped` |
 
 A new candidate restarts the soak time. A criterion with no data, such as a candidate
 nobody has run yet, is not met.
