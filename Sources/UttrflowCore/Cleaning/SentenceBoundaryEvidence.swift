@@ -10,6 +10,7 @@ public enum SentenceBoundaryEvidence {
         if text.last == ".", subordinators.contains(previous[0].key) { return true }
         if neverLast.contains(last.key) || opensWithAPhrase(previous, following)
             || completesFinalPhrase(previous, following) || completesSeamPreposition(previous, following)
+            || splitsSubjectFromPredicate(previous, following) || awaitsComplement(previous, following)
         {
             return true
         }
@@ -57,6 +58,27 @@ public enum SentenceBoundaryEvidence {
         return opening != .pronoun && opening != .interjection
     }
 
+    /// "my pin. is 2244": a verbless subject before the seam and a verb opening the words after it are one clause.
+    private static func splitsSubjectFromPredicate(
+        _ previous: [WordShape], _ following: [WordShape]
+    ) -> Bool {
+        let headStart = previous.dropLast().lastIndex(where: \.endsSentence).map { $0 + 1 } ?? 0
+        let head = previous[headStart...]
+        let tags = LexicalClass.tags(ofWords: (head + following).map(\.core))
+        guard head.count > 1, tags.count > head.count, tags[head.count] == .verb,
+            tags[0] != .preposition, tags[head.count - 1] == .noun
+        else { return false }
+        return !tags.prefix(head.count).contains(.verb)
+    }
+
+    /// "my pin is. 2244": a form of "be" straight after its noun subject leaves its complement to the next words.
+    private static func awaitsComplement(_ previous: [WordShape], _ following: [WordShape]) -> Bool {
+        guard previous.count > 1, let last = previous.last, copulas.contains(last.key), !following.isEmpty
+        else { return false }
+        let tags = LexicalClass.tags(ofWords: (previous + following).map(\.core))
+        return tags[previous.count - 2] == .noun
+    }
+
     private static func completesFinalPhrase(_ previous: [WordShape], _ following: [WordShape]) -> Bool {
         guard let first = following.first else { return false }
         let previousKeys = previous.map(\.key)
@@ -90,5 +112,6 @@ public enum SentenceBoundaryEvidence {
     private static let objectPronouns: Set<String> = [
         "it", "them", "him", "her", "me", "us", "you", "this", "that",
     ]
+    private static let copulas: Set<String> = ["is", "are", "was", "were"]
     private static let subordinators: Set<String> = ["although", "because", "if", "when"]
 }
