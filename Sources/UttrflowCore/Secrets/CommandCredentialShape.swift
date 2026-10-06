@@ -312,15 +312,18 @@ enum CommandCredentialShape {
 
     /// The last parts of a flag or variable name that say it holds a secret.
     private static let secretNameEndings: Set<String> = [
-        "password", "passwd", "pass", "passphrase", "pwd", "token", "secret", "apikey",
+        "password", "passwd", "pass", "passphrase", "pwd", "token", "secret", "apikey", "credentials",
     ]
+
+    /// Words that, anywhere before a final `key`, make the name a secret key's, as `AWS_SECRET_ACCESS_KEY` and `--private-key` do.
+    private static let secretKeyQualifiers: Set<String> = ["secret", "private", "access", "api", "auth", "cert"]
 
     /// Whether a flag or header name, split at `-` and `_`, ends in a secret's name, as `--db-password` and `x-api-key` do.
     private static func namesSecret(_ name: String) -> Bool {
         let parts = name.lowercased().split(whereSeparator: { $0 == "-" || $0 == "_" })
         guard let last = parts.last else { return false }
         if secretNameEndings.contains(String(last)) { return true }
-        return last == "key" && parts.dropLast().last == "api"
+        return last == "key" && parts.dropLast().contains { secretKeyQualifiers.contains(String($0)) }
     }
 
     /// The password in `user:password`, or nothing when only a user is given.
