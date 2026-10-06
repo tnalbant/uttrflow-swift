@@ -180,8 +180,9 @@ its own ([development-build.md](development-build.md)).
 
 - anything from a secure field;
 - anything from an application not yet allowed, or declined;
-- a value shaped like a credential, by the rules the clipboard uses; lines learned before a rule
-  widened are swept once per `CaptureGate.secretRulesVersion`;
+- a value shaped like a credential, by the rules the clipboard uses, applied to the whole value
+  and to each of its lines, so a continued command is judged as its one-line form; lines learned
+  before a rule widened are swept once per `CaptureGate.secretRulesVersion`;
 - a short value of 2 to 8 digits, grouped only by whitespace, hyphens or periods, outside a
   terminal, since a one-time code, PIN, CVV or compact date has no safe context once stored;
 - a destructive command (`DestructiveCommand`);

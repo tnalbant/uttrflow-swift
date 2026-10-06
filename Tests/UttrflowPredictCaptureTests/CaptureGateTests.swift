@@ -191,6 +191,27 @@ struct CaptureGateTests {
         #expect(CaptureGate.looksLikeSecret("AKIAIOSFODNN7EXAMPLE"))
         #expect(!CaptureGate.looksLikeSecret("git commit -m 'fix the thing'"))
     }
+
+    @Test(
+        "A credential on any line of a multi-line value is a secret, as it is on one line.",
+        arguments: [
+            ("docker run", "  -e DB=a8Kd93jfLq02xZpVnQ7r", "  img"),
+            ("curl https://api.example.com", "  -d a8Kd93jfLq02xZpVnQ7rT5", "  --fail"),
+            ("echo start", "Bearer a8Kd93jfLq02xZpVnQ7r", "echo done"),
+            ("echo start", "secret a8Kd93jfLq02xZpV", "echo done"),
+        ])
+    func continuationLineSecretIsRefused(lines: (String, String, String)) {
+        let oneLine = [lines.0, lines.1, lines.2].joined(separator: " ")
+        let continued = [lines.0, lines.1, lines.2].joined(separator: "\n")
+        #expect(CaptureGate.looksLikeSecret(oneLine))
+        #expect(CaptureGate.looksLikeSecret(continued))
+        #expect(CaptureGate.refusal(toRecord: continued, from: field(), given: allowed) == .looksLikeSecret)
+    }
+
+    @Test("A multi-line value with no credential on any line is not a secret.")
+    func multiLineOrdinaryValuePasses() {
+        #expect(!CaptureGate.looksLikeSecret("docker run \\\n  -e MODE=production \\\n  img"))
+    }
 }
 
 @Suite("Asking an application's permission once")
