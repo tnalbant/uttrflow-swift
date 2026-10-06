@@ -18,7 +18,9 @@ struct DictionaryPageView: View {
     ]
 
     var body: some View {
-        if let empty = presentation.emptyState, presentation.filters.isEmpty {
+        if let empty = presentation.emptyState, presentation.filters.isEmpty,
+            presentation.notLearning == nil
+        {
             MainEmptyStateView(state: empty, onIntent: onIntent)
         } else {
             ScrollView {
@@ -44,6 +46,10 @@ struct DictionaryPageView: View {
                     }
                     if let footnote = presentation.footnote {
                         MainFootnote(text: footnote)
+                    }
+                    if let notLearning = presentation.notLearning {
+                        DictionaryNotLearningView(section: notLearning, onIntent: onIntent)
+                            .padding(.top, 18)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -160,6 +166,46 @@ struct DictionaryRowView: View {
         }
         // The row's height comes from its text, as in the design; the 22-point hit area overhangs it.
         .frame(maxWidth: .infinity, maxHeight: 19, alignment: .trailing)
+    }
+}
+
+/// The refused spellings behind a disclosure, each with Allow again drawn at rest.
+struct DictionaryNotLearningView: View {
+    let section: DictionaryNotLearning
+    var onIntent: (MainIntent) -> Void
+
+    var body: some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(section.note)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(PagePalette.faint)
+                    .padding(.bottom, 8)
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(section.rows) { row in
+                        if row.id != section.rows.first?.id { PageDivider() }
+                        HStack {
+                            Text(row.word)
+                                .foregroundStyle(PagePalette.text)
+                                .lineLimit(1)
+                            Spacer(minLength: 6)
+                            Button(row.allow.title) { onIntent(row.allow.intent) }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(PagePalette.clipboardInk)
+                                .accessibilityLabel("\(row.allow.title), \(row.word)")
+                        }
+                        .font(.system(size: 13))
+                        .padding(.horizontal, PageMetrics.rowInset)
+                        .padding(.vertical, 9)
+                    }
+                }
+                .pageCard()
+            }
+            .padding(.top, 8)
+        } label: {
+            PageSectionLabel(text: section.title)
+        }
     }
 }
 
@@ -317,7 +363,8 @@ struct DictionaryEditorView: View {
 
     /// Rebuilt from what is in the fields now, not from the presentation drawn a keystroke ago.
     private var save: MainAction {
-        MainAction(
+        if case .replaceWord = editor.save.intent { return replacing(editor.save) }
+        return MainAction(
             title: editor.save.title,
             intent: .saveWord(word: draft.word, pronunciation: draft.pronunciation))
     }
@@ -333,12 +380,17 @@ struct DictionaryEditorView: View {
     private var word: Binding<String> {
         Binding(
             get: { draft.word },
-            set: { draft = DictionaryDraft(word: $0, pronunciation: draft.pronunciation) })
+            set: {
+                draft = DictionaryDraft(
+                    editing: draft.editing, word: $0, pronunciation: draft.pronunciation)
+            })
     }
 
     private var pronunciation: Binding<String> {
         Binding(
             get: { draft.pronunciation },
-            set: { draft = DictionaryDraft(word: draft.word, pronunciation: $0) })
+            set: {
+                draft = DictionaryDraft(editing: draft.editing, word: draft.word, pronunciation: $0)
+            })
     }
 }

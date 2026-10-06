@@ -6,11 +6,23 @@ public struct TranscribedWord: Sendable, Equatable {
     public let text: String
     /// 0 to 1; travels because correction only touches a word the recogniser is unsure about.
     public let confidence: Double
+    /// Whether an override wrote this word, so no later layer may rewrite it; a fact apart from the score.
+    public let settled: Bool
+    /// Where the word begins in the audio; nil when the recogniser did not time it.
+    public let start: Duration?
+    /// Where the word ends in the audio; nil when the recogniser did not time it.
+    public let end: Duration?
 
-    /// A word with its confidence.
-    public init(text: String, confidence: Double) {
+    /// A word with its confidence, and its place in the audio when the recogniser timed it.
+    public init(
+        text: String, confidence: Double, settled: Bool = false,
+        start: Duration? = nil, end: Duration? = nil
+    ) {
         self.text = text
         self.confidence = confidence
+        self.settled = settled
+        self.start = start
+        self.end = end
     }
 }
 
@@ -50,6 +62,8 @@ public struct Transcription: Sendable, Equatable {
     public let effort: DecodeEffort
     /// Personal dictionary spellings that survived the recogniser's token budget.
     public let vocabularyPrompt: [String]
+    /// Whether the recogniser could condition the decode on the user's words.
+    public let conditioning: DecodeConditioning
 
     /// A transcription; everything but the text is optional.
     public init(
@@ -58,7 +72,8 @@ public struct Transcription: Sendable, Equatable {
         segments: [TranscriptionSegment] = [],
         audioDuration: Duration = .zero,
         effort: DecodeEffort = .none,
-        vocabularyPrompt: [String] = []
+        vocabularyPrompt: [String] = [],
+        conditioning: DecodeConditioning = .available
     ) {
         self.text = text
         self.detectedLanguage = detectedLanguage
@@ -66,6 +81,7 @@ public struct Transcription: Sendable, Equatable {
         self.audioDuration = audioDuration
         self.effort = effort
         self.vocabularyPrompt = vocabularyPrompt
+        self.conditioning = conditioning
     }
 
     /// `true` when recognition contains no letter or digit — silence, or noise only.

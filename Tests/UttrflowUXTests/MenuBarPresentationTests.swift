@@ -51,7 +51,7 @@ struct MenuBarIconTests {
             icons == [
                 .mark, .symbol("mic.fill"), .symbol("sparkles"), .symbol("checkmark"),
                 .symbol("exclamationmark.circle"), .symbol("questionmark.circle"),
-                .symbol("doc.on.clipboard"),
+                .symbol("doc.on.clipboard"), .symbol("trash"),
             ])
         #expect(Set(icons).count == DictationActivity.allCases.count)
     }
@@ -182,7 +182,7 @@ struct MenuBarStatusTests {
         #expect(
             lines == [
                 "Ready", "Listening…", "Tidying up…", "Inserted", "Inserted — part not transcribed",
-                "Inserted — not confirmed", "Copied — press ⌘V",
+                "Inserted — not confirmed", "Copied — press ⌘V", "Discarded",
             ])
         for (activity, line) in [
             (DictationActivity.copied, "Copied — press ⌘V"),
@@ -374,7 +374,7 @@ struct MenuBarContentsTests {
                     MenuBarStatus(title: "Nothing heard", detail: "Try again closer to the microphone.")))
     }
 
-    /// The popover names a ``Destination`` and the app owns the windows, so no callback is added.
+    /// The popover names a ``AppLocation`` and the app owns the windows, so no callback is added.
     @Test("asks for a window by naming the place, not by opening it")
     func windowsAreNamedAsDestinations() {
         let shown = MenuBarPresenter.present(MenuBarState())

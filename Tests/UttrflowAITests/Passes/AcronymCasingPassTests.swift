@@ -41,12 +41,79 @@ struct AcronymCasingPassTests {
     func dictionaryAndScreen() {
         let pass = AcronymCasingPass(vocabulary: ["KPIx", "Zorbix"], onScreen: ["Ship the OKRz soon"])
         #expect(
-            pass.apply(Draft(text: "the kpix and okrz for zorbix")).text == "the KPIx and OKRz for zorbix")
+            pass.apply(Draft(text: "the kpix and okrz for zorbix")).text == "the KPIx and OKRz for Zorbix")
+    }
+
+    @Test("takes an English word's screen casing only beside the same spoken neighbour")
+    func englishWordNeedsNeighbour() {
+        let pass = AcronymCasingPass(onScreen: ["SELECT id FROM orders;"])
+        let prose = "select a seat from the front row"
+        #expect(pass.apply(Draft(text: prose)).text == prose)
+        #expect(pass.apply(Draft(text: "then select id from orders")).text == "then SELECT id from orders")
+    }
+
+    @Test(
+        "writes a tool or language name in the lexicon's casing on the rules path",
+        arguments: [
+            ("we deploy on kubernetes with postgresql", "We deploy on Kubernetes with PostgreSQL."),
+            ("port the javascript to typescript", "Port the JavaScript to TypeScript."),
+            ("install numpy on linux", "Install NumPy on Linux."),
+        ])
+    func namedTools(input: String, expected: String) {
+        #expect(rules.run(Draft(text: input)).text == expected)
+    }
+
+    @Test("leaves an ordinary word that a lexicon name is spelled like")
+    func ordinaryNameKept() {
+        #expect(rules.run(Draft(text: "let it go now")).text == "Let it go now.")
+    }
+
+    @Test("lets the user's dictionary spelling beat the lexicon's, at a sentence start too")
+    func dictionaryBeatsLexicon() {
+        let pass = AcronymCasingPass(vocabulary: ["postgresql"])
+        #expect(pass.forms["postgresql"] == "postgresql")
+        let pipeline = CleaningPipeline.message(
+            for: .standard(for: .plain), situation: .unknown, vocabulary: ["postgresql"])
+        #expect(pipeline.run(Draft(text: "postgresql is up")).text == "postgresql is up.")
+    }
+
+    @Test("keeps a lexicon name written in lower case at a sentence start")
+    func lowerCaseNameAtStart() {
+        #expect(AcronymCasingPass().lowerCaseForms["ripgrep"] == "ripgrep")
+        #expect(rules.run(Draft(text: "it failed. ripgrep found it")).text == "It failed. ripgrep found it.")
     }
 
     @Test("reads only the acronyms that apply where the words are going")
     func destination() {
         #expect(AcronymCasingPass(destination: .terminal).forms["api"] == "API")
         #expect(AcronymCasingPass().forms["go"] == nil)
+    }
+
+    @Test(
+        "writes a spoken file name in the lexicon's casing, keeping the ending as spoken",
+        arguments: [
+            ("update the readme dot md first", "Update the README.md first."),
+            ("add a line to the changelog dot md", "Add a line to the CHANGELOG.md."),
+            ("open package dot json", "Open package.json."),
+            ("rename it to app dot tsx", "Rename it to app.tsx."),
+        ])
+    func fileNameCased(input: String, expected: String) {
+        #expect(CleaningPipeline.standard.run(Draft(text: input)).text == expected)
+    }
+
+    @Test("takes a file name's casing from the screen or dictionary, else keeps it lower case")
+    func fileNameFromScreen() {
+        let pass = AcronymCasingPass(vocabulary: ["Podfile.lock"], onScreen: ["See AGENTS.md, then build."])
+        #expect(
+            pass.apply(Draft(text: "read agents.md and podfile.lock and notes.md")).text
+                == "read AGENTS.md and Podfile.lock and notes.md")
+        #expect(AcronymCasingPass().apply(Draft(text: "read agents.md")).text == "read agents.md")
+    }
+
+    @Test(
+        "leaves an ordinary sentence with dot in it as words",
+        arguments: ["she wore a polka dot dress", "connect the dot to the line"])
+    func dotProseKept(input: String) {
+        #expect(CleaningPipeline.standard.run(Draft(text: input)).text.lowercased() == input + ".")
     }
 }

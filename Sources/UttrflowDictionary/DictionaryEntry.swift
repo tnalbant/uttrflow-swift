@@ -25,7 +25,7 @@ public struct DictionaryEntry: Sendable, Equatable, Identifiable, Codable {
     public let pronunciation: String?
     public let origin: WordOrigin
     public let firstSeen: Date
-    /// How many dictations this entry has been applied to.
+    /// How many landed dictations this entry appeared in, by a rewrite or spelled right by the recogniser.
     public var timesUsed: Int
     /// How many uses the user undid; the ratio to `timesUsed` is what lets a bad word retire itself.
     public var timesReverted: Int

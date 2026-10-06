@@ -30,14 +30,19 @@ struct DoubtfulWordsTests {
     @Test("offers the readings for the run the recogniser was unsure of")
     func offersReadings() async {
         let spans = await DoubtfulWords(sources: [source]).spans(in: .heard("i ate an ?apple"), for: .unknown)
-        #expect(spans == [DoubtfulSpan(heard: "apple", confidence: 0.3, candidates: ["Apple", "apples"], occurrence: 0)])
+        #expect(
+            spans == [
+                DoubtfulSpan(heard: "apple", confidence: 0.3, candidates: ["Apple", "apples"], occurrence: 0)
+            ])
     }
 
     @Test("names which mention of the words was doubted when the same words are said twice")
     func namesTheDoubtedMention() async {
         let sources = [ScriptedCandidates(["set user prefs": ["setUserPrefs"]])]
         let spans = await DoubtfulWords(sources: sources)
-            .spans(in: .heard("we call set user prefs so it never has to ?set ?user ?prefs again"), for: .unknown)
+            .spans(
+                in: .heard("we call set user prefs so it never has to ?set ?user ?prefs again"), for: .unknown
+            )
         #expect(spans.map(\.occurrence) == [1])
     }
 
@@ -94,7 +99,7 @@ struct DoubtfulWordsTests {
     @Test("reads the screen once a piece, so ten times the words on it costs one encoding each")
     func encodesTheScreenOnce() async {
         let draft = Self.budgetDraft
-        let runs = UncertainSpan.spans(in: draft, below: WordCorrectionEngine.certaintyThreshold).count
+        let runs = UncertainSpan.spans(in: draft).count
         let few = await Self.encodings(for: draft, screenWords: 50)
         let many = await Self.encodings(for: draft, screenWords: 500)
 
@@ -107,8 +112,8 @@ struct DoubtfulWordsTests {
         let one = Draft.heard("the ?order is late")
         let manyRuns = Self.budgetDraft
         let added =
-            UncertainSpan.spans(in: manyRuns, below: WordCorrectionEngine.certaintyThreshold).count
-            - UncertainSpan.spans(in: one, below: WordCorrectionEngine.certaintyThreshold).count
+            UncertainSpan.spans(in: manyRuns).count
+            - UncertainSpan.spans(in: one).count
         let few = await Self.encodings(for: one, screenWords: 200)
         let many = await Self.encodings(for: manyRuns, screenWords: 200)
 

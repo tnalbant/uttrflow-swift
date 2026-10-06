@@ -163,7 +163,6 @@ let package = Package(
         .target(
             name: "UttrflowClipboard",
             dependencies: ["UttrflowCore"],
-            resources: [.process("Resources")],
             swiftSettings: sharedSwiftSettings
         ),
 
@@ -243,6 +242,7 @@ let package = Package(
         .target(
             name: "UttrflowEval",
             dependencies: ["UttrflowCore", "UttrflowAudio"],
+            resources: [.copy("Resources/Corpus")],
             swiftSettings: sharedSwiftSettings
         ),
 
@@ -432,7 +432,7 @@ let package = Package(
         .testTarget(
             name: "UttrflowPredictCaptureTests",
             dependencies: [
-                "UttrflowContext", "UttrflowPredict", "UttrflowPredictCapture", "UttrflowPredictStore",
+                "UttrflowContext", "UttrflowCore", "UttrflowPredict", "UttrflowPredictCapture", "UttrflowPredictStore",
             ],
             swiftSettings: sharedSwiftSettings
         ),

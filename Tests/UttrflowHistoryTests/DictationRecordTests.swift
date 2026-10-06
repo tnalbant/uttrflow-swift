@@ -130,4 +130,35 @@ struct DictationRecordTests {
         #expect(read == [record, older])
         #expect(read.map(\.cleanedBy) == [.rules, nil])
     }
+
+    @Test("every arrival survives a round trip, and a record from before arrivals reads as unknown")
+    func keepsTheArrival() throws {
+        let when = Date(timeIntervalSinceReferenceDate: 721_692_800)
+        let records = RecordedArrival.allCases.map {
+            DictationRecord(text: "Ship it", when: when, arrival: $0)
+        }
+        let stored = """
+            [{"id":"6BA7B810-9DAD-11D1-80B4-00C04FD430C8","text":"Ship it","when":721692800}]
+            """
+
+        let read = try JSONDecoder().decode(
+            [DictationRecord].self, from: JSONEncoder().encode(records))
+        let older = try JSONDecoder().decode([DictationRecord].self, from: Data(stored.utf8))
+
+        #expect(read == records)
+        #expect(older.map(\.arrival) == [nil])
+    }
+
+    @Test("an arrival this build does not know reads as unknown instead of refusing the file")
+    func unknownArrivalReadsAsUnknown() throws {
+        let stored = """
+            [{"id":"6BA7B810-9DAD-11D1-80B4-00C04FD430C8","text":"Ship it","when":721692800,\
+            "arrival":"somethingNewer"}]
+            """
+
+        let read = try JSONDecoder().decode([DictationRecord].self, from: Data(stored.utf8))
+
+        #expect(read.map(\.text) == ["Ship it"])
+        #expect(read.map(\.arrival) == [nil])
+    }
 }
