@@ -314,13 +314,18 @@ public actor CaptureSession {
 
     /// Forgets every line and answer this session holds, in memory and on disk.
     public func forgetEverythingLearned() throws {
+        forgetLearnedLines()
+        try forgetEveryAnswer()
+    }
+
+    /// Forgets the lines this session holds in memory, keeping the answers until the corpus itself is gone.
+    public func forgetLearnedLines() {
         lastRecorded = [:]
         unwrittenCommits = []
         unwrittenAcceptances = []
         inFlightAcceptances = [:]
         lastAcceptance = nil
         detector.reset()
-        try forgetEveryAnswer()
     }
 
     /// Seeds a terminal from the shell's history, once, and only because the user asked for it.

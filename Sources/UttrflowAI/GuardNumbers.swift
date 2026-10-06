@@ -120,11 +120,14 @@ extension MeaningPreservationGuard {
         return String(characters.indices.filter { !separators.contains($0) }.map { characters[$0] })
     }
 
-    /// Digits people dictate as words, in English and Hindi; traps on first use if the tables share a word.
+    /// Digits people dictate as words, in English and Hindi; traps if a shared word ("lakh") differs in value.
     static let numberWords: [String: String] = Dictionary(
-        uniqueKeysWithValues: NumberWords.english.map { ($0.key, String($0.value)) }
+        NumberWords.english.map { ($0.key, String($0.value)) }
             + NumberWords.hindi.map { ($0.key, String($0.value)) }
-    )
+    ) { english, hindi in
+        precondition(english == hindi, "a number word means one value in both tables")
+        return english
+    }
 
     /// Each ordinal word as the numeral the rules write for it, "third" as "3rd".
     static let ordinalNumerals: [String: String] = NumberFormsPass.ordinalUnits.mapValues {

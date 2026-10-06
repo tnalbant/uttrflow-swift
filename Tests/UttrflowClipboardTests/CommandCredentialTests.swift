@@ -12,6 +12,11 @@ struct CommandCredentialTests {
         "A password passed as a flag, a header value or a URL's userinfo token is a secret",
         arguments: [
             "curl -u admin:Hunter2x https://api.example.com",
+            "curl -sSu admin:Hunter2x https://api.example.com",
+            "curl -Lu admin:Hunter2x https://api.example.com",
+            "curl -fsSu admin:Hunter2x https://api.example.com",
+            "curl -su admin:Hunter2x https://api.example.com",
+            "curl -sSuadmin:Hunter2x https://api.example.com",
             "curl --user admin:Hunter2x https://api.example.com",
             "curl -uadmin:Hunter2x https://api.example.com",
             "mysql -u root -pS3cretPass appdb",
@@ -44,6 +49,15 @@ struct CommandCredentialTests {
             "psql postgresql://alice:S3cretPass@db.example.com/appdb",
             "vault login --token s.sunshine",
             "deploy --api-key sunshine",
+            "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMIK7MDENGbPxRfiCYEXAMPLEKEY aws s3 ls",
+            "export AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMIK7MDENGbPxRfiCYEXAMPLEKEY",
+            "AZURE_STORAGE_ACCESS_KEY=sunshine az storage blob list",
+            "export GCP_PRIVATE_KEY=sunshine",
+            "APP_SECRET_KEY=sunshine ./serve",
+            "deploy --secret-key sunshine",
+            "deploy --auth-key=sunshine",
+            "deploy --cert-key sunshine",
+            "GOOGLE_APPLICATION_CREDENTIALS=sunshine gcloud auth list",
             "PGPASSWORD=sunshine psql -h db.example.com",
             "MYSQL_PWD=sunshine mysql -u root",
             "curl -H \"Authorization: Basic YWxpY2U6czNjcjN0\" https://api.example.com",
@@ -52,6 +66,8 @@ struct CommandCredentialTests {
             "curl -H'Authorization: Bearer sunshine' https://api.example.com",
             "curl -H 'Proxy-Authorization: Digest sunshine' https://api.example.com",
             "curl -H 'X-Api-Key: sunshine' https://api.example.com",
+            "curl -H 'Ocp-Apim-Subscription-Key: sunshine' https://api.example.com",
+            "az storage blob list --account-key sunshine",
             "Authorization: token sunshine",
             "Authorization: CustomScheme sunshine",
             "\"Authorization\": \"Bearer sunshine\",",
@@ -71,6 +87,11 @@ struct CommandCredentialTests {
             "docker run -p 8080:80 nginx",
             "mysql -u root -p appdb",
             "curl -u admin https://api.example.com",
+            "curl -sS https://api.example.com/users",
+            "curl -sSo out.json https://api.example.com/users",
+            "curl -sHu: https://api.example.com/users",
+            "docker login -uops registry.example.com",
+            "mysql -uroot -hdb.example.com appdb",
             "ssh-keygen -t ed25519 -N ''",
             "docker login --password-stdin registry.example.com",
             "docker login -u ci -p \"$REGISTRY_PASSWORD\"",
@@ -84,6 +105,9 @@ struct CommandCredentialTests {
             "7z a -p out.7z dir",
             "zip -r out.zip dir",
             "smbclient //files.example.com/share -U alice",
+            "deploy --sort-key name",
+            "SSH_KEY_PATH=~/.ssh/id_ed25519 ./deploy",
+            "export AWS_SECRET_ACCESS_KEY=$AWS_SECRET",
             "https://readonly@git.example.com/org/repo.git",
             "PGPASSWORD=$DB_PASSWORD psql -h db.example.com",
         ])
@@ -107,6 +131,13 @@ struct CommandCredentialTests {
             "machine example.com login u password hunter2x9",
             "machine example.com\nlogin u\naccount acct\npassword hunter2x9",
             "machine example.com\nmacdef init\npassword ordinary\n\nmachine next.example\nlogin u\npassword hunter2x9",
+            "machine example.com login u password abc|def9x",
+            "machine example.com login u password abc&def9x",
+            "machine example.com login u password abc;def9x",
+            "machine example.com login u password #hunter2x9",
+            "machine example.com\nlogin u\npassword #hunter2x9",
+            "machine example.com\nlogin u\npassword abc&def9x",
+            "machine example.com\nlogin u\npassword Pa$$w0rd9x",
         ])
     func multilineNetrc(_ text: String) {
         #expect(SecretShapes.matches(text))
@@ -120,9 +151,31 @@ struct CommandCredentialTests {
         #expect(!SecretShapes.matches(text))
     }
 
-    @Test("Password in ordinary prose is not a netrc credential")
-    func prosePassword() {
-        #expect(!SecretShapes.hasCommandCredential("Please enter your password on the next line."))
-        #expect(!SecretShapes.matches("Please enter your password on the next line."))
+    @Test(
+        "An empty netrc password or a placeholder is not a credential",
+        arguments: [
+            "machine example.com\npassword",
+            "machine example.com\npassword $TOKEN",
+            "machine example.com\npassword ${token}",
+            "machine example.com\npassword \"$(token)\"",
+            "machine example.com\npassword {token}",
+            "machine example.com\npassword <token>",
+            "machine example.com\npassword \"\"",
+        ])
+    func netrcPlaceholder(_ text: String) {
+        #expect(!SecretShapes.hasCommandCredential(text))
+        #expect(!SecretShapes.matches(text))
+    }
+
+    @Test(
+        "Password in ordinary prose after a blank line is not a netrc credential",
+        arguments: [
+            "Please enter your password on the next line.",
+            "machine example.com\n\npassword reset required",
+            "machine learning\n\nlogin page\npassword reset",
+        ])
+    func prosePassword(_ text: String) {
+        #expect(!SecretShapes.hasCommandCredential(text))
+        #expect(!SecretShapes.matches(text))
     }
 }

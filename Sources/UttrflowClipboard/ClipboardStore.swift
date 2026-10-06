@@ -81,8 +81,11 @@ public actor ClipboardStore {
     /// Copies of damaged indexes waiting for the app to tell the user where they were saved.
     private var unreadableIndexSetAsides: [URL] = []
 
-    /// Records that a use is in memory and not yet on disk; the next write, or `flushUse`, carries it.
+    /// Records that memory holds a use or a refused change the disk lacks; the next write, or `flushUse`, carries it.
     private var hasUnwrittenUse = false
+
+    /// Pictures of clips a refused write dropped, removed once a later write lands without naming them.
+    private var picturesAwaitingWrite: Set<String> = []
 
     /// Sets how long a use waits in memory for another write before it is written on its own.
     private let useFlushDelay: Duration
@@ -219,7 +222,7 @@ public actor ClipboardStore {
         return retained(clips, keeping: retention)
     }
 
-    /// Writes a use still held in memory; a disk that refuses costs only the eviction order.
+    /// Writes a use or a refused change still held in memory, which quitting asks for so a deletion is not undone.
     public func flushUse() {
         useFlush?.cancel()
         useFlush = nil
@@ -291,6 +294,7 @@ public actor ClipboardStore {
     /// Removes every clip, pinned ones included, which is what resetting personalisation promises.
     public func forgetEverything() throws(ClipboardStoreError) {
         try save([])
+        forgetHeldPictures()
         do {
             try LocalStore.removeSetAside(file)
             try LocalStore.removeSetAside(savedFile)
@@ -430,6 +434,13 @@ public actor ClipboardStore {
                 if setAside == nil { unreplaceable.insert(url) }
                 return nil
             }
+        }
+        switch encryptedStore.acceptsLegacyPlaintext() {
+        case .open: break
+        case .closed:
+            if LocalStore.setAside(url, now: Date()) == nil { unreplaceable.insert(url) }
+            return nil
+        case .unknown: return nil
         }
         // A plaintext legacy image remains usable if its one-time sealing write is temporarily unavailable.
         do { try writeImage(data, named: image.file) } catch { return data }
@@ -853,6 +864,13 @@ public actor ClipboardStore {
         else { return }
         try? header.close()
         guard !EncryptedStore.isSealed(prefix) else { return }
+        switch encryptedStore?.acceptsLegacyPlaintext() {
+        case .open?: break
+        case .closed?:
+            if LocalStore.setAside(url, now: Date()) == nil { unreplaceable.insert(url) }
+            return
+        case .unknown?, nil: return
+        }
         // The atomic replacement leaves the plaintext source in place when sealing or writing fails.
         try? writeImage(data, named: name)
     }
@@ -981,21 +999,31 @@ public actor ClipboardStore {
         // Every clip reaches its new file before leaving its old one, so a refusing disk never loses one.
         let bridge = Self.bridging(persistable, from: wasSaved, into: nowHistory)
         // The bridge only has to hold every clip somewhere; the same clips in another order are already on disk.
-        if !Self.holdsTheSameClips(bridge, as: wasSaved) {
-            try persist(bridge, to: savedFile)
-            savedOnDisk = bridge
+        let dropped = before.union(picturesAwaitingWrite).subtracting(named)
+        do throws(ClipboardStoreError) {
+            if !Self.holdsTheSameClips(bridge, as: wasSaved) {
+                try persist(bridge, to: savedFile)
+                savedOnDisk = bridge
+            }
+            if nowHistory != historyOnDisk {
+                try persist(nowHistory, to: file)
+                historyOnDisk = nowHistory
+            }
+            if nowSaved != bridge {
+                try persist(nowSaved, to: savedFile)
+                savedOnDisk = nowSaved
+            }
+        } catch {
+            // The change stays in memory and is retried by the next write, the timed flush and quitting.
+            hasUnwrittenUse = true
+            picturesAwaitingWrite = dropped
+            scheduleUseFlush()
+            throw error
         }
-        if nowHistory != historyOnDisk {
-            try persist(nowHistory, to: file)
-            historyOnDisk = nowHistory
-        }
-        if nowSaved != bridge {
-            try persist(nowSaved, to: savedFile)
-            savedOnDisk = nowSaved
-        }
+        picturesAwaitingWrite = []
 
         // Only the files that stopped being referenced, so a picture no read could vouch for is never touched.
-        removePictures(before.subtracting(named).subtracting(heldPictures))
+        removePictures(dropped.subtracting(heldPictures))
     }
 
     /// What the saved file holds while clips move: the new saved list, plus the old copy of any leaving it.

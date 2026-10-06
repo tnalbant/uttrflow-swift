@@ -10,6 +10,9 @@ enum CachedSnapshot {
     /// The largest safetensors header believed, so a corrupt length cannot ask for gigabytes.
     static let largestHeader: UInt64 = 100_000_000
 
+    /// A corrupt metadata length cannot make a cache check read unbounded data.
+    private static let largestConfiguration: UInt64 = 100_000_000
+
     /// The snapshot of `identifier` in `cache` when its files are whole and its weights heavy enough.
     static func complete(
         identifier: String, revision: String, in cache: URL, minimumWeightBytes: UInt64
@@ -20,13 +23,25 @@ enum CachedSnapshot {
             directoryHint: .isDirectory)
         let snapshot = repository.appending(path: "snapshots").appending(
             path: revision, directoryHint: .isDirectory)
-        guard requiredFiles.allSatisfy({ (size(of: snapshot.appending(path: $0)) ?? 0) > 0 }),
+        guard requiredFiles.allSatisfy({ validConfiguration(snapshot.appending(path: $0)) }),
             let weights = weightFiles(in: snapshot)
         else { return nil }
         guard let weighed = total(weights.map { wholeSize(of: snapshot.appending(path: $0)) }),
             weighed >= minimumWeightBytes
         else { return nil }
         return snapshot
+    }
+
+    /// Whether a required model metadata file is a bounded, nonempty JSON object.
+    private static func validConfiguration(_ file: URL) -> Bool {
+        guard let length = size(of: file), length > 0, length <= largestConfiguration,
+            let handle = try? FileHandle(forReadingFrom: file.resolvingSymlinksInPath())
+        else { return false }
+        defer { try? handle.close() }
+        guard let data = try? handle.read(upToCount: Int(length)), data.count == Int(length),
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return false }
+        return !object.isEmpty
     }
 
     /// Whether `text` is a full commit hash, the only name a snapshot directory is given.

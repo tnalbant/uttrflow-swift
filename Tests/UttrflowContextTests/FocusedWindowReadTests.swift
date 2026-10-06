@@ -13,6 +13,7 @@ private final class StallingSource: FocusedWindowSource {
     let isValueSecure: Bool
     var field: FieldIdentity?
     private(set) var stalled = false
+    private(set) var visited: [Step] = []
 
     init(
         stallAfter: Step?, names: FieldNames = FocusedWindowReadTests.plainNames, isValueSecure: Bool = false
@@ -22,7 +23,10 @@ private final class StallingSource: FocusedWindowSource {
         self.isValueSecure = isValueSecure
     }
 
-    private func answered(_ step: Step) { if step == stallAfter { stalled = true } }
+    private func answered(_ step: Step) {
+        visited.append(step)
+        if step == stallAfter { stalled = true }
+    }
 
     func windowTitle() -> String? {
         answered(.title)
@@ -107,6 +111,18 @@ struct FocusedWindowReadTests {
             description: nil)
         let window = banked(StallingSource(stallAfter: nil, names: names))
         #expect(window == FocusedWindow(title: "Notes", isSecure: true))
+    }
+
+    @Test("refuses unknown names before asking for selection or text")
+    func unknownNames() {
+        let names = FieldNames(
+            role: "AXTextField", subrole: nil, identifier: nil, placeholder: nil, description: nil,
+            readStatus: .refused)
+        let source = StallingSource(stallAfter: nil, names: names)
+
+        #expect(banked(source) == FocusedWindow(title: "Notes", isSecure: true))
+        #expect(!source.visited.contains(.selection))
+        #expect(!source.visited.contains(.text))
     }
 
     @Test("keeps role, label and selection when the read stalls before the caret text")
