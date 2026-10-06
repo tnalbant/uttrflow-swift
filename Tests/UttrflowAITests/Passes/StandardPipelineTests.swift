@@ -41,7 +41,7 @@ struct StandardPipelineTests {
             for: spreadsheet, situation: .unknown)
         #expect(
             spreadsheetPipeline.run(Draft(text: "number one buy milk number two walk the dog")).text
-                == "number 1 buy milk number 2 walk the dog")
+                == "buy milk, walk the dog")
 
         let document = DestinationFormatter.standard(for: .document)
         let documentPipeline = CleaningPipeline.beforeModel(for: document, situation: .unknown)
