@@ -515,7 +515,6 @@ public actor DictationPipeline {
             app: app, situation: situation, listening: ListeningLanguages(profile: runningProfile),
             vocabulary: words, profile: runningProfile, corrector: fixedCorrector)
         await cleaner.warm(for: situation)
-        await cleaner.reserveFinalPiece(situation)
     }
 
     /// Transcribes each piece the moment a pause ends it and tidies it beside the next one, until the key is released.
