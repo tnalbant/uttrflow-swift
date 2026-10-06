@@ -69,6 +69,13 @@ public actor DictationPipeline {
 
     /// The kept audio of the dictation under way, deleted or left for a retry as it ends.
     private var openRecording: UUID?
+    /// A cancelled recording offered for Restore, and the wait that deletes it when the window closes.
+    private var restorable: (id: UUID, expiry: Task<Void, Never>)?
+
+    /// A recording cancelled at least this long is said to be discarded and kept for Restore. See Docs/recordings.md.
+    public static let restoreThreshold: Duration = .seconds(5)
+    /// How long a cancelled recording can be restored before it is deleted.
+    public static let restoreWindow: Duration = .seconds(60)
     /// Destination facts read for audio kept for a retry.
     private var recordingDestination: AppContext?
     /// The formatter destination read for that recording, retained even if app rules later change.
@@ -375,6 +382,11 @@ public actor DictationPipeline {
     @discardableResult
     public func retry(_ recording: UUID) async -> Bool {
         guard !isBusy else { return false }
+        // A restore inside the window keeps the file from the deletion the window would bring.
+        if restorable?.id == recording {
+            restorable?.expiry.cancel()
+            restorable = nil
+        }
         // Held while the file is read, so a dictation cannot open the microphone underneath the retry.
         hasTurn = true
         generation += 1
@@ -428,11 +440,49 @@ public actor DictationPipeline {
         early.pendingCapture = nil
         early.pendingCaptureElapsed = nil
         cancelledGeneration = generation
+        // Read before the early loop is dropped, since a kept recording is labelled with this screen.
+        let seen = early.context ?? dictationContext?.app
+        let listenedFor = state == .recording && !hasTurn ? stopwatch?() : nil
         early.cancel()
         show(heard: nil)
-        await capture.cancel()
-        await settleRecording(wordsLost: true)
-        transition(to: .idle)
+        guard let listenedFor, listenedFor >= Self.restoreThreshold else {
+            // A slip or a short take is cancelled silently, as a restart rather than a loss.
+            await capture.cancel()
+            await settleRecording(wordsLost: true)
+            return transition(to: .idle)
+        }
+        stopwatch = nil
+        await capture.cancelKeepingRecording()
+        let kept = await offerRestore(seen: seen)
+        transition(to: .discarded(DictationDiscard(spokenFor: listenedFor, keptRecording: kept)))
+    }
+
+    /// Keeps the cancelled recording for the restore window, or deletes it at once for a secure field.
+    private func offerRestore(seen: AppContext?) async -> UUID? {
+        guard let kept = await recordings.current() else { return nil }
+        guard !destinationIsSecure else {
+            await recordings.discard(kept.id)
+            return nil
+        }
+        if let seen {
+            let fieldKind = SituationResolver.resolve(from: seen, overrides: runningOverrides).destination
+            await recordings.setDestination(seen, fieldKind: fieldKind, for: kept.id)
+        }
+        restorable?.expiry.cancel()
+        let expiry = Task { [clock] in
+            do { try await clock.sleep(for: Self.restoreWindow) } catch { return }
+            await self.closeRestoreWindow(kept.id)
+        }
+        restorable = (kept.id, expiry)
+        return kept.id
+    }
+
+    /// Deletes a cancelled recording nobody restored, and takes its notice down if it is still up.
+    private func closeRestoreWindow(_ id: UUID) async {
+        guard restorable?.id == id else { return }
+        restorable = nil
+        await recordings.discard(id)
+        if case .discarded(let discard) = state, discard.keptRecording == id { transition(to: .idle) }
     }
 
     /// Whether the dictation that started at `mine` is abandoned, by itself or by a later cancel.

@@ -76,6 +76,7 @@ private final class LoadingCueSpy: RecordingCueing {
     func playStart() { starts.withLock { $0 += 1 } }
     func playStop() {}
     func playWarning() {}
+    func playDiscarded() {}
 
     var startCount: Int { starts.withLock { $0 } }
 }

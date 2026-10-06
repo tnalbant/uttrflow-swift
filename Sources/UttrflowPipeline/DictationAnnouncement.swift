@@ -56,6 +56,14 @@ extension DictationPresenter {
         case .inserted(let outcome):
             return DictationAnnouncement(text: "Inserted: \(preview(of: said(outcome)))", isUrgent: false)
 
+        case .discarded(let discard):
+            guard discard.keptRecording != nil else {
+                return DictationAnnouncement(text: "Discarded. Nothing was typed.", isUrgent: false)
+            }
+            return DictationAnnouncement(
+                text: "Discarded. Nothing was typed. \(RecoveryAction.restoreRecording.instruction)",
+                isUrgent: false)
+
         case .failed(let failure):
             let message = failure.message.filter { $0 != "…" }
             guard let recovery = failure.recovery else {
@@ -106,6 +114,8 @@ private extension RecoveryAction {
             "Choose Copy on the floating button to copy your words."
         case .retryFromRecording:
             "Open History from the Uttrflow menu, then choose Retry on the recording."
+        case .restoreRecording:
+            "To get the words back within a minute, open History from the Uttrflow menu and choose Retry."
         }
     }
 }

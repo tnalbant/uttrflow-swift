@@ -2394,7 +2394,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 // Not an empty set: unmeasured is a different fact from nothing changed.
                 keep(record)
             }
-        case .idle, .recording, .transcribing, .tidying, .inserting:
+        case .idle, .recording, .transcribing, .tidying, .inserting, .discarded:
             break
         }
         // Whichever way it ended, the row that said "Retrying…" is not retrying any more.
@@ -3590,6 +3590,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let activity: DictationActivity =
             switch state {
             case .idle, .failed: .idle
+            case .discarded: .discarded
             case .recording: .listening
             case .transcribing, .tidying, .inserting: .working
             case .inserted(let outcome):
@@ -3659,6 +3660,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             } else {
                 failureLingers
             }
+        // A Restore on offer stays as long as a failure's button; with nothing to offer it goes sooner.
+        case .discarded(let discard): discard.keptRecording == nil ? successLingers : failureLingers
         case .idle, .recording, .transcribing, .tidying, .inserting: nil
         }
     }
@@ -3743,6 +3746,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 carryOut(MainIntent.retryRecording(id))
             } else {
                 show(.main(.history))
+                Task { await pipeline?.acknowledge() }
+            }
+        case .restoreRecording:
+            // The same retry, run on the recording a cancel kept, so its words reach the clipboard.
+            if case .discarded(let discard) = lastDictationState, let id = discard.keptRecording {
+                carryOut(MainIntent.retryRecording(id))
+            } else {
                 Task { await pipeline?.acknowledge() }
             }
         }

@@ -29,7 +29,7 @@ enum DictationRecordMapping {
         case .failed(let failure):
             guard let text = failure.wordsToKeep else { return nil }
             return DictationRecord(id: id, text: text, when: when)
-        case .idle, .recording, .transcribing, .tidying, .inserting:
+        case .idle, .recording, .transcribing, .tidying, .inserting, .discarded:
             return nil
         }
     }

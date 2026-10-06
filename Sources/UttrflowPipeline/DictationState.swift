@@ -150,6 +150,19 @@ enum KeptWords {
     }
 }
 
+/// A recording the user cancelled while it was long enough to be worth saying so. See Docs/recordings.md.
+public struct DictationDiscard: Sendable, Equatable {
+    /// How long the microphone was open before the cancel.
+    public let spokenFor: Duration
+    /// The audio kept for a Restore during ``DictationPipeline/restoreWindow``; absent for a secure field.
+    public let keptRecording: UUID?
+
+    public init(spokenFor: Duration, keptRecording: UUID?) {
+        self.spokenFor = spokenFor
+        self.keptRecording = keptRecording
+    }
+}
+
 /// Where a dictation has got to (§15); `failed` is a way of leaving that carries what recovery needs.
 public enum DictationState: Sendable, Equatable {
     case idle
@@ -160,12 +173,14 @@ public enum DictationState: Sendable, Equatable {
     case inserting
     case inserted(DictationOutcome)
     case failed(DictationFailure)
+    /// Cancelled while recording, past ``DictationPipeline/restoreThreshold``; nothing was typed.
+    case discarded(DictationDiscard)
 
     /// Whether a new dictation can begin.
     public var isBusy: Bool {
         switch self {
         case .recording, .transcribing, .tidying, .inserting: true
-        case .idle, .inserted, .failed: false
+        case .idle, .inserted, .failed, .discarded: false
         }
     }
 
@@ -173,7 +188,7 @@ public enum DictationState: Sendable, Equatable {
     public var hasEnded: Bool {
         switch self {
         case .inserted, .failed: true
-        case .idle, .recording, .transcribing, .tidying, .inserting: false
+        case .idle, .recording, .transcribing, .tidying, .inserting, .discarded: false
         }
     }
 
