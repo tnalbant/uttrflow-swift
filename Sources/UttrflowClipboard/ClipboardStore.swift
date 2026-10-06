@@ -431,6 +431,13 @@ public actor ClipboardStore {
                 return nil
             }
         }
+        switch encryptedStore.acceptsLegacyPlaintext() {
+        case .open: break
+        case .closed:
+            if LocalStore.setAside(url, now: Date()) == nil { unreplaceable.insert(url) }
+            return nil
+        case .unknown: return nil
+        }
         // A plaintext legacy image remains usable if its one-time sealing write is temporarily unavailable.
         do { try writeImage(data, named: image.file) } catch { return data }
         return data
@@ -853,6 +860,13 @@ public actor ClipboardStore {
         else { return }
         try? header.close()
         guard !EncryptedStore.isSealed(prefix) else { return }
+        switch encryptedStore?.acceptsLegacyPlaintext() {
+        case .open?: break
+        case .closed?:
+            if LocalStore.setAside(url, now: Date()) == nil { unreplaceable.insert(url) }
+            return
+        case .unknown?, nil: return
+        }
         // The atomic replacement leaves the plaintext source in place when sealing or writing fails.
         try? writeImage(data, named: name)
     }

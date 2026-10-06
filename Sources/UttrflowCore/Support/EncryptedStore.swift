@@ -65,7 +65,14 @@ public struct EncryptedStore: Sendable {
                 }
                 payload = try Self.open(data, key: key, name: url.lastPathComponent)
             } else {
-                payload = data
+                switch acceptsLegacyPlaintext() {
+                case .open: payload = data
+                case .closed:
+                    Self.log.error(
+                        "Refused a plaintext \(url.lastPathComponent, privacy: .public) after encryption began")
+                    return .unreadable(setAside: LocalStore.setAside(url, now: now))
+                case .unknown: return .unreadable(setAside: nil)
+                }
             }
             let value: Value
             do {
@@ -142,6 +149,9 @@ public struct EncryptedStore: Sendable {
         return try Self.open(envelope, key: key, name: logicalName)
     }
 
+    /// Whether a file without the envelope header may still be a legacy file, which is only so while this installation has no key.
+    public func acceptsLegacyPlaintext() -> LegacyWindow { keys.legacyWindow() }
+
     /// Whether bytes carry this store's versioned envelope header.
     public static func isSealed(_ payload: Data) -> Bool { payload.starts(with: magic) }
 
@@ -166,26 +176,61 @@ public struct EncryptedStore: Sendable {
     }
 }
 
+/// Whether plaintext may still be migrated: only in a process that found no installation key, since the key exists from the first seal on.
+public enum LegacyWindow: Sendable {
+    /// No key existed when this process first asked, so plaintext is a pre-encryption file.
+    case open
+    /// A key already existed, so plaintext was written by something other than this app.
+    case closed
+    /// The key could not be looked up, so the file is left untouched until it can.
+    case unknown
+}
+
 /// Holds the first key a provider returns so later seals and opens skip the provider's lookup.
 final class StoreKeyCache: Sendable {
     private let provider: any StoreKeyProviding
     private let cached = Mutex<SymmetricKey?>(nil)
+    private let window = Mutex<LegacyWindow?>(nil)
+
+    /// Decided by the first lookup in this process, before any seal can create the key, so this launch's own migration keeps it open.
+    func legacyWindow() -> LegacyWindow {
+        if let decided = window.withLock({ $0 }) { return decided }
+        do { _ = try key(createIfMissing: false) } catch {
+            guard (error as? StoreKeyError)?.isMissing == true else { return .unknown }
+        }
+        return window.withLock { $0 } ?? .unknown
+    }
 
     init(_ provider: any StoreKeyProviding) { self.provider = provider }
 
     /// Failures are not cached, so a key that is missing or locked now is read again on the next call.
     func key(createIfMissing: Bool) throws -> SymmetricKey {
         if let key = cached.withLock({ $0 }) { return key }
-        let key = try provider.key(createIfMissing: createIfMissing)
+        let key: SymmetricKey
+        do {
+            key = try provider.key(createIfMissing: false)
+            decideWindow(.closed)
+        } catch let error as StoreKeyError where error.isMissing {
+            decideWindow(.open)
+            guard createIfMissing else { throw error }
+            key = try provider.key(createIfMissing: true)
+        }
         cached.withLock { $0 = key }
         return key
+    }
+
+    private func decideWindow(_ decided: LegacyWindow) {
+        window.withLock { current in if current == nil { current = decided } }
     }
 
     func revokeKey() throws {
         guard let revoking = provider as? any StoreKeyRevoking else {
             throw StoreKeyError.revocationUnsupported
         }
-        defer { cached.withLock { $0 = nil } }
+        defer {
+            cached.withLock { $0 = nil }
+            window.withLock { $0 = nil }
+        }
         try revoking.revokeKey()
     }
 }

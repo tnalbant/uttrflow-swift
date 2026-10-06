@@ -20,6 +20,22 @@ struct ClipboardEncryptionTests {
         EncryptedStore(keys: Keys(value: SymmetricKey(size: .bits256)))
     }
 
+    /// An installation that has never sealed anything, so its legacy plaintext may still be migrated.
+    private final class FreshKeys: StoreKeyProviding, Sendable {
+        private let stored = Mutex<SymmetricKey?>(nil)
+        func key(createIfMissing: Bool) throws -> SymmetricKey {
+            try stored.withLock { current in
+                if let current { return current }
+                guard createIfMissing else { throw StoreKeyError.unavailable(Int32(errSecItemNotFound)) }
+                let generated = SymmetricKey(size: .bits256)
+                current = generated
+                return generated
+            }
+        }
+    }
+
+    private func legacyStore() -> EncryptedStore { EncryptedStore(keys: FreshKeys()) }
+
     private struct UnavailableKeys: StoreKeyProviding {
         func key(createIfMissing: Bool) throws -> SymmetricKey {
             throw CocoaError(.fileWriteUnknown)
@@ -76,6 +92,25 @@ struct ClipboardEncryptionTests {
         #expect(await reopened.imageData(for: try #require(restored.image)) == original)
     }
 
+    @Test("a plaintext picture written once the installation key exists is set aside, never sealed or shown")
+    func plantedPictureIsRefused() async throws {
+        let folder = try TemporaryFolder()
+        let file = folder.url.appending(path: "clipboard.json")
+        let crypto = encryptedStore()
+        let store = ClipboardStore(file: file, encryptedStore: crypto)
+        let noticed = NoticedClip(
+            clip: Clip(text: "picture", kind: .image, copiedAt: Date()),
+            picture: (ClipImageTests.bytes, 1, 1))
+        _ = try await store.record(noticed, keeping: folder.retention)
+        let image = try #require(await store.clips(keeping: folder.retention).first?.image)
+        let imageURL = folder.url.appending(path: "Images").appending(path: image.file)
+        try Data(repeating: 0x42, count: 64).write(to: imageURL)
+
+        let reopened = ClipboardStore(file: file, encryptedStore: crypto)
+        #expect(await reopened.imageData(for: image) == nil)
+        #expect(!FileManager.default.fileExists(atPath: imageURL.path))
+    }
+
     @Test("legacy clipboard JSON and picture files migrate on first read")
     func legacyFilesMigrate() async throws {
         let folder = try TemporaryFolder()
@@ -90,7 +125,7 @@ struct ClipboardEncryptionTests {
         try FileManager.default.createDirectory(at: images, withIntermediateDirectories: true)
         try original.write(to: images.appending(path: name))
 
-        let store = ClipboardStore(file: file, encryptedStore: encryptedStore())
+        let store = ClipboardStore(file: file, encryptedStore: legacyStore())
         let migrated = try #require(await store.clips(keeping: folder.retention).first)
         await store.waitForLegacyPictureMigration()
         #expect(EncryptedStore.isSealed(try Data(contentsOf: file)))
@@ -113,7 +148,7 @@ struct ClipboardEncryptionTests {
         try original.write(to: images.appending(path: name))
         try original.write(to: images.appending(path: "orphan.png"))
 
-        let crypto = encryptedStore()
+        let crypto = legacyStore()
         let store = ClipboardStore(file: file, encryptedStore: crypto)
         _ = await store.clips(keeping: folder.retention)
         await store.waitForLegacyPictureMigration()
@@ -136,7 +171,7 @@ struct ClipboardEncryptionTests {
         try FileManager.default.createDirectory(at: images, withIntermediateDirectories: true)
         try original.write(to: images.appending(path: name))
 
-        let crypto = encryptedStore()
+        let crypto = legacyStore()
         let store = ClipboardStore(file: file, encryptedStore: crypto)
         _ = await store.clips(keeping: folder.retention)
         await store.waitForLegacyPictureMigration()
@@ -195,7 +230,7 @@ struct ClipboardEncryptionTests {
         #expect(try Data(contentsOf: file) == index)
         #expect(try Data(contentsOf: imageURL) == original)
 
-        let crypto = encryptedStore()
+        let crypto = legacyStore()
         let availableStore = ClipboardStore(file: file, encryptedStore: crypto)
         _ = await availableStore.clips(keeping: folder.retention)
         await availableStore.waitForLegacyPictureMigration()
