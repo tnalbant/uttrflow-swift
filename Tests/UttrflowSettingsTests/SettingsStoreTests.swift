@@ -99,7 +99,7 @@ struct SettingsTests {
     @Test("keeps every field through an encode and a decode")
     func roundTrip() throws {
         let settings = Settings(
-            engines: EngineConfiguration(speech: .appleSpeech, transformerPreference: [.rules]),
+            engines: EngineConfiguration(speech: .whisperKit, transformerPreference: [.rules]),
             profile: UserProfile(preferredLanguages: [.hindi]),
             hotkeyActivation: .pressToToggle,
             showsFloatingButton: false,
@@ -289,6 +289,13 @@ struct SettingsTests {
         let unknown = try decode(#"{"handsFreeDoubleTapMilliseconds": 601}"#)
         #expect(slower.handsFreeDoubleTapMilliseconds == 800)
         #expect(unknown.handsFreeDoubleTapMilliseconds == 450)
+    }
+
+    @Test("the hold length defaults to 200 ms and ignores an unlisted value")
+    func handsFreeHoldSetting() throws {
+        #expect(try decode("{} ").handsFreeHoldMilliseconds == 200)
+        #expect(try decode(#"{"handsFreeHoldMilliseconds": 500}"#).handsFreeHoldMilliseconds == 500)
+        #expect(try decode(#"{"handsFreeHoldMilliseconds": 250}"#).handsFreeHoldMilliseconds == 200)
     }
 
     @Test("keeps a retention the user actually chose", arguments: [1, 30, 365])

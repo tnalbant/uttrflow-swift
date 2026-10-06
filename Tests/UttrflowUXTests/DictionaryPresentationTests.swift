@@ -256,11 +256,12 @@ struct DictionaryRetirementTests {
         try await store.learn(
             heard: "Uttrflow", wrote: "Uttrflow",
             seeing: AppContext(documentName: "notes", selectedText: "utter flow"), at: .now)
-        // Three dictations, because a term seen on screen has to keep coming back.
-        for _ in 1...3 {
+        // Three days, because a term seen on screen has to keep coming back.
+        for day in 1...3 {
             try await store.learn(
                 heard: "try pgvector", wrote: "Try pgvector.",
-                seeing: AppContext(documentName: "pgvector — notes"), at: .now)
+                seeing: AppContext(documentName: "pgvector — notes"),
+                at: .now.addingTimeInterval(Double(day) * 86_400))
         }
 
         let reached = Set(await store.allEntries().map(\.origin))
@@ -617,5 +618,30 @@ struct PronunciationNoteTests {
         let editor = try editor(word, said)
         #expect(editor.pronunciationNote == nil)
         #expect(editor.problem == nil)
+    }
+}
+
+@Suite("The words Uttrflow will not learn")
+struct DictionaryNotLearningTests {
+    /// The page the store's refusals draw, through the presenter as the app calls it.
+    private func page(entries: [DictionaryEntry] = [], refused: [String]) -> DictionaryPresentation {
+        DictionaryPresenter.page(
+            for: DictionarySnapshot(entries: entries, now: HistoryFixture.now, refused: refused),
+            calendar: HistoryFixture.calendar, locale: HistoryFixture.locale)
+    }
+
+    @Test("lists each refused spelling in the store's order, each with Allow again")
+    func listsRefusals() throws {
+        let section = try #require(page(refused: ["pgvector", "Docker"]).notLearning)
+        #expect(section.title == "Not learning · 2 words")
+        #expect(section.rows.map(\.word) == ["pgvector", "Docker"])
+        #expect(section.rows.map(\.allow.intent) == [.allowWord("pgvector"), .allowWord("Docker")])
+        #expect(section.rows.allSatisfy { $0.allow.title == "Allow again" })
+        #expect(section.note.contains("\(PersonalDictionaryStore.maximumRefusedWords)"))
+    }
+
+    @Test("draws no disclosure when nothing is refused")
+    func absentWhenNothingIsRefused() {
+        #expect(page(entries: [HistoryFixture.word()], refused: []).notLearning == nil)
     }
 }

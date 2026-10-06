@@ -16,6 +16,14 @@ public enum GeneralVocabulary {
         word.count >= shortestWorthLearning && word.contains(where: \.isLetter) && !knows(word)
     }
 
+    /// Whether `word` is the user's own spelling of the listed Hindi word `heard`: both listed, spelt apart, one sound key.
+    static func isHindiSpellingPreference(_ word: String, over heard: String) -> Bool {
+        let chosen = word.lowercased()
+        let replaced = heard.lowercased()
+        return chosen != replaced && commonHinglish.contains(chosen) && commonHinglish.contains(replaced)
+            && Romaniser.soundKey(chosen) == Romaniser.soundKey(replaced)
+    }
+
     /// The most readings offered for one sound, so a crowded sound cannot fill a prompt line.
     public static let maximumPerSound = 4
 
@@ -70,6 +78,7 @@ public enum GeneralVocabulary {
         become show leave feel put bring begin keep hold write stand hear let mean set meet
         run pay sit speak lie lead read grow open walk win offer remember love consider
         appear buy wait serve die send expect build stay fall cut reach remain suggest raise
+        affect effect
         pass sell require report decide pull last long great little own old big high
         different small large next early young important few public bad same able very
         really here today tomorrow yesterday tonight please thanks thank yes okay sure maybe
@@ -83,6 +92,8 @@ public enum GeneralVocabulary {
         too why where while whom whose off once ago yet else though since until upon per
         via ever soon later things quite rather almost enough instead however therefore
         actually basically probably definitely hi hey bye cool nice mint receive separate address occurred
+        monday tuesday wednesday thursday friday saturday sunday
+        rest arm ram
         """)
 
     /// Romanised Hindi and Hinglish glue, so a bilingual user does not end up with a dictionary of `nahi`.

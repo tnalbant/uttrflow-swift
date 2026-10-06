@@ -104,11 +104,14 @@ struct LastTranscriptForgetTests {
 
         let app = AppDelegate(container: sandbox.root)
         let insertion = InsertionRecorder()
-        app.clipInserter = insertion
+        let clipboardRoute = InsertionRecorder()
+        app.lastTranscriptInserter = insertion
+        app.clipInserter = clipboardRoute
         await app.restoreLastTranscript()
         await app.perform(.pasteLastTranscript)
 
         #expect(await insertion.inserted == ["Newest words"])
+        #expect(await clipboardRoute.inserted.isEmpty)
         #expect(app.lastTranscriptID == newest.id)
     }
 
@@ -137,10 +140,12 @@ struct LastTranscriptForgetTests {
         #expect(app.actionNotice?.message.hasPrefix("There is no transcript to") == true)
     }
 
-    @Test("both shortcuts say so when there is nothing to put back", arguments: [
-        (ShortcutAction.pasteLastTranscript, "There is no transcript to paste yet."),
-        (ShortcutAction.copyLastTranscript, "There is no transcript to copy yet."),
-    ])
+    @Test(
+        "both shortcuts say so when there is nothing to put back",
+        arguments: [
+            (ShortcutAction.pasteLastTranscript, "There is no transcript to paste yet."),
+            (ShortcutAction.copyLastTranscript, "There is no transcript to copy yet."),
+        ])
     func nothingToPutBackIsSaid(action: ShortcutAction, message: String) async {
         let sandbox = Sandbox()
         let app = AppDelegate(container: sandbox.root)

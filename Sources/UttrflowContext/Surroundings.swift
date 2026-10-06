@@ -1,4 +1,5 @@
 public import CoreGraphics
+public import struct Foundation.NSRange
 import Synchronization
 import UttrflowPredict
 
@@ -24,6 +25,25 @@ public protocol ElementTree {
     func parent(of element: Element) -> Element?
     /// Where the element is on screen, or nothing when it will not say, which is trusted.
     func frame(of element: Element) -> CGRect?
+    /// One attribute of the element, its refusal kept apart from an empty answer.
+    func attribute(_ name: String, of element: Element) -> FieldAnswer
+    /// One attribute asked with a UTF-16 range, which is how part of a field's text is read.
+    func attribute(_ name: String, of element: Element, range: NSRange) -> FieldAnswer
+    /// Several attributes in one message, one answer each in the order asked.
+    func attributes(_ names: [String], of element: Element) -> [FieldAnswer]
+    /// The selection and the field's length counted in text markers, for a field that refuses its character range.
+    func markerSelection(of element: Element) -> MarkerSelection?
+}
+
+/// A selection measured in text markers from the field's start, with the field's whole length in the same units.
+public struct MarkerSelection: Equatable, Sendable {
+    public let range: NSRange
+    public let count: Int
+
+    public init(range: NSRange, count: Int) {
+        self.range = range
+        self.count = count
+    }
 }
 
 extension ElementTree {
@@ -33,6 +53,16 @@ extension ElementTree {
     public func isConversationLinkList(_ element: Element) -> Bool { false }
     /// A tree that has no hidden-state signal treats its elements as visible.
     public func isHidden(_ element: Element) -> Bool { false }
+    /// A tree walked only for its text answers no field attribute.
+    public func attribute(_ name: String, of element: Element) -> FieldAnswer { .unsupported }
+    /// A tree walked only for its text reads no range.
+    public func attribute(_ name: String, of element: Element, range: NSRange) -> FieldAnswer { .unsupported }
+    /// A tree without text markers has no second rung to the selection.
+    public func markerSelection(of element: Element) -> MarkerSelection? { nil }
+    /// A tree without batching asks each attribute on its own.
+    public func attributes(_ names: [String], of element: Element) -> [FieldAnswer] {
+        names.map { attribute($0, of: element) }
+    }
 }
 
 /// What is on screen around the focused field, read for one pass and written nowhere. See `Docs/predict-context.md`.

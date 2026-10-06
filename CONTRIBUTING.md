@@ -72,7 +72,9 @@ request.
    `make verify`. When a change can affect them, run the same sequence CI uses:
    `make verify` followed by `make app-preflight`. A change to dictation, clean-up, latency or
    memory also needs a before-and-after measurement; [`Docs/measure-a-change.md`](Docs/measure-a-change.md)
-   says which command, how long it takes and what it needs.
+   says which command, how long it takes and what it needs. A new cleaning or a new kind of
+   place follows [`Docs/adding-a-pass.md`](Docs/adding-a-pass.md) or
+   [`Docs/adding-a-destination.md`](Docs/adding-a-destination.md).
 3. **Open a pull request against `main`.** CI runs on it. It must be green.
 4. **A maintainer reviews and merges.** Nobody can push to `main` directly, including the
    maintainer.

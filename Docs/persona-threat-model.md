@@ -32,7 +32,7 @@ residual risks here when it lands, and is held to the rules below.
 | Learned dictionary words (from titles seen and said, and from the user's own corrections) | `dictionary.v1.json`, `Sources/UttrflowDictionary/PersonalDictionaryStore.swift` | yes | yes | `removeLearned()`, reset |
 | Words the user deleted from the dictionary | `dictionary.v1.refused.json`, same file | **no** | no | reset |
 | Pending sightings of title words | memory only ([app-dictionary.md](app-dictionary.md)) | not on disk | no | quit, reset |
-| Typed lines per surface (application, role, document) | the suggestion corpus, `Sources/UttrflowPredictStore/PredictStore.swift` | yes | no | per-application forget, reset |
+| Lines learned from typing or accepted suggestions per surface (application, role, document) | the suggestion corpus, `Sources/UttrflowPredictStore/PredictStore.swift` | yes | no | per-application forget, reset |
 | Per-application capture consent | `predict-consent.v1.json`, `Sources/UttrflowPredictCapture/CapturePreferences.swift` | **no** | no | reset |
 | Dictation history | `Sources/UttrflowHistory/DictationHistoryStore.swift` | yes | no | retention, reset |
 | Snippets | `Sources/UttrflowAI/SnippetStore.swift` | yes | yes | reset |
@@ -48,7 +48,7 @@ residual risks here when it lands, and is held to the rules below.
 | A crash or hang report | No learned value, and no application name: the event is scrubbed before it leaves. |
 | The unified log | Lengths and application identifiers only, never typed, read or said text. Stays on the Mac unless the user shares a system diagnostic. |
 | Somebody looking at the screen | Yes: Settings lists dictionary words and the applications that taught the corpus. |
-| A page or document that shows text to feed the learner | Limited: a title word must also be spoken in three separate dictations, and typed lines are only the user's own keystrokes in an application they opted in. |
+| A page or document that shows text to feed the learner | Limited: a title word must also be spoken in three separate dictations, and learned lines come from the user's keystrokes or accepted suggestions in an application they opted in. |
 | Uttrflow's own servers | Not an adversary for this data, because none of it is sent. |
 
 ## Mitigations
@@ -65,6 +65,7 @@ residual risks here when it lands, and is held to the rules below.
 | Secrets are swept out of captured lines | `Tests/UttrflowPredictCaptureTests/SecretSweepTests.swift` |
 | Nothing is read in or around a secure field | `Tests/UttrflowContextTests/SurroundingsSecureTests.swift`, `Tests/UttrflowPredictTests/SecureFieldTests.swift` |
 | Dictation into a secure field is marked as kept nowhere | `Tests/UttrflowPipelineTests/DictationSecureFieldTests.swift` |
+| A credential-shaped dictation is inserted and kept nowhere | `Tests/UttrflowPipelineTests/DictationCredentialTests.swift` |
 | No log line carries typed, read or said text | `make log-audit`, `Tests/UttrflowTests/SuggestionLogTests.swift` |
 | A crash report carries no path, host name, message or application data | `Tests/UttrflowDiagnosticsTests/CrashReporterTests.swift` |
 | The dictation path cannot reach the network | `make offline-audit` |

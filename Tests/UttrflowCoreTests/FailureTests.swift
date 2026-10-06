@@ -119,6 +119,11 @@ struct FailurePresentationTests {
         #expect(TextInsertionError.accessibilityDenied.recovery == .openSystemSettings(.accessibility))
         #expect(TextInsertionError.insertionTimedOut.recovery == .showHistory)
         #expect(TextInsertionError.insertionRejected(description: "x").recovery == .pasteManually)
+        #expect(TextInsertionError.insertionCancelled.recovery == nil)
+        #expect(
+            TextInsertionError.insertionCancelled.userMessage
+                == "Insertion was cancelled. The text is saved in History.")
+        #expect(TextInsertionError.insertionCancelled.stopsFallback)
 
         #expect(HotkeyError.observationNotPermitted.recovery == .openSystemSettings(.accessibility))
         #expect(HotkeyError.accessibilityNeedsRefresh.recovery == .retry)
@@ -183,6 +188,7 @@ struct FailurePresentationTests {
         #expect(TextInsertionError.clipboardUnavailable.severity == .degraded)
         #expect(TextInsertionError.insertionTimedOut.severity == .degraded)
         #expect(TextInsertionError.insertionRejected(description: "x").severity == .degraded)
+        #expect(TextInsertionError.insertionCancelled.severity == .informational)
     }
 
     /// Both hotkey errors stop dictation dead, and one shares its recovery with a merely degraded failure.
@@ -203,7 +209,7 @@ struct FailurePresentationTests {
     func transformationFailuresPreserveTheTranscript() {
         let failures: [TransformationError] = [
             .noCapableTransformer,
-            .transformFailed(kind: .localModel, description: "x"),
+            .transformFailed(kind: .localModel, failure: .other),
             .outputRejected(reason: "x", kind: .lostWord),
         ]
         for failure in failures {
@@ -217,7 +223,7 @@ struct FailurePresentationTests {
         let failures: [any UttrflowFailure] = [
             TextInsertionError.insertionRejected(description: "x"),
             TransformationError.noCapableTransformer,
-            TransformationError.transformFailed(kind: .localModel, description: "x"),
+            TransformationError.transformFailed(kind: .localModel, failure: .other),
             TransformationError.outputRejected(reason: "x", kind: .lostWord),
         ]
         for failure in failures {
@@ -237,8 +243,8 @@ struct FailurePresentationTests {
     func equatable() {
         #expect(AudioCaptureError.engineFailed(description: "a") != .engineFailed(description: "b"))
         #expect(
-            TransformationError.transformFailed(kind: .rules, description: "a")
-                != .transformFailed(kind: .localModel, description: "a")
+            TransformationError.transformFailed(kind: .rules, failure: .other)
+                != .transformFailed(kind: .localModel, failure: .other)
         )
         #expect(SpeechEngineError.modelNotInstalled == .modelNotInstalled)
     }

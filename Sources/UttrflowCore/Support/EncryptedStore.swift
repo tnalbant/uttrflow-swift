@@ -27,6 +27,9 @@ public struct EncryptedStore: Sendable {
     private static let tagLength = 16
     private let keys: StoreKeyCache
 
+    /// Returns the number of leading bytes in this store's sealed-file header.
+    public static let sealedHeaderLength = magic.count
+
     /// Uses the production Keychain provider unless a test supplies an isolated provider.
     public init(keys: (any StoreKeyProviding)? = nil) {
         self.keys = StoreKeyCache(keys ?? KeychainStoreKeyProvider())
@@ -109,6 +112,23 @@ public struct EncryptedStore: Sendable {
     public func seal(_ payload: Data, for logicalName: String) throws -> Data {
         let key = try keys.key(createIfMissing: true)
         return try Self.seal(payload, key: key, name: logicalName)
+    }
+
+    /// A keyed hash of `text` under this installation's key, separated by `purpose`, so equal text matches without being stored.
+    public func digest(of text: String, for purpose: String) throws -> String {
+        let key = try keys.key(createIfMissing: true)
+        let subkey = HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: key, info: Data(purpose.utf8), outputByteCount: 32)
+        let code = HMAC<SHA256>.authenticationCode(for: Data(text.utf8), using: subkey)
+        return code.map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// A keyed digest of `payload` under a key derived from the installation key for `purpose`, so equal inputs match without either being readable.
+    public func keyedDigest(of payload: Data, purpose: String) throws -> Data {
+        let key = try keys.key(createIfMissing: true)
+        let derived = HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: key, info: Data(purpose.utf8), outputByteCount: 32)
+        return Data(HMAC<SHA256>.authenticationCode(for: payload, using: derived))
     }
 
     /// Revokes the shared key after all reset targets have been deleted successfully.
@@ -292,4 +312,10 @@ public enum StoreKeyError: Error, Sendable {
     case revocationUnsupported
     /// A stored installation key does not have the required 256-bit size.
     case invalidKey
+
+    /// Whether the Keychain definitively has no installation key stored.
+    public var isMissing: Bool {
+        guard case .unavailable(let status) = self else { return false }
+        return status == Int32(errSecItemNotFound)
+    }
 }
