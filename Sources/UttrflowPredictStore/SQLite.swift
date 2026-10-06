@@ -27,7 +27,7 @@ final class Database {
     /// The path is encrypted only when the app supplies its shared local-store cipher.
     private let file: URL
     /// The shared cipher seals snapshots without adding a database dependency.
-    private let encryptedStore: EncryptedStore?
+    let encryptedStore: EncryptedStore?
     /// Writes wait until migrations finish, then persist once per committed change.
     private var isReady = false
     /// Mutations inside a transaction become one durable snapshot after commit.
@@ -187,7 +187,11 @@ final class Database {
         do { stored = try Data(contentsOf: url) } catch { throw .cannotOpen(url.path) }
         let image: Data
         if EncryptedStore.isSealed(stored) {
-            do { image = try encryptedStore?.open(stored, for: url.lastPathComponent) ?? stored } catch {
+            do {
+                image = try encryptedStore?.open(stored, for: url.lastPathComponent) ?? stored
+            } catch let error as StoreKeyError where error.isMissing {
+                throw .corrupt
+            } catch {
                 throw .cannotOpen("encrypted corpus could not be authenticated")
             }
             try deserialize(image, path: url.path)

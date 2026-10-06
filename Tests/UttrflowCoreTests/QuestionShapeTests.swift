@@ -51,6 +51,8 @@ struct QuestionShapeTests {
             "tum kal aa rahe ho na",
             "may i come in", "may we leave early", "do they know", "had you heard about it",
             "were you there when it happened", "did it work",
+            "how many of you are coming", "how much of it is left", "how about you",
+            "how old are you", "what a mess is this",
         ])
     func asks(text: String) {
         #expect(QuestionShape.asks(shapes(text)))
@@ -59,6 +61,8 @@ struct QuestionShapeTests {
     @Test(
         "leaves a statement, an indirect question and a command alone",
         arguments: [
+            "how nice of you to come", "how beautiful it is here", "what a day i am so tired",
+            "what an idea you had", "what a lovely surprise", "what a mess this is", "what a day",
             "I wonder if the build passed", "what we need is more time", "what we need is more tests",
             "what works for you is fine", "who owns the house is unclear",
             "the person who owns the notification service is unclear",
@@ -128,6 +132,11 @@ struct QuestionShapeTests {
             "these are a few good reasons", "those were a few good days", "we are a hundred percent sure",
             "he is a very good doctor", "she is a very good nurse", "they are a very good team",
             "it is good", "she is a nurse", "the report is a good idea", "it is not a good idea",
+            "here is the list: apples and pears", "here are the files: a and b",
+            "there is a list: one two three", "here is what we need: milk and eggs", "here is the plan",
+            "you are the best person for this", "everything is the way it should be",
+            "nothing is the same as before", "nobody is the right person for this",
+            "none are the right size for this", "someone is the next person in line",
         ])
     func declarativePronounOpeners(text: String) {
         #expect(!QuestionShape.asks(shapes(text)))

@@ -8,14 +8,7 @@ public struct LayoutWordsPass: PieceCleaningPass {
     private let layout: LayoutPolicy
     private let insertionState: InsertionPoint.SentenceState
 
-    /// What each spoken phrase becomes; a bullet marker carries its own dash and space.
-    static let marks: [(words: [String], mark: String, requiresLists: Bool)] = [
-        (["new", "line"], "\n", false), (["new", "paragraph"], "\n\n", false),
-        (["blank", "line"], "\n\n", false), (["bullet", "point"], "\n- ", true),
-        (["next", "point"], "\n- ", true),
-    ]
-
-    /// The word that opens a numbered item. It is not in `marks` because the number after it picks the mark.
+    /// The word that opens a numbered item. It has no row in `SpokenCommands.layout` because the number after it picks the mark.
     static let numbering = "number"
 
     public init(
@@ -52,12 +45,20 @@ public struct LayoutWordsPass: PieceCleaningPass {
                 let item = itemNumber(at: position + 1, in: live, of: draft)
             {
                 let labelText = WordShape.capitalised(draft.shape(at: label).core)
-                draft.replace(at: label, with: "\n\(labelText) \(item.value): ", by: Self.id)
+                // At the head of the text a labelled item has no line to break from, as a numbered item has none.
+                let lineBreak = live.first == label ? "" : "\n"
+                let written = "\(lineBreak)\(labelText) \(item.value)\(Draft.labelStop)"
+                draft.replace(at: label, with: written, by: Self.id)
                 for index in live[position..<position + found.length] { draft.remove(at: index, by: Self.id) }
                 live.removeSubrange(position..<position + found.length)
                 continue
             }
-            draft.replace(at: live[position], with: found.mark, by: Self.id)
+            // A break with nothing to break from writes no mark, so its words go rather than leave an empty word.
+            if found.mark.isEmpty {
+                draft.remove(at: live[position], by: Self.id)
+            } else {
+                draft.replace(at: live[position], with: found.mark, by: Self.id)
+            }
             for index in live[position + 1..<position + found.length] {
                 draft.remove(at: index, by: Self.id)
             }
@@ -137,10 +138,10 @@ public struct LayoutWordsPass: PieceCleaningPass {
 
     /// A layout phrase immediately before an item is a break, not a repeated label.
     private func followsLayoutBreak(at position: Int, in live: [Int], of draft: Draft) -> Bool {
-        Self.marks.contains { mark in
-            guard mark.mark.allSatisfy(\.isNewline) else { return false }
-            let start = position - mark.words.count + 1
-            return start >= 0 && matches(mark.words, at: start, in: live, of: draft)
+        SpokenCommands.layout.contains { command in
+            guard command.text.allSatisfy(\.isNewline) else { return false }
+            let start = position - command.words.count + 1
+            return start >= 0 && draft.spells(command.words, at: start, in: live)
         }
     }
 
@@ -193,8 +194,10 @@ public struct LayoutWordsPass: PieceCleaningPass {
     private func isCorroborated(
         at position: Int, in live: [Int], of draft: Draft, among numbered: Set<Int>
     ) -> Bool {
-        guard live.indices.contains(position), draft.shape(at: live[position]).key == Self.numbering else {
-            return true
+        guard live.indices.contains(position) else { return true }
+        guard draft.shape(at: live[position]).key == Self.numbering else {
+            guard let found = mark(at: position, in: live, of: draft), found.isList else { return true }
+            return isBulletSetOff(found, at: position, in: live, of: draft)
         }
         let insideSentence = position > 0 && !draft.shape(at: live[position - 1]).endsSentence
         guard position + 1 < live.count,
@@ -211,6 +214,22 @@ public struct LayoutWordsPass: PieceCleaningPass {
             return lastNumber.endsClause && !lastNumber.endsSentence
         }
         return isEligibleNumberedRun(at: item.value, in: live, of: draft)
+    }
+
+    /// Whether a bullet opens a line: the text's head, a mark before or after the phrase, or another bullet beside it.
+    private func isBulletSetOff(
+        _ found: (length: Int, mark: String, isList: Bool), at position: Int, in live: [Int], of draft: Draft
+    ) -> Bool {
+        if position == 0 { return true }
+        let before = draft.shape(at: live[position - 1])
+        if before.endsClause && (!before.endsSentence || WordShape.trailsOff(before.suffix)) { return true }
+        if draft.shape(at: live[position + found.length - 1]).endsClause { return true }
+        return live.indices.contains { other in
+            other != position
+                && mark(at: other, in: live, of: draft).map { $0.isList && $0.length == found.length }
+                    == true
+                && draft.shape(at: live[other]).key != Self.numbering
+        }
     }
 
     /// A lead-in and items without a stranded coordinator distinguish a list from a sentence.
@@ -248,10 +267,8 @@ public struct LayoutWordsPass: PieceCleaningPass {
         guard !["and", "or"].contains(previous.key) else { return false }
         if ["need", "are", "check"].contains(previous.key) { return true }
         let context = live[..<marker].map { draft.words[$0].text }.joined(separator: " ")
-        let tagger = NLTagger(tagSchemes: [.lexicalClass])
-        tagger.string = context
         guard let range = context.range(of: previous.core, options: .backwards) else { return false }
-        return tagger.tag(at: range.lowerBound, unit: .word, scheme: .lexicalClass).0 != .verb
+        return LexicalClass.tag(at: range.lowerBound, in: context) != .verb
     }
 
     /// The number of the item "number" opens at `position`, or nil where no item opens.
@@ -273,11 +290,14 @@ public struct LayoutWordsPass: PieceCleaningPass {
     ) -> (
         length: Int, mark: String, isList: Bool
     )? {
-        if let found = Self.marks.first(where: {
-            matches($0.words, at: position, in: live, of: draft)
-                && (allowsLists || !$0.requiresLists)
+        if let found = SpokenCommands.layout.first(where: {
+            draft.spells($0.words, at: position, in: live) && (allowsLists || !$0.requiresLists)
         }) {
-            return (found.words.count, found.mark, found.requiresLists)
+            // At the head of the text an item has no line to break from.
+            let text =
+                position == 0 && found.requiresLists
+                ? String(found.text.drop(while: \.isNewline)) : found.text
+            return (found.words.count, text, found.requiresLists)
         }
         guard draft.shape(at: live[position]).key == Self.numbering, position + 1 < live.count,
             allowsLists,
@@ -298,13 +318,5 @@ public struct LayoutWordsPass: PieceCleaningPass {
         let keys = live[draft.sentenceRun(from: position, in: live)].map { draft.shape(at: $0).key }
         guard let spoken = NumberWords.cardinal(keys[...]), spoken.value > 0 else { return nil }
         return spoken
-    }
-
-    private func matches(_ words: [String], at position: Int, in live: [Int], of draft: Draft) -> Bool {
-        position + words.count <= live.count
-            && draft.sentenceContains(words.count, from: position, in: live)
-            && zip(words, live[position..<position + words.count]).allSatisfy {
-                $0 == draft.shape(at: $1).key
-            }
     }
 }

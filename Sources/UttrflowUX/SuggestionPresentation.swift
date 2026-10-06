@@ -114,6 +114,8 @@ public struct SuggestionPresentation: Sendable, Equatable {
     public let underlinesGhost: Bool
     /// The key that takes the suggestion in this field, which the hint after the ghost must name truthfully.
     public let acceptKey: AcceptKey
+    /// Whether Escape has a decision for this offer and accept key.
+    private let escapeIsRouted: Bool
     /// The field's own font family, so the ghost is set in the face the line is, or nothing when it will not say.
     public let fontFamily: String?
     /// Whether to set the ghost in bold to match the field's face.
@@ -141,6 +143,10 @@ public struct SuggestionPresentation: Sendable, Equatable {
         direction: SuggestionWritingDirection = .leftToRight
     ) {
         self.acceptKey = acceptKey
+        escapeIsRouted =
+            KeyRouting.decision(
+                for: KeyStroke(.escape), showing: suggestion, selection: selection,
+                acceptKey: acceptKey) != .passThrough
         self.fontFamily = fontFamily
         self.isBold = isBold
         self.isItalic = isItalic
@@ -177,7 +183,9 @@ public struct SuggestionPresentation: Sendable, Equatable {
     public var list: [Row] { isExpanded ? rows : [] }
 
     /// The keys that work the open list, drawn under it in the dimmed style.
-    public var footer: String { "\(acceptKey.glyph) take   ⌥↓ next   ⎋ dismiss" }
+    public var footer: String {
+        "\(acceptKey.glyph) take   ⌥↓ next" + (escapeIsRouted ? "   ⎋ dismiss" : "")
+    }
 
     /// The selected candidate keeps full strength; other rows use the contrast-safe list opacity.
     public func listOpacity(for row: Row) -> Double {
@@ -186,7 +194,9 @@ public struct SuggestionPresentation: Sendable, Equatable {
 
     /// What VoiceOver hears automatically when the offer changes, without exposing unselected candidates.
     var announcementLabel: String {
-        guard let leader = inline else { return style == .dot ? Self.dotLabel : "" }
+        guard let leader = inline else {
+            return style == .dot ? (escapeIsRouted ? Self.dotLabel : "AI suggestion hidden.") : ""
+        }
         let take = "\(acceptKey.spokenName) to accept\(Self.cost(of: leader))."
         return "AI suggestion: \(leader.candidate). \(take)"
     }
@@ -194,10 +204,10 @@ public struct SuggestionPresentation: Sendable, Equatable {
     /// What VoiceOver can read while navigating the surface, including alternatives in an open list.
     public var accessibilityLabel: String {
         let alternatives = rows.filter { !$0.isSelected }.map(\.candidate)
-        var label = announcementLabel
-        if !alternatives.isEmpty { label += " Alternatives: \(alternatives.joined(separator: ", "))." }
-        if let statusMessage { label += " \(statusMessage)" }
-        return label
+        var parts = [announcementLabel]
+        if !alternatives.isEmpty { parts.append("Alternatives: \(alternatives.joined(separator: ", ")).") }
+        if let statusMessage { parts.append(statusMessage) }
+        return parts.filter { !$0.isEmpty }.joined(separator: " ")
     }
 
     /// Includes a temporary system-condition explanation when VoiceOver is on an otherwise empty surface.

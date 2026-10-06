@@ -99,6 +99,7 @@ public enum FailurePresenter {
         case .openSystemSettings(.accessibility): "accessibility"
         case .openSystemSettings(.appleIntelligence): "sparkles"
         case .openSystemSettings(.keyboard): "keyboard"
+        case .openSystemSettings(.soundInput): "mic"
         case .downloadSpeechModel: "arrow.down.circle"
         case .retry: "arrow.clockwise"
         case .pasteManually: "doc.on.clipboard"

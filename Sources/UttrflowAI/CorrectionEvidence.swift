@@ -20,10 +20,10 @@ struct CorrectionEvidence: Sendable {
     /// Reads both haystacks once per utterance; only words at or above `certainAt` may corroborate.
     init(utterance: Utterance, seeing context: AppContext, certainAt threshold: Double) {
         Self.screensRead?.record()
-        // The title and the selection split by letters, never the app's own name; `LearnableWords` agrees.
+        // The title, the selection and the sentences before the caret, never the app's own name; `LearnableWords` agrees.
         onScreen = Haystack(
             TextTidy.words(
-                [context.documentName, context.selectedText]
+                [context.documentName, context.selectedText, context.recognitionContext]
                     .compactMap { $0 }
                     .joined(separator: " ")
             ).prefix(Self.maximumWordsOnScreen))
@@ -65,7 +65,8 @@ struct CorrectionEvidence: Sendable {
         case .heardAsStrayLetters: Self.readsAsWholeWords(words)
         // The one comparative signal, a run collapsing into one written word; symmetric, so it cancels.
         case .heardAsSeveralWords: words.count < other.count
-        case .unknown: false
+        // Decided by the letters alone, never by counting signals.
+        case .spelledAsInDictionary, .unknown: false
         }
     }
 
