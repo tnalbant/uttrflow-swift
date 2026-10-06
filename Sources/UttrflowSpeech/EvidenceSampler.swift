@@ -50,22 +50,22 @@ enum TokenLeaders {
 }
 
 /// One decode window's per-step entropy, which WhisperKit's result types have no slot for.
-public struct DecodeWindowEvidence: Equatable, Sendable {
+struct DecodeWindowEvidence: Equatable, Sendable {
     /// The tokens the window returned, from the start-of-transcript token.
-    public let tokens: [Int]
+    let tokens: [Int]
     /// The entropy in nats before each token in `tokens`; `nil` where no step was recorded.
-    public let entropies: [Float?]
+    let entropies: [Float?]
     /// The temperature the window was sampled at.
-    public let temperature: Float
+    let temperature: Float
 }
 
 /// The decode windows recorded since the last drain, the oldest dropped past `capacity`.
-public final class DecodeWindowLog: Sendable {
+final class DecodeWindowLog: Sendable {
     /// How many windows are kept when nothing drains them, so an unread log stays bounded.
-    public static let capacity = 64
+    static let capacity = 64
     private let windows = Mutex<[DecodeWindowEvidence]>([])
 
-    public init() {}
+    init() {}
 
     func append(_ window: DecodeWindowEvidence) {
         windows.withLock {
@@ -75,7 +75,7 @@ public final class DecodeWindowLog: Sendable {
     }
 
     /// The recorded windows in decode order, leaving the log empty.
-    public func drain() -> [DecodeWindowEvidence] {
+    func drain() -> [DecodeWindowEvidence] {
         windows.withLock { windows in
             defer { windows.removeAll() }
             return windows

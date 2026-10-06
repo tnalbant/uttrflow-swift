@@ -178,7 +178,7 @@ public struct Settings: Sendable, Equatable, Codable {
     public static let handsFreeHoldChoices = [200, 300, 500]
 
     /// Keeps a decoded hold length within the values the Settings UI offers.
-    public static func validHoldMilliseconds(_ value: Int) -> Int {
+    static func validHoldMilliseconds(_ value: Int) -> Int {
         handsFreeHoldChoices.contains(value) ? value : 200
     }
 

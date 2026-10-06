@@ -1065,7 +1065,8 @@ public struct NumberFormsPass: PieceCleaningPass {
         at position: Int, ordinal: (value: Int, count: Int), keys: [String], shapes: [WordShape]
     ) -> Bool {
         // A day after a dated month is the date parser's, which refuses an impossible one: "March thirty second".
-        if position > 0, joined(position, shapes), monthIsDated(at: position - 1, keys: keys, shapes: shapes) {
+        if position > 0, joined(position, shapes), monthIsDated(at: position - 1, keys: keys, shapes: shapes)
+        {
             return true
         }
         let end = position + ordinal.count

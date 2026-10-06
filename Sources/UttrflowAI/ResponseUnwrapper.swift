@@ -106,7 +106,8 @@ public enum ResponseUnwrapper {
         if trimmed.hasPrefix("> "), lines.allSatisfy({ $0.hasPrefix("> ") }) {
             return ("> ", lines.map { String($0.dropFirst(2)) }.joined(separator: "\n").trimmed())
         }
-        for marker in ["**", "__", "*", "_", "`"] where trimmed.hasPrefix(marker) && trimmed.hasSuffix(marker) {
+        for marker in ["**", "__", "*", "_", "`"] where trimmed.hasPrefix(marker) && trimmed.hasSuffix(marker)
+        {
             guard trimmed.count > marker.count * 2 else { continue }
             let inner = String(trimmed.dropFirst(marker.count).dropLast(marker.count))
             guard !inner.isEmpty, !inner.hasPrefix(marker), !inner.hasSuffix(marker) else { continue }

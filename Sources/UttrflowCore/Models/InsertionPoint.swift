@@ -32,9 +32,9 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
     }
 
     /// The most sentences before the caret offered to recognition and its scorer.
-    public static let recognitionSentences = 2
+    static let recognitionSentences = 2
     /// The most UTF-16 units of those sentences kept, cut at a word.
-    public static let recognitionLimit = 200
+    static let recognitionLimit = 200
 
     /// The last sentence or two before the caret, secret-shaped runs out; `nil` when nothing is written there.
     public var recognitionContext: String? {

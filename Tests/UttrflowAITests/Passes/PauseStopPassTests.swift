@@ -46,9 +46,22 @@ struct PauseStopPassTests {
             ("we need to finish the report by friday", [4]),
             ("i stayed home because it was raining", [2]),
             ("she put the keys on the shelf by the door", [5]),
+            ("print the handout on A4 paper please", [3]),
+            ("traffic was heavy on I-95 all afternoon", [3]),
+            ("the tests failed on again this morning", [3]),
         ])
     func runsOn(text: String, pausedAfter: [Int]) {
         #expect(stopped(text, pausedAfter: pausedAfter) == text)
+    }
+
+    @Test(
+        "ends a sentence after a closing preposition when the next words open a sentence",
+        arguments: [
+            ("turn the lights on we are leaving now", [3], "turn the lights on. we are leaving now"),
+            ("come in the door is open", [1], "come in. the door is open"),
+        ])
+    func stopsAfterClosingPreposition(text: String, pausedAfter: [Int], expected: String) {
+        #expect(stopped(text, pausedAfter: pausedAfter) == expected)
     }
 
     @Test(

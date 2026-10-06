@@ -75,7 +75,8 @@ struct SnippetExpanderTests {
         ]
     )
     func avoidsDuplicateTerminalPunctuation(transcript: String, expected: String) {
-        let expander = SnippetExpander(snippets: [makeSnippet(trigger: "ok", expansion: "Okay, sounds good.")])
+        let expander = SnippetExpander(snippets: [makeSnippet(trigger: "ok", expansion: "Okay, sounds good.")]
+        )
 
         #expect(expander.expand(transcript).text == expected)
     }

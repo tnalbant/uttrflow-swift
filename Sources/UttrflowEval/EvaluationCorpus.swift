@@ -2310,7 +2310,7 @@ public enum EvaluationCorpus {
         .init(
             id: "code-editor-large-number-ungrouped", category: .contextual,
             spoken: "let limit equals twelve thousand",
-            expected: "let limit equals 12000",
+            expected: "let limit = 12000",
             mustKeep: ["12000"],
             context: AppContext(
                 applicationName: "Xcode",

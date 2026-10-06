@@ -314,7 +314,9 @@ private final class LoadedKit: @unchecked Sendable {
         // Passed through optional, so a half-loaded kit gives an unbiased dictation, reported as unconditioned.
         let tokenizer = kit.tokenizer
         let promptTokenizer = tokenizer.map { WhisperPromptTokenizer(tokenizer: $0) }
-        let packing = promptTokenizer.map { VocabularyPrompt.packing(for: vocabulary, after: precedingText, using: $0) }
+        let packing = promptTokenizer.map {
+            VocabularyPrompt.packing(for: vocabulary, after: precedingText, using: $0)
+        }
         let options = VocabularyPrompt.decodingOptions(
             languageHint: languageHint,
             vocabulary: vocabulary,

@@ -17,7 +17,10 @@ struct FitFromTable: ParsableCommand {
     var expect: String?
 
     func run() throws {
-        let read = try FitTable.read(Data(contentsOf: URL(filePath: table)))
+        guard let data = FileManager.default.contents(atPath: table) else {
+            throw ValidationError("cannot read the fit table at \(table)")
+        }
+        let read = try FitTable.read(data)
         let digest = read.fitLinearScorer().digest
         print(digest)
         if let expect, expect != digest {

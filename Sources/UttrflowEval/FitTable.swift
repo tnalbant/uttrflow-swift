@@ -35,7 +35,7 @@ public struct FitTable: Sendable, Equatable, Codable {
     public static let byteLimit = 5_000_000
 
     public let schemaVersion: Int
-    public let featureSpecVersion: Int
+    let featureSpecVersion: Int
     public let rows: [FitTableRow]
 
     public init(featureSpecVersion: Int, rows: [FitTableRow]) {
@@ -45,7 +45,7 @@ public struct FitTable: Sendable, Equatable, Codable {
     }
 
     /// Why a table cannot be committed or read.
-    public enum SchemaError: Error, Equatable, CustomStringConvertible {
+    enum SchemaError: Error, Equatable, CustomStringConvertible {
         case tooLarge(bytes: Int)
         case notAnObject(path: String)
         case unexpectedField(path: String)
@@ -54,7 +54,7 @@ public struct FitTable: Sendable, Equatable, Codable {
         case ragged(ordinal: Int)
         case undecodable(String)
 
-        public var description: String {
+        var description: String {
             switch self {
             case .tooLarge(let bytes): "table is \(bytes) bytes, over \(FitTable.byteLimit)"
             case .notAnObject(let path): "\(path) is not an object"
@@ -125,7 +125,7 @@ public struct FitTable: Sendable, Equatable, Codable {
     }
 
     /// The development rows as fit input; held-out rows are kept back to judge the fit.
-    public var developmentRows: [FitRow] {
+    var developmentRows: [FitRow] {
         rows.filter { $0.split == .development }.map {
             FitRow(features: $0.features, label: $0.label == .right)
         }

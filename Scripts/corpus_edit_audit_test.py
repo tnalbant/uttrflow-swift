@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Checks the corpus edit audit fails a planted edit or removal and passes an added case."""
 
+import types
 import unittest
 
 import corpus_edit_audit
@@ -52,6 +53,19 @@ class CorpusEditAuditTests(unittest.TestCase):
 
     def test_ledger_reads_first_word_and_skips_comments(self):
         self.assertEqual({"a1"}, corpus_edit_audit.ledger_ids("# header\na1 the old expectation dropped a word\n\n"))
+
+    def test_head_on_origin_main_ignores_a_stale_local_main(self):
+        answers = {
+            ("rev-parse", "HEAD"): "head",
+            ("merge-base", "HEAD", "origin/main"): "head",
+            ("merge-base", "HEAD", "main"): "stale",
+            ("rev-parse", "--verify", "--quiet", "HEAD^1"): "parent",
+        }
+
+        def run(*args, check=True):
+            return types.SimpleNamespace(returncode=0, stdout=answers.get(args, ""))
+
+        self.assertEqual("parent", corpus_edit_audit.resolve_base(run))
 
 
 if __name__ == "__main__":

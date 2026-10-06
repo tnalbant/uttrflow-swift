@@ -1,7 +1,9 @@
 // Tests the rows the app writes to the evidence ledger from dictation, undo and History.
 
+import CryptoKit
 import Foundation
 import Testing
+import UttrflowAI
 import UttrflowCore
 import UttrflowDictionary
 import UttrflowHistory
@@ -43,5 +45,62 @@ struct EvidenceSourcesTests {
         let older = EvidenceSources.backfill([recent, old], entries: [entry], ledger: live, overrides: .none)
         #expect(Set(older.map(\.day)) == [today - 3])
         #expect(EvidenceSources.backfill([old], entries: [entry], ledger: rows, overrides: .none).isEmpty)
+    }
+
+    private struct Keys: StoreKeyProviding {
+        let value = SymmetricKey(size: .bits256)
+        func key(createIfMissing: Bool) throws -> SymmetricKey { value }
+    }
+
+    @Test("the sweep writes History's backfill into the ledger once, however often it runs")
+    func backfillsTheLedgerOnce() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let ledger = EvidenceLedgerStore(
+            file: EvidenceLedgerStore.defaultFile(in: root), encryptedStore: EncryptedStore(keys: Keys()))
+        let dictionary = PersonalDictionaryStore(file: PersonalDictionaryStore.defaultFile(in: root))
+        try await dictionary.add(word: "Kubernetes", pronunciation: "", at: now)
+        let records = [
+            DictationRecord(text: "Deploy it on Kubernetes.", when: now.addingTimeInterval(-86_400))
+        ]
+        let window = RetentionWindow(days: RetentionWindow.keepAlwaysDays, now: now)
+
+        await EvidenceSources.backfill(
+            ledger, from: records, dictionary: dictionary, overrides: .none, keeping: window)
+        let first = await ledger.rows(keeping: window)
+        await EvidenceSources.backfill(
+            ledger, from: records, dictionary: dictionary, overrides: .none, keeping: window)
+
+        #expect(first.contains { $0.kind == .use && $0.provenance == .migration })
+        #expect(await ledger.rows(keeping: window) == first)
+        await EvidenceSources.backfill(
+            nil, from: records, dictionary: dictionary, overrides: .none, keeping: window)
+    }
+
+    @Test(
+        "a landed dictation tells the ledger exactly the entries the dictionary counted, and nothing when none"
+    )
+    func countersNoteTheUsedEntries() async throws {
+        actor Noted {
+            private(set) var ids: [[UUID]] = []
+            func add(_ new: [UUID]) { ids.append(new) }
+        }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let dictionary = PersonalDictionaryStore(file: PersonalDictionaryStore.defaultFile(in: root))
+        let entry = try #require(
+            try await dictionary.add(word: "Kubernetes", pronunciation: "", at: now).first)
+        let noted = Noted()
+        let counters = StoreCounters(
+            dictionary: dictionary, snippets: SnippetStore(file: root.appendingPathComponent("snippets.json"))
+        ) { await noted.add($0) }
+
+        try await counters.recordUse(ofEntries: [], writtenIn: "nothing known here")
+        try await counters.recordUse(ofEntries: [], writtenIn: "Deploy it on Kubernetes.")
+        try await counters.recordUse(ofSnippets: [])
+
+        #expect(await noted.ids == [[entry.id]])
     }
 }

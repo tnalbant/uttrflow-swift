@@ -8,7 +8,7 @@ public struct AcronymCasingPass: WholeTextCleaningPass {
     /// Each known written form, keyed by its lower-cased letters; an ordinary word is never a key.
     public let forms: [String: String]
     /// Each known file name or file-name stem, keyed by its lower-cased form: AGENTS.md, README.
-    public let fileForms: [String: String]
+    let fileForms: [String: String]
     /// Keys only the screen supplied that are English words, cased only where the screen writes them beside a spoken neighbour.
     let sightedEnglishKeys: Set<String>
     /// The screen's words, checked for that neighbour.
@@ -18,8 +18,7 @@ public struct AcronymCasingPass: WholeTextCleaningPass {
         let lexicon = TechnicalLexicon.terms
             .filter { Self.namedCategories.contains($0.category) && $0.applies(in: destination) }.map(\.id)
         let own = vocabulary.filter { !$0.contains(where: \.isWhitespace) }.map { WordShape($0).core }
-        let sighted = onScreen.flatMap { WordTokens.words($0, .display) }
-            .map { WordShape(String($0)).core }
+        let sighted = onScreen.flatMap { WordTokens.words($0, .display) }.map { WordShape($0).core }
         var forms: [String: String] = [:]
         var sightedEnglish: Set<String> = []
         // Later sources win: the user's spelling beats the screen's, and the screen's beats the lexicon's.
@@ -101,7 +100,7 @@ public struct AcronymCasingPass: WholeTextCleaningPass {
     private static let namedCategories: Set<TechnicalTerm.Category> = [.acronym, .tool, .language]
 
     /// The forms whose first letter is lower case, kept as written at a sentence start.
-    public var lowerCaseForms: [String: String] {
+    var lowerCaseForms: [String: String] {
         forms.filter { $0.value.first(where: \.isLetter)?.isLowercase == true }
     }
 
