@@ -127,7 +127,7 @@ final class SuggestionCoordinator {
     let capture: CaptureSession
     private let panel = SuggestionPanelController.shared
     private let interceptor = KeyInterceptor()
-    private let secureInput = SecureInputWatch()
+    private let secureInput: SecureInputWatch
     /// Whether secure keyboard entry is holding suggestions off, as this coordinator last saw it.
     var isSecureInputBlocking: Bool { secureInput.isBlocking }
     private let acceptor: SuggestionAcceptor
@@ -242,12 +242,14 @@ final class SuggestionCoordinator {
         environmentIndex: EnvironmentIndex? = nil,
         focusedFieldValueObserver: (any FocusedFieldValueObserving)? = nil,
         processActivity: any SuggestionProcessActivityManaging = ProcessSuggestionActivity(),
+        secureInput: SecureInputWatch = SecureInputWatch(),
         focusedSelectionReader: @escaping @Sendable () async -> FocusedFieldSelectionRead = {
             await FocusedFieldReader.focusedSelection()
         }
     ) throws(PredictStoreError) {
         self.preferences = preferences
         self.processActivity = processActivity
+        self.secureInput = secureInput
         self.generator = generating
         self.focusedSelectionReader = focusedSelectionReader
         self.focusedFieldValueObserver = focusedFieldValueObserver ?? FocusedFieldValueObserver()
@@ -405,6 +407,8 @@ final class SuggestionCoordinator {
         Self.log.notice("suggestion secure keyboard entry \(now, privacy: .public)")
         if secureInput.isBlocking {
             onSecureInputChanged?(true)
+            // A rest ending now would bring the tap back into the secure entry it was withdrawn from.
+            tapRest.cancel()
             withdraw()
             focusedFieldValueObserver.stop()
             interceptor.stop()
@@ -1534,7 +1538,7 @@ final class SuggestionCoordinator {
         interceptor.stop()
         panel.hide()
         tapRest.schedule(after: .seconds(Self.tapRestSeconds)) { [weak self] in
-            guard let self, !wakeState.isStopped else { return }
+            guard let self, !wakeState.isStopped, !secureInput.isBlocking else { return }
             do {
                 try interceptor.start()
                 Self.log.error("the tap is back after resting \(Self.tapRestSeconds)s")
