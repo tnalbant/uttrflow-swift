@@ -31,7 +31,7 @@ struct PanelPictureCopyTests {
             Issue.record("did not copy the picture: \(String(describing: effect))")
             return
         }
-        let expected = obstacle.notice
+        let expected = obstacle.copiedNotice
         #expect(clip == Self.picture)
         #expect(
             notice

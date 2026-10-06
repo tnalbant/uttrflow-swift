@@ -93,4 +93,12 @@ extension PanelInsertionObstacle {
                     intent: .openAccessibilitySettings))
         }
     }
+
+    /// What the user is told once the words are on the clipboard; the opening notice for Accessibility predates the copy.
+    public var copiedNotice: PanelNotice {
+        guard self == .accessibilityNotGranted else { return notice }
+        return PanelNotice(
+            symbolName: notice.symbolName, message: "Copied — press ⌘V. \(notice.message)",
+            action: notice.action)
+    }
 }
