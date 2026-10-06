@@ -193,7 +193,7 @@ struct DictationPipelineRecordingTests {
 
     // MARK: Retrying
 
-    @Test("a retry with the other engine hears the recording with it, once, and leaves the configured one in place")
+    @Test("a retry with another engine hears the recording with it once, leaving the configured one")
     func retryWithTheOtherEngine() async throws {
         let recordings = FakeRecordingKeeper(current: recording, waiting: [recording])
         let speech = FakeSpeechEngine(transcribeOutcome: .success(.fixture(text: "configured engine")))
