@@ -463,6 +463,10 @@ inside the 7,000 ms budget.
 the total score minus the runner-up's, against `PredictionEngine.separationThreshold` (0.20). Below
 it the answer is a `.choice` of at most `PredictionEngine.maximumChoices` (4).
 
+Case-only spellings of a line are grouped before support and shares are calculated. Their scores
+are added, and the spelling with the strongest individual score represents the group; ties use
+text order.
+
 **Whether a candidate may be offered at all.** An irreversible leader is never offered and never
 stepped past to promote a rival it outranked; irreversible rivals never appear in a `.choice`
 (`irreversibleNotCertain`).
