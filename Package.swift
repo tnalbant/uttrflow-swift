@@ -242,6 +242,7 @@ let package = Package(
         .target(
             name: "UttrflowEval",
             dependencies: ["UttrflowCore", "UttrflowAudio"],
+            resources: [.copy("Resources/Corpus")],
             swiftSettings: sharedSwiftSettings
         ),
 

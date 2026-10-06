@@ -37,47 +37,15 @@ public struct MeaningPreservationGuard: Sendable {
         grammar: GrammarPolicy = .repair,
         grants: [PassID: RemovalGrant] = CleaningPipeline.standard.grants
     ) -> GuardVerdict {
-        let rewritten = Self.respellingClockTimes(rewritten, as: draft.text)
-        let excusingPreamble = Self.rewriteStartsWithOfferedReading(
-            draft: draft, rewritten: rewritten, offering: doubtful)
-        if case .rejected(let reason, let kind) = Self.textVerdict(
-            original: draft.text, rewritten: rewritten, excusingPreamble: excusingPreamble)
-        {
-            return .rejected(reason: reason, kind: kind)
-        }
-        if case .rejected(let reason, let kind) = Self.spokenPunctuationVerdict(
-            draft: draft, rewritten: rewritten)
-        {
-            return .rejected(reason: reason, kind: kind)
-        }
-        let restored = Self.restored(RemovalAudit.unauthorised(in: draft, grants: grants))
-        if case .rejected(let reason, let kind) = Self.removalVerdict(
-            restored, kept: draft.text, rewritten: rewritten, echoed: echoed)
-        {
-            return .rejected(reason: reason, kind: kind)
-        }
-        let alignment = RewriteAlignment(kept: draft.text, rewritten: rewritten)
-        let readings = Self.readingVerdict(doubtful, in: alignment)
-        if case .rejected(let reason, let kind) = readings.verdict {
-            return .rejected(reason: reason, kind: kind)
-        }
-        if case .rejected(let reason, let kind) = Self.confidentHomophoneVerdict(
-            draft, aligned: alignment, excusing: readings.excused)
-        {
-            return .rejected(reason: reason, kind: kind)
-        }
-        if case .rejected(let reason, let kind) = Self.layoutVerdict(
-            kept: draft.text, rewritten: rewritten, layout: layout)
-        {
-            return .rejected(reason: reason, kind: kind)
-        }
-        return Self.grammarVerdict(
-            alignment, excusing: readings.excused, echoed: echoed, allowing: doubtful,
-            restoring: restored.map(\.token), policy: grammar)
+        Self.verdict(
+            of: Self.checks,
+            on: GuardInput(
+                draft: draft, rewritten: rewritten, doubtful: doubtful, echoed: echoed, layout: layout,
+                grammar: grammar, grants: grants))
     }
 
     /// Allows a chat-like opening only when it is the offered reading of the doubtful first run.
-    private static func rewriteStartsWithOfferedReading(
+    static func rewriteStartsWithOfferedReading(
         draft: Draft, rewritten: String, offering doubtful: [DoubtfulSpan]
     ) -> Bool {
         guard let first = doubtful.first,
@@ -111,7 +79,7 @@ public struct MeaningPreservationGuard: Sendable {
     }
 
     /// Refuses a sound-alike substitution when the recogniser was sure of the kept word.
-    private static func confidentHomophoneVerdict(
+    static func confidentHomophoneVerdict(
         _ draft: Draft, aligned: RewriteAlignment, excusing excused: Set<Int>
     ) -> GuardVerdict {
         guard draft.confidencesAreReal else { return .accepted }

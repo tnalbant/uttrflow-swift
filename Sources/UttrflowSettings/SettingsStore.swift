@@ -96,6 +96,9 @@ public struct Settings: Sendable, Equatable, Codable {
     /// Everything the user has decided about tab-to-complete.
     public var suggestions: SuggestionPreferences
 
+    /// The input device dictation opens, by its stable UID; nil follows the system default.
+    public var microphoneUID: String?
+
     /// Takes the shipped default for anything the caller does not choose.
     public init(
         engines: EngineConfiguration = .default,
@@ -123,7 +126,8 @@ public struct Settings: Sendable, Equatable, Codable {
         appearance: AppAppearance = .dark,
         transcriptRetentionDays: Int = Settings.defaultTranscriptRetentionDays,
         clipboardRetentionDays: Int = Settings.defaultRetentionDays,
-        suggestions: SuggestionPreferences = .default
+        suggestions: SuggestionPreferences = .default,
+        microphoneUID: String? = nil
     ) {
         self.engines = engines
         self.profile = profile
@@ -152,6 +156,7 @@ public struct Settings: Sendable, Equatable, Codable {
         self.transcriptRetentionDays = transcriptRetentionDays
         self.clipboardRetentionDays = clipboardRetentionDays
         self.suggestions = suggestions
+        self.microphoneUID = microphoneUID
     }
 
     /// A week: how long an unkept clip lives unless the user chooses otherwise.
@@ -225,6 +230,7 @@ extension Settings {
         case transcriptRetentionDays
         case clipboardRetentionDays
         case suggestions
+        case microphoneUID
     }
 
     /// Decodes field by field, defaulting anything missing or unreadable. See `Docs/settings-decoding.md`.
@@ -301,7 +307,8 @@ extension Settings {
                 ),
                 default: fallback.clipboardRetentionDays
             ),
-            suggestions: container.value(forKey: .suggestions, default: fallback.suggestions)
+            suggestions: container.value(forKey: .suggestions, default: fallback.suggestions),
+            microphoneUID: (try? container.decodeIfPresent(String.self, forKey: .microphoneUID)) ?? nil
         )
     }
 

@@ -844,6 +844,36 @@ struct DestructiveCommandTests {
     }
 
     @Test(
+        "A destroyer carried as a quoted command line is judged as that line, at any depth.",
+        arguments: [
+            "ssh host 'rm -rf x'",
+            "ssh -p 2222 host \"rm -rf /srv/app\"",
+            "ssh host \"sh -c 'rm -rf x'\"",
+            "parallel 'rm -rf /data'",
+            "docker exec c sh -c 'rm -rf /'",
+            "podman exec -it c bash -c 'shred notes.txt'",
+            "kubectl exec p -- sh -c 'rm -rf /var/lib'",
+            "fd -x sh -c 'rm -rf {}'",
+            "fd -e log -x sh -c 'rm -f {}'",
+        ])
+    func quotedCarriedCommandIsJudged(_ line: String) {
+        #expect(DestructiveCommand.matches(line), "\(line) should be destructive")
+    }
+
+    @Test(
+        "An ordinary command carried as a quoted line stays ordinary.",
+        arguments: [
+            "ssh host 'ls -la'",
+            "ssh host \"echo 'rm -rf x'\"",
+            "docker exec c sh -c 'echo hi'",
+            "kubectl exec p -- sh -c 'cat /etc/hostname'",
+            "fd -x sh -c 'wc -l {}'",
+        ])
+    func quotedOrdinaryCarriedCommandIsOrdinary(_ line: String) {
+        #expect(!DestructiveCommand.matches(line), "\(line) should be ordinary")
+    }
+
+    @Test(
         "A parallel runner with no command or with an ordinary command is ordinary.",
         arguments: [
             "parallel --citation",

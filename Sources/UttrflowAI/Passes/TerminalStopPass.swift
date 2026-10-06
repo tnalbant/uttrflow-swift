@@ -3,6 +3,7 @@ public import UttrflowCore
 /// Adds or takes back the final full stop the way the formatter's stop policy and layout say.
 public struct TerminalStopPass: WholeTextCleaningPass {
     public static let id: PassID = .terminalStop
+    public static let laws: Set<PassLaw> = Set(PassLaw.allCases)
 
     public let policy: TerminalStopPolicy
     public let layout: LayoutPolicy
@@ -107,7 +108,8 @@ public struct TerminalStopPass: WholeTextCleaningPass {
 
     /// The last word with a stop unless it ends a list item, or the layout keeps newlines and the text holds one.
     private func finishedLast(_ word: String, in draft: Draft) -> String {
-        if MarkLegality.verdict(.stop, after: word) == .illegal { return Self.leftOpen(word) }
+        let spokenAsHindi = draft.presentIndices.last.map(draft.isHindi(at:)) ?? false
+        if !spokenAsHindi, MarkLegality.verdict(.stop, after: word) == .illegal { return Self.leftOpen(word) }
         // The text after the caret carries on the sentence, so a stop the recogniser closed it with goes.
         if followingTextContinuesSentence || insertionPoint.structure?.hasOpenBracketOnCaretLine == true {
             return Abbreviations.ownsStop(WordShape(word).core) ? word : WordShape.withoutTrailingStop(word)
