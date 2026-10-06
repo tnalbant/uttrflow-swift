@@ -58,6 +58,8 @@ public struct SnippetEditor: Sendable, Equatable {
     public let problem: String?
     /// "Said aloud, this arrives as “email 1”.", present only when dictation changes the trigger's words.
     public let arrival: String?
+    /// A non-blocking warning that a one-word trigger replaces that word in every dictation; absent otherwise.
+    public let caution: String?
     /// Saves the snippet under the words that arrive, so it fires; absent when there is no arrival or a problem.
     public let saveArrived: MainAction?
     /// Names a trigger word the Dictionary may rewrite, since the matcher sees the rewritten word; absent when none.
@@ -81,6 +83,7 @@ public struct SnippetEditor: Sendable, Equatable {
         badge: MainPill,
         problem: String?,
         arrival: String? = nil,
+        caution: String? = nil,
         saveArrived: MainAction? = nil,
         dictionaryNote: String? = nil,
         save: MainAction,
@@ -95,6 +98,7 @@ public struct SnippetEditor: Sendable, Equatable {
         self.badge = badge
         self.problem = problem
         self.arrival = arrival
+        self.caution = caution
         self.saveArrived = saveArrived
         self.dictionaryNote = dictionaryNote
         self.save = save
@@ -302,6 +306,7 @@ public enum SnippetsPresenter {
             badge: MainPill(text: draft.editing == nil ? "New" : "Editing"),
             problem: problem,
             arrival: arrived.map { "Said aloud, this arrives as “\($0)”." },
+            caution: problem == nil ? caution(for: draft) : nil,
             saveArrived: problem == nil && !draft.text.isEmpty
                 ? arrived.map {
                     MainAction(
@@ -349,6 +354,16 @@ public enum SnippetsPresenter {
     private static func contains(_ words: [String], _ part: [String]) -> Bool {
         guard !part.isEmpty, part.count <= words.count else { return false }
         return (0...(words.count - part.count)).contains { Array(words[$0..<($0 + part.count)]) == part }
+    }
+
+    /// Warns about a one-word trigger, since it fires on that word wherever it is said.
+    static func caution(for draft: SnippetDraft) -> String? {
+        let trigger = draft.trigger.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard matchKey(trigger).count == 1 else { return nil }
+        return """
+            Uttrflow swaps in this text every time you say “\(trigger)”, in any sentence. \
+            A phrase you would not say otherwise, such as “my home address”, is safer.
+            """
     }
 
     /// The words the matcher compares, which is the one definition of a trigger's identity.

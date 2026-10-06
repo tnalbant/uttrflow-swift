@@ -1,7 +1,7 @@
 public import CoreGraphics
 public import struct Foundation.NSRange
 import Synchronization
-import UttrflowPredict
+import UttrflowCore
 
 /// One element tree as the collector walks it, so a test can hand it a tree of plain values instead of another app.
 public protocol ElementTree {
