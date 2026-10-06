@@ -131,6 +131,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Whether the recogniser can dictate, which is not whether its files are on disk.
     private var speechReadiness: SpeechModelReadiness = .notInstalled
+    /// The input UID the next recording opens, read off the main actor at every open.
+    private let chosenMicrophone = MicrophoneChoice()
     /// When the load under way began, so the estimate is said only once a load has run long enough to need it.
     private var speechLoadStarted: ContinuousClock.Instant?
     /// Redraws the load's estimate once a second while a load runs, and is gone once it ends.
@@ -1309,8 +1311,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
 
         // Held so the floating button's meter reads the level without queueing behind a `stop()`.
+        let chosenMicrophone = chosenMicrophone
+        chosenMicrophone.apply(settings)
         let microphone = AVAudioCaptureEngine(
-            source: AVAudioEngineMicrophoneSource(), recordings: recordings, cue: cue)
+            source: AVAudioEngineMicrophoneSource(preferredUID: { chosenMicrophone.current }),
+            recordings: recordings, cue: cue)
         dock.setLevelSource { microphone.momentaryLevel }
         dock.onInputSilent = { [weak self] in self?.announce(InputSilence.line, urgently: false) }
 
@@ -3651,6 +3656,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         settingsPage.synchronize(settings: updated)
         recordingSounds?.apply(updated)
+        chosenMicrophone.apply(updated)
         applyAppearance()
         applyLaunchAtLogin()
 
