@@ -8,7 +8,8 @@ import UttrflowCore
 @Suite("HindiHomograph")
 struct HindiHomographTests {
     /// Each sentence holds "the" (थे), "to" (तो), "do" (दो), "main" (मैं), "hai" or "par" (पर),
-    /// in the middle or at the end. None is a question, so none may gain a question mark.
+    /// in the middle or at the end. None is a question, so none may gain a question mark. "दो" as the
+    /// number two is left out: the Hindi number words turn it into a digit by design.
     static let statements: [String] = [
         "वो कल यहाँ थे",
         "हम सब घर पर थे",
@@ -22,7 +23,7 @@ struct HindiHomographTests {
         "तो हम कल चलेंगे",
         "मुझे दो रोटी दो",
         "उसको पानी दो",
-        "दो दिन बाद आना",
+        "वो घर पर ही थे",
         "वो दो दो करके आए",
         "मुझे थोड़ा समय दो",
         "मैं घर जा रहा हूँ",
@@ -38,13 +39,16 @@ struct HindiHomographTests {
         "वो दफ़्तर में है",
         "बारिश हो रही है",
         "मैं तो वहाँ थे ही नहीं",
-        "तुम दो मिनट रुको तो",
+        "तुम रुको तो",
         "हम लोग कल वहीं थे",
         "मैं सोच रहा था कि तुम आओगे तो",
         "पैसे मुझे दो",
     ]
 
-    @Test("a Hindi statement with an English homograph is only capitalised and stopped", arguments: statements)
+    @Test(
+        "a Hindi statement with an English homograph is only capitalised and stopped",
+        arguments: statements
+    )
     func statementKeepsItsWords(spoken: String) async throws {
         let out = try await RuleBasedTransformer().transform(
             TransformationRequest(transcription: .fixture(text: spoken, language: .hindi))
