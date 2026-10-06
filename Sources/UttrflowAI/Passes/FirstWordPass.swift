@@ -64,6 +64,13 @@ public struct FirstWordPass: WholeTextCleaningPass {
                 startOfSentence = true
                 continue
             }
+            if WordShape(word.text).isOption {
+                // An option's letters are what the shell reads, so no casing rule touches them.
+                startOfSentence = false
+                afterPause = false
+                isFirst = false
+                continue
+            }
             let letterAdjacent = Self.hasLetterNameBesideI(at: order, in: present, of: draft)
             if letterAdjacent, !isFirst, !startOfSentence, WordShape(word.text).key == "i" {
                 let cased = WordShape(word.text).replacingCore(with: "i")
