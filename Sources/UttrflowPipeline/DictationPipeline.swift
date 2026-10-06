@@ -317,6 +317,7 @@ public actor DictationPipeline {
     /// Adopts audio already arriving as a dictation after the modifier press settles.
     private func startRecordingUsingOpenCapture() async {
         generation += 1
+        screenReadCost = ScreenReadCost(reads: 0, duration: .zero)
         let mine = generation
         if let pendingCapture = early.pendingCapture {
             await pendingCapture.value
@@ -672,10 +673,12 @@ public actor DictationPipeline {
         generation == mine && !wasCancelled(mine)
     }
 
-    /// Asks what is on screen within the screen-read limit, since an injected engine need not keep a budget of its own.
+    /// Asks what is on screen within what the dictation's screen-read limit has left, so one stuck app is waited on once.
     private func readContext() async -> AppContext {
+        let left = StageTimeout.screenRead - screenReadCost.duration
+        guard left > .zero else { return AppContext() }
         let (read, elapsed) = await Self.timed(on: clock) { [context, clock] in
-            ((try? await withStageTimeout(StageTimeout.screenRead, clock: clock) {
+            ((try? await withStageTimeout(left, clock: clock) {
                 await context.currentContext()
             }) ?? nil) ?? AppContext()
         }

@@ -461,6 +461,34 @@ struct DictationStageTimeoutTests {
         #expect(await pipeline.currentState == .recording)
     }
 
+    @Test("once a screen read times out, later reads in the dictation skip instead of waiting again")
+    func stuckScreenReadSpendsTheBudgetOnce() async {
+        let clock = ManualClock()
+        let context = NeverAnsweringContextEngine()
+        let inserter = TimeoutTestInserter()
+        let metrics = RecordingMetricsRecorder()
+        let pipeline = DictationPipeline(
+            capture: FakeAudioCaptureEngine(stopOutcome: .success(.silence(seconds: 2))),
+            speech: FakeSpeechEngine(
+                transcribeOutcome: .success(Transcription(text: "what I said"))),
+            cleaner: TimeoutTestCleaner(),
+            context: context,
+            inserter: inserter,
+            metrics: metrics,
+            clock: clock)
+
+        await pipeline.startRecording()
+        await waitForCall(context.calls)
+        await expire(StageTimeout.screenRead, at: .recording, of: pipeline, on: clock)
+        // The test moves the clock once; a later read waiting on its own limit would hang until the time limit.
+        await settle(Task { await pipeline.finishRecording() })
+
+        #expect(inserter.inserted == ["Tidied."])
+        #expect(await context.calls.count == 1)
+        let spent = await metrics.screenReads.map(\.duration).reduce(.zero, +)
+        #expect(spent <= StageTimeout.screenRead)
+    }
+
     @Test("a dictionary lookup that never answers skips correction and keeps the tidied words")
     func dictionaryLookupThatNeverAnswers() async {
         let clock = ManualClock()
