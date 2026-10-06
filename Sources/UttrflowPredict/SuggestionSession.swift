@@ -217,6 +217,8 @@ public struct SuggestionSession: Sendable, Equatable {
         generation += 1
 
         guard let surface else {
+            // Nothing is drawn while no field is read, so nothing stays armed; the field's memory is kept for its next read.
+            clearDrawing()
             return SuggestionTurn(step: .settled(.quiet(because: .nothingFocused)), rejected: rejected)
         }
         let context = contextualised(moment, in: surface)
