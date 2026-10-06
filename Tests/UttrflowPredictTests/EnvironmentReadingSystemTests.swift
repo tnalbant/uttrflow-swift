@@ -71,7 +71,9 @@ struct EnvironmentReadingSystemTests {
         #expect(all?.count == SystemEnvironmentReader.valueLimit)
     }
 
-    @Test("A directory listed out of order still offers the alphabetically first names, the same ones every time.")
+    @Test(
+        "A directory listed out of order still offers the alphabetically first names, the same ones every time."
+    )
     func capKeepsTheFirstNamesInOrder() async throws {
         let disk = FakeDisk(directories: Self.manySubdirectories, listsInReverse: true)
         let reader = SystemEnvironmentReader(
