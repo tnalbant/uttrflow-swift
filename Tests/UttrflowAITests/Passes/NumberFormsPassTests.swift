@@ -187,7 +187,7 @@ struct NumberFormsPassTests {
             ("wait two minutes", "wait 2 minutes"),
             ("one of them", "one of them"),
             ("I lost a pound", "I lost a pound"),
-            ("I lost one pound", "I lost one pound"),
+            ("I lost one pound", "I lost 1 pound"),
             ("give me a second", "give me a second"),
             ("two seconds", "two seconds"),
             ("six feet", "six feet"),
