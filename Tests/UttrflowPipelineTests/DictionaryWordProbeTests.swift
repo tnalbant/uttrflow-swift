@@ -59,9 +59,12 @@ struct DictionaryWordProbeTests {
 
     @Test("a word the prompt fixes is recognised from the start, and both decodes run")
     func promptFixes() async throws {
-        let speech = PromptedSpeechEngine(withoutPrompt: "send it to quill on", withPrompt: "Send it to Quillon.")
-        let result = try await DictionaryWordProbe(speech: speech, corrector: OneSpelling(heard: "x", wrote: "y"))
-            .probe(Self.clip, for: Self.entry)
+        let speech = PromptedSpeechEngine(
+            withoutPrompt: "send it to quill on", withPrompt: "Send it to Quillon.")
+        let result = try await DictionaryWordProbe(
+            speech: speech, corrector: OneSpelling(heard: "x", wrote: "y")
+        )
+        .probe(Self.clip, for: Self.entry)
         #expect(result.outcome == .recognisedFromStart)
         #expect(result.withoutEntry == "send it to quill on")
         #expect(await speech.prompts == [[], ["Quillon"]])
@@ -69,7 +72,8 @@ struct DictionaryWordProbeTests {
 
     @Test("a word only the correction fixes is recognised after correction")
     func correctionFixes() async throws {
-        let speech = PromptedSpeechEngine(withoutPrompt: "send it to quillen", withPrompt: "send it to quillen")
+        let speech = PromptedSpeechEngine(
+            withoutPrompt: "send it to quillen", withPrompt: "send it to quillen")
         let result = try await DictionaryWordProbe(
             speech: speech, corrector: OneSpelling(heard: "quillen", wrote: "Quillon")
         ).probe(Self.clip, for: Self.entry)
@@ -79,7 +83,8 @@ struct DictionaryWordProbeTests {
 
     @Test("a word neither fixes says what was heard")
     func neitherFixes() async throws {
-        let speech = PromptedSpeechEngine(withoutPrompt: "send it to pavilion", withPrompt: " send it to pavilion ")
+        let speech = PromptedSpeechEngine(
+            withoutPrompt: "send it to pavilion", withPrompt: " send it to pavilion ")
         let result = try await DictionaryWordProbe(
             speech: speech, corrector: OneSpelling(heard: "quillen", wrote: "Quillon")
         ).probe(Self.clip, for: Self.entry)
@@ -89,7 +94,8 @@ struct DictionaryWordProbeTests {
     @Test("the spelling is matched as whole words, so a longer word does not count")
     func wholeWords() {
         #expect(
-            DictionaryWordProbe.outcome(of: Self.entry, heard: "Quillons arrived", corrected: "Quillons arrived")
+            DictionaryWordProbe.outcome(
+                of: Self.entry, heard: "Quillons arrived", corrected: "Quillons arrived")
                 == .heardAs("Quillons arrived"))
         #expect(
             DictionaryWordProbe.outcome(of: Self.entry, heard: "quillon, then", corrected: "")

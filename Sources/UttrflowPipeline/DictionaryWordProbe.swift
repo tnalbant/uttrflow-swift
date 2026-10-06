@@ -66,7 +66,8 @@ public struct DictionaryWordProbe: Sendable {
     }
 
     /// Which stage wrote the entry's spelling, judged by whole words so "Quillons" is not "Quillon".
-    static func outcome(of entry: DictionaryEntry, heard: String, corrected: String) -> DictionaryProbeOutcome {
+    static func outcome(of entry: DictionaryEntry, heard: String, corrected: String) -> DictionaryProbeOutcome
+    {
         if writes(entry, in: heard) { return .recognisedFromStart }
         if writes(entry, in: corrected) { return .recognisedAfterCorrection }
         return .heardAs(heard.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -77,7 +78,9 @@ public struct DictionaryWordProbe: Sendable {
         let wanted = keys(entry.word)
         let words = keys(text)
         guard !wanted.isEmpty, wanted.count <= words.count else { return false }
-        return (0...(words.count - wanted.count)).contains { Array(words[$0..<($0 + wanted.count)]) == wanted }
+        return (0...(words.count - wanted.count)).contains {
+            Array(words[$0..<($0 + wanted.count)]) == wanted
+        }
     }
 
     /// Each word's spelling key, so case and the recogniser's punctuation do not count.
