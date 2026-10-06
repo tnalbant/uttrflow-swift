@@ -3,7 +3,7 @@ import Foundation
 /// Identifies application variants without changing the folders owned by each build.
 public enum UttrflowBuildIdentity {
     /// The executable every build ships as, whatever identifier it was signed with.
-    public static let executableName = "Uttrflow"
+    static let executableName = "Uttrflow"
 
     /// Whether a process is a build of the app: by identifier prefix, or by executable for a build outside the prefix.
     public static func isUttrflow(_ identifier: String?, executableName: String? = nil) -> Bool {
