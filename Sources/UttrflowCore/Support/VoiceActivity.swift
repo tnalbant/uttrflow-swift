@@ -70,20 +70,25 @@ public enum VoiceActivity: Sendable {
         return false
     }
 
-    /// Root-mean-square loudness of each whole frame, ignoring any partial last one.
+    /// Root-mean-square loudness of each whole frame about its own mean, so a DC offset is not loudness.
     static func frameLoudness(of samples: [Float], frameLength: Int) -> [Float] {
         var loudness: [Float] = []
         loudness.reserveCapacity(samples.count / frameLength)
         var start = 0
         while start + frameLength <= samples.count {
             var sum: Float = 0
+            var squares: Float = 0
             for index in start..<(start + frameLength) {
                 let sample = samples[index]
                 // A `nan` from a misbehaving driver compares false against every threshold.
-                if sample.isFinite { sum += sample * sample }
+                if sample.isFinite {
+                    sum += sample
+                    squares += sample * sample
+                }
             }
             samplesRead?.record(frameLength)
-            loudness.append((sum / Float(frameLength)).squareRoot())
+            let mean = sum / Float(frameLength)
+            loudness.append(Swift.max(0, squares / Float(frameLength) - mean * mean).squareRoot())
             start += frameLength
         }
         return loudness
