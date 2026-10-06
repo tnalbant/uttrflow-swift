@@ -307,23 +307,36 @@ struct CompletionParsingTests {
             ).isEmpty)
     }
 
-    @Test("Every tabled refusal and meta opening is refused in echoed and echo-less model replies.")
-    func modelRemarksAreRejectedForAppleAndMLXReplies() {
+    @Test("Common openings can continue text the model echoed from the field.")
+    func echoedTextCanContinueWithCommonOpenings() {
+        let situation = GenerationSituation(application: "Mail")
+        #expect(
+            CompletionText.modelCompletions(
+                from: "I'm so sorry about that", typed: "I'm so", echoPolicy: .required,
+                in: situation) == ["I'm so sorry about that"])
+        #expect(
+            CompletionText.modelCompletions(
+                from: "Hi Sam, here is the report", typed: "Hi Sam,", echoPolicy: .required,
+                in: situation) == ["Hi Sam, here is the report"])
+    }
+
+    @Test("Every tabled refusal is refused, with common continuations allowed after an echoed prefix.")
+    func modelRemarksRespectWhetherTheyContinueEchoedTypedText() {
         let typed = "Thanks for your email "
         let situation = GenerationSituation(application: "Mail")
         for opening in CompletionText.rejectedOpenings {
-            let echoed = typed + opening + "; the rest follows."
+            #expect(
+                CompletionText.modelCompletions(
+                    from: opening.phrase + "; the rest follows.", typed: typed,
+                    echoPolicy: .joinAtBoundary, in: situation
+                ).isEmpty,
+                "Echo-less reply: \(opening.phrase)")
+            let echoed = typed + opening.phrase + "; the rest follows."
             #expect(
                 CompletionText.modelCompletions(
                     from: echoed, typed: typed, echoPolicy: .required, in: situation
-                ).isEmpty,
-                "MLX echoed reply: \(opening)")
-            #expect(
-                CompletionText.modelCompletions(
-                    from: opening + "; the rest follows.", typed: typed,
-                    echoPolicy: .joinAtBoundary, in: situation
-                ).isEmpty,
-                "Apple echo-less reply: \(opening)")
+                ).isEmpty == opening.rejectedAfterTypedEcho,
+                "Echoed reply: \(opening.phrase)")
         }
     }
 

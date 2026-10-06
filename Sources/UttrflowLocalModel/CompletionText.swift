@@ -12,10 +12,11 @@ enum CompletionText {
         case joinAtBoundary
     }
 
-    static let rejectedOpenings = [
-        "i'm sorry", "i am sorry", "sorry", "i can't help", "i cannot help", "as an ai",
-        "as a language model", "here is", "here's", "here are", "the instructions say",
-        "your instruction says", "your prompt says", "to summarize your request",
+    static let rejectedOpenings: [(phrase: String, rejectedAfterTypedEcho: Bool)] = [
+        ("i'm sorry", true), ("i am sorry", true), ("sorry", false), ("i can't help", true),
+        ("i cannot help", true), ("as an ai", true), ("as a language model", true),
+        ("here is", false), ("here's", false), ("here are", false), ("the instructions say", true),
+        ("your instruction says", true), ("your prompt says", true), ("to summarize your request", true),
     ]
 
     /// Turns a model reply into finished candidates under the echo rule for its generator.
@@ -23,6 +24,7 @@ enum CompletionText {
         from answer: String, typed: String, echoPolicy: EchoPolicy, in situation: GenerationSituation
     ) -> [String] {
         let context = contextNeverCopied(in: situation)
+        let echoedTypedText = echoes(answer, of: typed)
         var lines = parse(answer, typed: typed).compactMap {
             trimmed($0, typed: typed, echoing: context)
         }
@@ -35,7 +37,7 @@ enum CompletionText {
         }
         let continuations = lines.filter { line in
             guard let added = continuation(of: line, past: typed) else { return false }
-            return !isRejectedOpening(added)
+            return !isRejectedOpening(added, afterTypedEcho: echoedTypedText)
         }
         return finished(continuations, typed: typed, in: situation)
     }
@@ -50,12 +52,13 @@ enum CompletionText {
     }
 
     /// Whether the added words start with a refusal or a remark about the model's instructions.
-    private static func isRejectedOpening(_ continuation: String) -> Bool {
+    private static func isRejectedOpening(_ continuation: String, afterTypedEcho: Bool) -> Bool {
         let continuationWords = words(of: continuation).map {
             $0.text.replacingOccurrences(of: "’", with: "'")
         }
         return rejectedOpenings.contains { opening in
-            let openingWords = words(of: opening).map(\.text)
+            guard !afterTypedEcho || opening.rejectedAfterTypedEcho else { return false }
+            let openingWords = words(of: opening.phrase).map(\.text)
             return continuationWords.starts(with: openingWords)
         }
     }
