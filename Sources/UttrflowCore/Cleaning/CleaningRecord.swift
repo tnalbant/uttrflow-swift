@@ -172,7 +172,7 @@ public struct CleaningRecord: Sendable, Equatable {
     public init(draft: Draft, ran: [PassID], modelAnswers: [String] = []) {
         self.init(
             changes: Self.changes(in: draft),
-            switchedOff: CleaningSteps.offered.map(\.id).filter { !ran.contains($0) },
+            switchedOff: CleaningSteps.optOut.map(\.id).filter { !ran.contains($0) },
             modelAnswers: modelAnswers)
     }
 

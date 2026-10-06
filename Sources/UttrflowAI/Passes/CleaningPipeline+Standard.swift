@@ -45,6 +45,7 @@ extension CleaningPipeline {
             FillersPass(), RepeatedPhrasePass(), StammersPass(), SelfCorrectionPass(),
             // Spoken punctuation must mark a stop before LayoutWordsPass checks for a break after it.
             SpokenPunctuationPass(destination: destination),
+            SpokenEmojiPass(destination: destination),
             LayoutWordsPass(layout: layout, insertionPoint: insertionPoint),
             NumberFormsPass(policy: numbers, digits: digits),
             ContractionsPass(), SpacingPass(),
