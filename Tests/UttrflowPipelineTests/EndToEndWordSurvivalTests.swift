@@ -118,11 +118,11 @@ struct EndToEndWordSurvivalTests {
     private static func firstLostWords(
         reference: String, stages: [(String, String)], reportWords: Set<String>
     ) -> [LostWord] {
-        let referenceWords = reference.split(whereSeparator: \.isWhitespace).map(String.init)
+        let referenceWords = spokenWords(reference)
         var losses: [LostWord] = []
         var priorWords = referenceWords
         for (stage, text) in stages {
-            let current = text.split(whereSeparator: \.isWhitespace).map(String.init)
+            let current = spokenWords(text)
             let alignment = WordErrorRate.measure(reference: priorWords, hypothesis: current)
             let changed = alignment.alignment.compactMap { operation -> (String, String?)? in
                 let word: String
@@ -158,6 +158,12 @@ struct EndToEndWordSurvivalTests {
             priorWords = current
         }
         return losses
+    }
+
+    /// The words of a stage's text without the stops and capitals that stage may write around them.
+    private static func spokenWords(_ text: String) -> [String] {
+        text.split(whereSeparator: \.isWhitespace).map { WordShape(String($0)).core.lowercased() }
+            .filter { !$0.isEmpty }
     }
 
     private static func dictations(count: Int, seed: UInt64) -> [Input] {
