@@ -446,10 +446,14 @@ struct EvaluationCorpusTests {
         }
     }
 
-    @Test("never uses the raw transcript as its own reference")
+    /// A leave-alone case is deliberate only when it pins the shape it guards; similarity alone would pass the raw input.
+    @Test("uses the raw transcript as its reference only where the case pins the shape it guards")
     func referencesDifferFromInput() {
-        for testCase in EvaluationCorpus.all {
-            #expect(testCase.spoken != testCase.expected, "\(testCase.id) expects no change at all")
+        for testCase in EvaluationCorpus.all where testCase.spoken == testCase.expected {
+            let pinned =
+                testCase.expectedExact != nil || testCase.mustBeginWith != nil || testCase.mustEndWith != nil
+                || !testCase.mustNotAdd.isEmpty
+            #expect(pinned, "\(testCase.id) expects no change at all and pins nothing")
         }
     }
 
