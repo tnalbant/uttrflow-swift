@@ -578,7 +578,8 @@ struct PieceJoinerSeamTests {
         let whole = PieceJoiner.join(
             [piece("open quote"), piece("hello there")], under: .standard(for: .messaging))
 
-        #expect(whole.cleaned.text == "\"hello there\"")
+        // The spoken-punctuation pass writes an unclosed "open quote" the same way within one piece.
+        #expect(whole.cleaned.text == "\"hello there")
     }
 
     @Test("does not carry a mark mention across a sentence boundary")
