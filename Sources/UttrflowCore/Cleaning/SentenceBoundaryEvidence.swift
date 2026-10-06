@@ -8,6 +8,7 @@ public enum SentenceBoundaryEvidence {
         let previousKeys = previous.map(\.key)
         let followingKeys = following.map(\.key)
         if text.last == ".", subordinators.contains(previous[0].key) { return true }
+        if opensOnPostmodifier(following) { return true }
         if neverLast.contains(last.key) || opensWithAPhrase(previous, following)
             || completesFinalPhrase(previous, following) || completesSeamPreposition(previous, following)
             || splitsSubjectFromPredicate(previous, following) || awaitsComplement(previous, following)
@@ -32,6 +33,12 @@ public enum SentenceBoundaryEvidence {
         else { return false }
         if neverFronted.contains(following[0].key) { return true }
         return seamPrepositions.contains(following[0].key) && isVerbless(following, after: previous)
+    }
+
+    /// "a new line. of shoes": "of" attaches a phrase to the noun before it and opens no sentence, bar the idiom "of course".
+    private static func opensOnPostmodifier(_ following: [WordShape]) -> Bool {
+        guard following.count > 1, following[0].key == "of" else { return false }
+        return following[1].key != "course"
     }
 
     /// Whether the words up to the next stop hold no verb, read in context with the words before them.
@@ -74,9 +81,10 @@ public enum SentenceBoundaryEvidence {
 
     /// "my pin is. 2244": a form of "be" straight after its noun subject leaves its complement to the next words.
     private static func awaitsComplement(_ previous: [WordShape], _ following: [WordShape]) -> Bool {
-        guard previous.count > 1, let last = previous.last, copulas.contains(last.key), !following.isEmpty
-        else { return false }
-        let tags = LexicalClass.tags(ofWords: (previous + following).map(\.core))
+        guard previous.count > 1, !following.isEmpty else { return false }
+        let words = (previous + following).map(\.core)
+        guard LexicalClass.lemma(ofWordAt: previous.count - 1, in: words) == "be" else { return false }
+        let tags = LexicalClass.tags(ofWords: words)
         return tags[previous.count - 2] == .noun
     }
 
@@ -110,6 +118,5 @@ public enum SentenceBoundaryEvidence {
     private static let seamObjectEndings: [[String]] = [
         ["could", "finish"], ["pick", "up"], ["look"], ["covers"],
     ]
-    private static let copulas: Set<String> = ["is", "are", "was", "were"]
     private static let subordinators: Set<String> = ["although", "because", "if", "when"]
 }

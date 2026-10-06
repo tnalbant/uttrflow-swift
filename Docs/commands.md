@@ -79,3 +79,30 @@ app; anywhere else the same words are not understood and nothing changes.
 
 A span mark with nothing selected has no span, so it writes nothing.
 `Tests/UttrflowAITests/MarkdownCommandTests.swift` pins each rule and the negative class.
+
+## Edits on the last dictation
+
+"delete that", "select that" and "undo that", said whole under the command key, are read by
+`RecordedEdit` and carried out by `RecordedEditor` against `InsertionLedger`, over
+`CommandScope.default`. They only remove or select what Uttrflow wrote; no word is rewritten.
+"undo that" undoes the newest spoken edit held in `EditHistory`, and with none held it takes the
+last dictation out. Every edit refuses, changing nothing, when another field is in front or the
+dictation is no longer exactly where it was written (`Docs/insertion.md`).
+`Tests/UttrflowInputTests/RecordedEditTests.swift` pins each edit and the refusals.
+
+## Evaluation
+
+`EvaluationCorpus.commandCases` (`Sources/UttrflowEval/CommandCorpus.swift`) holds 20 cases per
+Markdown command, all said under the command key: 10 that must run (the phrase alone, in five
+written forms, in two Markdown documents) and 10 that must not (the phrase inside a longer
+utterance, and the phrase alone in five documents that are not Markdown). `CommandReport` gives
+recall per command, every false execution, and false executions by document.
+
+| Gate | Limit |
+|---|---|
+| false executions | 0, since every command rewrites the selection |
+| recall per command | 100% over the corpus's written forms |
+
+`Tests/UttrflowEvalTests/CommandCorpusTests.swift` holds the shipped reader to the gate and shows
+that a reader matching the phrase anywhere in the utterance, or one that ignores the document,
+fails it. The corpus is text: recognition of the phrase on audio is not measured yet.

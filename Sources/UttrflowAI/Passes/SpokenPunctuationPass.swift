@@ -4,6 +4,7 @@ public import UttrflowCore
 /// Turns a punctuation mark said by name into the mark, and a spoken email address into the address, when used rather than mentioned.
 public struct SpokenPunctuationPass: PieceCleaningPass {
     public static let id: PassID = .spokenPunctuation
+    public static let laws: Set<PassLaw> = Set(PassLaw.allCases)
     private let destination: Destination
 
     /// The particles after which "dash" and "hyphen" are the verbs they also are: "dash off a note".
@@ -63,6 +64,12 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
                 write(address, at: position, in: &live, of: &draft)
                 sentenceEnd = nil
                 position += 1
+                continue
+            }
+            if let echoed = echoedName(at: position, in: live, of: draft) {
+                for index in live[position..<(position + echoed)] { draft.remove(at: index, by: Self.id) }
+                live.removeSubrange(position..<(position + echoed))
+                sentenceEnd = nil
                 continue
             }
             guard
@@ -356,6 +363,18 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
         live.removeSubrange((position + 1)..<after)
     }
 
+    /// How many words name a mark already written on the word before, as a model writes ", comma,"; nil when none does.
+    private func echoedName(at position: Int, in live: [Int], of draft: Draft) -> Int? {
+        guard position > 0,
+            let found = SpokenCommands.marks.first(where: { draft.spells($0.words, at: position, in: live) }),
+            !found.placement.attachesAfter, found.placement != .standalone,
+            draft.shape(at: live[position - 1]).suffix.hasSuffix(found.text)
+        else { return nil }
+        // The name's own mark must be nothing or the same mark, so removing it loses nothing the model wrote.
+        let own = draft.shape(at: live[position + found.words.count - 1]).suffix
+        return own.isEmpty || own == found.text ? found.words.count : nil
+    }
+
     /// Whether an ordinary name stands at a seam: it is sentence-final, follows punctuation, or has a continuation.
     private func isEvidenced(
         _ words: [String], at position: Int, in live: [Int], of draft: Draft, repeated: Set<Int>
@@ -432,6 +451,7 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
         case ".":
             return closes(at: next, in: live, of: draft)
                 || isCommaBracketed(before: next, spanning: length, in: live, of: draft)
+                || opensDeterminerClause(at: next, in: live, of: draft)
         case "-", "\u{2014}": return !closes(at: next, in: live, of: draft)
         default: return true
         }
@@ -444,6 +464,17 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
         guard next < live.count, next > length else { return false }
         return draft.shape(at: live[next - length - 1]).suffix.hasSuffix(",")
             && draft.shape(at: live[next - 1]).suffix.hasSuffix(",")
+    }
+
+    /// Whether a determiner-led clause starts at `next`, so a full stop before it is a sentence boundary.
+    private func opensDeterminerClause(
+        at next: Int, in live: [Int], of draft: Draft
+    ) -> Bool {
+        guard next < live.count, next + 1 < live.count else { return false }
+        let head = draft.shape(at: live[next]).key
+        guard MentionGuard.determiners.contains(head) else { return false }
+        return LexicalClass.tag(ofWordAt: next + 1, in: live.map { draft.shape(at: $0).key })
+            .map { $0 == .noun || $0 == .verb } ?? false
     }
 
     /// Whether the text ends at `next`, or a layout word, a layout mark or a closing quote stands there.

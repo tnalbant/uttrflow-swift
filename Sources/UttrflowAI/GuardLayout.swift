@@ -39,30 +39,45 @@ extension MeaningPreservationGuard {
 
     /// Accepts a rewrite unless it is empty, chatty (unless excused), far longer, mostly dropped, invents a number, or adds a symbol.
     static func textVerdict(original: String, rewritten: String, excusingPreamble: Bool) -> GuardVerdict {
-        let originalWords = TextTidy.words(original)
-        let rewrittenWords = TextTidy.words(rewritten)
+        let input = GuardInput(text: original, rewritten: rewritten, excusingPreamble: excusingPreamble)
+        return verdict(of: textChecks, on: input)
+    }
 
-        if !originalWords.isEmpty, rewrittenWords.isEmpty {
-            return .rejected(reason: "the rewrite is empty", kind: .emptyRewrite)
-        }
+    /// Refuses an empty rewrite of something said.
+    static func emptyVerdict(original: String, rewritten: String) -> GuardVerdict {
+        guard !TextTidy.words(original).isEmpty, TextTidy.words(rewritten).isEmpty else { return .accepted }
+        return .rejected(reason: "the rewrite is empty", kind: .emptyRewrite)
+    }
+
+    /// Refuses a chat-like opening the speaker did not say.
+    static func preambleVerdict(original: String, rewritten: String) -> GuardVerdict {
         // A speaker who opens with "I have" or "sure" gets their words; the entry's punctuation is the model's, not theirs.
-        if !excusingPreamble,
+        guard
             let preamble = Self.preambles.first(where: {
                 rewritten.lowercased().hasPrefix($0)
                     && !original.lowercased().hasPrefix($0.trimmingCharacters(in: .punctuationCharacters))
             })
-        {
-            return .rejected(reason: "the rewrite begins with '\(preamble)'", kind: .preamble)
-        }
+        else { return .accepted }
+        return .rejected(reason: "the rewrite begins with '\(preamble)'", kind: .preamble)
+    }
+
+    /// Refuses a rewrite far longer than what was said, or one that kept too little of it.
+    static func lengthVerdict(original: String, rewritten: String) -> GuardVerdict {
+        let originalWords = TextTidy.words(original)
+        let rewrittenWords = TextTidy.words(rewritten)
         if Double(rewrittenWords.count) > Double(originalWords.count) * Self.maximumGrowthFactor + 4 {
             return .rejected(reason: "the rewrite is far longer than what was said", kind: .tooLong)
         }
-        if originalWords.count > Self.shortUtteranceWords {
-            let retained = Double(rewrittenWords.count) / Double(originalWords.count)
-            if retained < Self.minimumRetainedFraction {
-                return .rejected(reason: "the rewrite dropped most of what was said", kind: .tooShort)
-            }
+        if originalWords.count > Self.shortUtteranceWords,
+            Double(rewrittenWords.count) / Double(originalWords.count) < Self.minimumRetainedFraction
+        {
+            return .rejected(reason: "the rewrite dropped most of what was said", kind: .tooShort)
         }
+        return .accepted
+    }
+
+    /// Refuses a number the speaker did not say, another amount, or changed Indian grouping.
+    static func numberVerdict(original: String, rewritten: String) -> GuardVerdict {
         if let invented = Self.inventedNumber(original: original, rewritten: rewritten) {
             return .rejected(reason: "the rewrite introduced the number \(invented)", kind: .inventedNumber)
         }
@@ -73,7 +88,7 @@ extension MeaningPreservationGuard {
             return .rejected(
                 reason: "the rewrite changed the Indian grouping in \(changed)", kind: .changedNumber)
         }
-        return symbolVerdict(original: original, rewritten: rewritten)
+        return .accepted
     }
 
     /// One row of the symbol table: what the rewrite may not do with one kind of symbol, and how a refusal reads.

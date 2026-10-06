@@ -807,4 +807,17 @@ struct SettingsSuggestionsTests {
         #expect(settings.suggestions == .default)
         #expect(!settings.opensAtLogin)
     }
+
+    @Test("a blob without a microphone follows the system default")
+    func noMicrophoneIsTheDefault() throws {
+        #expect(try decode(#"{"opensAtLogin": false}"#).microphoneUID == nil)
+    }
+
+    @Test("a chosen microphone survives a save and a load")
+    func chosenMicrophoneRoundTrips() throws {
+        var settings = Settings.default
+        settings.microphoneUID = "fixture-input-uid"
+        let data = try JSONEncoder().encode(settings)
+        #expect(try JSONDecoder().decode(Settings.self, from: data).microphoneUID == "fixture-input-uid")
+    }
 }

@@ -1281,6 +1281,9 @@ if [[ ! -f "$CORPUS_SOURCE" || ! -f "$BAKEOFF_DOC" ]]; then
         "The corpus inventory this check reconciles no longer exists to check."
 else
     read -r -d '' CORPUS_PROGRAM <<'PYTHON' || true
+import glob
+import json
+import os
 import re
 
 SOURCES = ["Sources/UttrflowEval/EvaluationCorpus.swift", "Sources/UttrflowEval/RequestCorpus.swift"]
@@ -1290,6 +1293,10 @@ real = {}
 for source in SOURCES:
     for match in re.finditer(r"category: \.([A-Za-z]+),", open(source, errors="ignore").read()):
         real[match.group(1)] = real.get(match.group(1), 0) + 1
+# Categories kept as data, one file per category; see Sources/UttrflowEval/CorpusFile.swift.
+for path in sorted(glob.glob("Sources/UttrflowEval/Resources/Corpus/*.json")):
+    category = os.path.splitext(os.path.basename(path))[0]
+    real[category] = real.get(category, 0) + len(json.load(open(path)))
 real_total = sum(real.values())
 
 text = open(DOC, errors="ignore").read()

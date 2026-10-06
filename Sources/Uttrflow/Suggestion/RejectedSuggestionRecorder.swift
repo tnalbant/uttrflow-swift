@@ -62,6 +62,16 @@ final class RejectedSuggestionRecorder {
         }
     }
 
+    /// Drops held writes and suppressions for the forgotten applications, or all of them when `bundleIdentifier` is nil.
+    func forget(bundleIdentifier: String? = nil) {
+        let key = bundleIdentifier.map(ApplicationKey.of)
+        let isForgotten = { (rejection: RejectedSuggestion) in
+            key == nil || rejection.surface.bundleIdentifier == key
+        }
+        unwritten.removeAll { isForgotten($0.rejection) }
+        suppressed = suppressed.filter { !isForgotten($0) }
+    }
+
     /// Gives a held rejection a stable identity through actor reentrancy.
     private func claimID() -> UInt64 {
         defer { nextID &+= 1 }

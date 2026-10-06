@@ -123,12 +123,35 @@ struct SpelledInitialismPassTests {
         "joins split AM only after a clock expression",
         arguments: [
             ("nine a m", "nine AM"),
-            ("6:15 a m", "6:15 AM"),
+            ("6:15 a m", "6:15 am"),
             ("five o'clock a m", "five o'clock AM"),
             ("we need a m", "we need a m"),
         ])
     func splitAMContext(input: String, expected: String) {
         #expect(CleaningPipeline(passes: [sut]).run(Draft(text: input)).text == expected)
+    }
+
+    @Test(
+        "writes a meridiem after a clock time as am or pm, mid-sentence and at the end",
+        arguments: [
+            ("meet at 5 pm today", "meet at 5 pm today"), ("meet at 5 PM today", "meet at 5 pm today"),
+            ("meet at 5 p.m. today", "meet at 5 pm today"), ("meet at 5 P.M. today", "meet at 5 pm today"),
+            ("meet at 7:30 a.m. sharp", "meet at 7:30 am sharp"),
+            ("meet at 7:30 a m sharp", "meet at 7:30 am sharp"),
+            ("we meet at 5 pm", "we meet at 5 pm"), ("we meet at 5 PM.", "we meet at 5 pm."),
+            ("we meet at 5 p.m.", "we meet at 5 pm"), ("we meet at 5 A.M.", "we meet at 5 am"),
+            ("we left at 5 p.m. Then we ate.", "we left at 5 pm. Then we ate."),
+            ("we left at 5 p.m., then ate", "we left at 5 pm, then ate"),
+        ])
+    func writesMeridiemHouseForm(input: String, expected: String) {
+        #expect(CleaningPipeline(passes: [sut]).run(Draft(text: input)).text == expected)
+    }
+
+    @Test(
+        "leaves am and pm that do not follow a clock time",
+        arguments: ["i am here", "the PM said so", "a.m. radio", "at 25 pm"])
+    func leavesNonMeridiem(input: String) {
+        #expect(CleaningPipeline(passes: [sut]).run(Draft(text: input)).text == input)
     }
 
     @Test("does not join letters separated by a removed filler")
