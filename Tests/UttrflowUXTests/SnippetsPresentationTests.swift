@@ -1,6 +1,7 @@
 // Tests for the Snippets page: rows, search, the inline editor, and the empty page.
 import Foundation
 import UttrflowCore
+import UttrflowDictionary
 import Testing
 
 @testable import UttrflowUX
@@ -171,6 +172,46 @@ struct SnippetsEditorTests {
         #expect(
             editor?.saveArrived?.intent
                 == .saveSnippet(trigger: "Email 1.", text: "x", replacing: nil))
+    }
+
+    @Test("a trigger word that is a Dictionary entry's sounds-like says what dictation writes instead")
+    func dictionarySoundsLike() {
+        let entry = DictionaryEntry(
+            word: "Quillon", pronunciation: "quill on", origin: .added, firstSeen: HistoryFixture.now)
+        let note = SnippetsPresenter.dictionaryNote(for: "send quill on invoice", in: [entry])
+        #expect(note == "Dictation may write “quill on” as “Quillon”, from your Dictionary.")
+    }
+
+    @Test("a trigger word that is a Dictionary spelling is named")
+    func dictionarySpelling() {
+        let entry = DictionaryEntry(word: "Example Corp", origin: .added, firstSeen: HistoryFixture.now)
+        let note = SnippetsPresenter.dictionaryNote(for: "sign off example corp", in: [entry])
+        #expect(note == "“Example Corp” is a Dictionary word, so dictation may change how it arrives.")
+    }
+
+    @Test("a trigger with no Dictionary word, or only part of a phrase, shows no Dictionary note")
+    func dictionaryNone() {
+        let entries = [
+            DictionaryEntry(word: "Example Corp", origin: .added, firstSeen: HistoryFixture.now),
+            DictionaryEntry(
+                word: "Quillon", pronunciation: "quill on", origin: .added, firstSeen: HistoryFixture.now),
+        ]
+        #expect(SnippetsPresenter.dictionaryNote(for: "my example address", in: entries) == nil)
+        #expect(SnippetsPresenter.dictionaryNote(for: "quill", in: entries) == nil)
+        #expect(SnippetsPresenter.dictionaryNote(for: "", in: entries) == nil)
+    }
+
+    @Test("the editor carries the Dictionary note from the snapshot's dictionary")
+    func dictionaryNoteInEditor() {
+        let entry = DictionaryEntry(
+            word: "Quillon", pronunciation: "quill on", origin: .added, firstSeen: HistoryFixture.now)
+        let editor = SnippetsPresenter.page(
+            for: SnippetsSnapshot(
+                draft: SnippetDraft(trigger: "quill on", text: "x"), now: HistoryFixture.now,
+                dictionary: [entry])
+        ).editor
+        #expect(
+            editor?.dictionaryNote == "Dictation may write “quill on” as “Quillon”, from your Dictionary.")
     }
 
     @Test("a trigger that arrives as the same words shows no note")

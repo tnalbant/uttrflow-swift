@@ -3050,7 +3050,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             for: SnippetsSnapshot(
                 snippets: knownSnippets, draft: snippetDraft, refusal: snippetRefusal,
                 query: query(for: .snippets), sort: sorts[.snippets] ?? "", now: now,
-                arrival: snippetArrival))
+                arrival: snippetArrival, dictionary: knownWords))
     }
 
     /// Reads the account the pages draw from.

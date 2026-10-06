@@ -197,6 +197,11 @@ struct SnippetEditorView: View {
                     }
                 }
             }
+            if let note = editor.dictionaryNote {
+                Text(note)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(PagePalette.text)
+            }
             PageEditorFooter(
                 problem: editor.problem, cancel: editor.cancel, save: save,
                 canSave: editor.canSave, onIntent: onIntent)
