@@ -4,6 +4,7 @@ import UttrflowCore
 /// Writes "at Sam" as "@Sam" when a chat message or one of its clauses opens with it; registered for messaging only. See `Docs/cleanup.md`.
 struct AtMentionPass: WholeTextCleaningPass {
     static let id: PassID = .atMention
+    static let laws: Set<PassLaw> = Set(PassLaw.allCases)
 
     /// The text before the caret, which says whether the message's first word opens a clause.
     let precedingText: String?
