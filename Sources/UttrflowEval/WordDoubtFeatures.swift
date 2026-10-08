@@ -4,7 +4,7 @@ package import UttrflowCore
 
 /// One way of turning a word's token evidence into a single certainty; lower means more doubtful.
 public enum WordDoubtFeature: String, CaseIterable, Sendable {
-    /// Exp of the mean token log-probability: the score the pipeline uses today, unrounded.
+    /// Exp of the mean token log-probability, unrounded: the scale the doubt gate reads today.
     case mean
     /// The least probable token.
     case minimum
@@ -20,7 +20,7 @@ public enum WordDoubtFeature: String, CaseIterable, Sendable {
         guard let first = tokens.first else { return nil }
         switch self {
         case .mean:
-            return exp(tokens.map(\.logProb).reduce(0, +) / Double(tokens.count))
+            return DecoderCertainty(tokens: tokens)?.meanProbability
         case .minimum:
             return tokens.map { exp($0.logProb) }.min()
         case .firstToken:
@@ -28,20 +28,14 @@ public enum WordDoubtFeature: String, CaseIterable, Sendable {
         case .firstMargin:
             return exp(first.logProb) - (first.alternatives.max().map(exp) ?? 0)
         case .negatedEntropy:
-            return -tokens.map(Self.entropy).reduce(0, +) / Double(tokens.count)
+            return DecoderCertainty(tokens: tokens)?.negatedEntropy
         }
-    }
-
-    private static func entropy(_ token: TokenEvidence) -> Double {
-        let probabilities = ([token.logProb] + token.alternatives).map(exp)
-        let total = probabilities.reduce(0, +)
-        return -probabilities.map { $0 / total }.filter { $0 > 0 }.map { $0 * log($0) }.reduce(0, +)
     }
 }
 
 /// How well a certainty separates wrong words from right ones.
 public enum WordDoubtEvaluation {
-    /// One scored word: its certainty, whether it differs from the reference, and the cluster it was read in.
+    /// One scored word: its certainty, whether it differs from the reference, and the cluster it is read in.
     public struct Scored: Sendable, Equatable {
         public let certainty: Double
         public let isWrong: Bool
@@ -87,8 +81,16 @@ public enum WordDoubtEvaluation {
     public static func clustered(
         _ words: [Scored], resamples: Int = 1000, seed: UInt64 = 1, _ statistic: ([Scored]) -> Double?
     ) -> Interval? {
+        resampled(words, by: \.cluster, resamples: resamples, seed: seed, statistic)
+    }
+
+    /// `statistic` with a percentile interval from resampling whole clusters of any measured item.
+    package static func resampled<Sample>(
+        _ words: [Sample], by cluster: (Sample) -> String, resamples: Int = 1000, seed: UInt64 = 1,
+        _ statistic: ([Sample]) -> Double?
+    ) -> Interval? {
         guard let value = statistic(words) else { return nil }
-        let clusters = Dictionary(grouping: words, by: \.cluster).values.map(Array.init)
+        let clusters = Dictionary(grouping: words, by: cluster).values.map(Array.init)
         var generator = SplitMix(state: seed)
         var draws: [Double] = []
         for _ in 0..<resamples {
