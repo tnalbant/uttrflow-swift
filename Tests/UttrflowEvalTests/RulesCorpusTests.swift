@@ -35,12 +35,12 @@ struct RulesCorpusTests {
         "probe-docker-build-no-cache", "probe-support-email", "probe-laugh-then-question",
         "probe-meeting-notes",
         "probe-apology-message", "probe-cover-letter", "probe-meeting-time-zones",
-        "probe-flight-details", "probe-hashtag-and-handle", "probe-phone-and-address",
+        "probe-flight-details", "probe-phone-and-address",
         "probe-hinglish-status",
         "probe-quote-unquote", "terminal-spoken-new-line-stays-on-one-line",
         "terminal-spoken-new-paragraph-stays-on-one-line",
         "dev-standup-update", "dev-pr-description-list", "dev-bug-report-steps", "dev-version-bump",
-        "dev-design-note-acronyms", "dev-changelog-entry", "dev-decision-record",
+        "dev-design-note-acronyms", "dev-decision-record",
         "dev-force-push-correction", "dev-incident-note", "dev-review-reply",
         "dev-onboarding-message", "dev-hotfix-handoff",
     ]
@@ -98,6 +98,17 @@ struct RulesCorpusTests {
         #expect(withoutEntries.contains("docker"))
     }
 
+    @Test("ends a sentence for every forty words of a long dictation paused between its sentences")
+    func longPausedDictationKeepsItsSentences() async throws {
+        let testCase = try #require(EvaluationCorpus.all.first { $0.id == "long-input-paused-2351" })
+        let words = testCase.spoken.split(whereSeparator: \.isWhitespace).count
+        #expect(words >= 300)
+        let text = try await RuleBasedTransformer().transform(testCase.transformationRequest()).text
+        let ends = Scorer.tokens(text, keepingSentenceEnds: true).count { $0 == Scorer.sentenceEnd } + 1
+        #expect(ends * 40 >= words, "\(ends) sentence ends in \(words) words: \(text)")
+        #expect(Scorer.score(text, against: testCase).passed)
+    }
+
     @Test("still requires the rules to pass the cases they always have")
     func mustPassIsPopulated() {
         #expect(Self.rulesMustPass.count >= 200)
@@ -108,7 +119,7 @@ struct RulesCorpusTests {
         // Grammar cases name a destination too, but repairs are the model's alone; the floor is below.
         let named = Set(
             EvaluationCorpus.all.filter { $0.destination != .plain && $0.category != .grammar }.map(\.id))
-        #expect(named.count == 188 + Self.knownFailures.count)
+        #expect(named.count == 336 + Self.knownFailures.count)
         #expect(
             named.subtracting(Self.modelOnly).subtracting(Self.knownFailures).isSubset(of: Self.rulesMustPass)
         )

@@ -103,7 +103,9 @@ refusal binds only inference — typing the word in again adds it as before.
 The refusals are written to `dictionary.v1.refused.json` beside the dictionary, oldest first
 and capped at the ledger's 512 (`SightingLedger.maximumRefused`), so a relaunch still refuses a word
 deleted before it. They are words the user already had in the dictionary and chose to remove, not
-terms read off the screen. `removeEverything()` deletes the record; `removeLearned()` keeps it.
+terms read off the screen. `removeEverything()` deletes the record; `removeLearned()` keeps it. The
+personal data archive carries the record to another Mac, where `importRefusals(_:)` adds it after
+that Mac's own refusals (`Docs/personal-data-archive.md`).
 
 **Not learning.** The record is not hidden: `refusedWords()` lists it newest first, in the
 user's own spelling, and the Dictionary page shows it under a "Not learning" disclosure with
@@ -113,7 +115,9 @@ the ledger and rewrites the record, after which three days of sightings teach th
 **Several words.** `remove(_:)` also takes a set of identifiers and is the one removal path: one
 word is a set of one. Every word in the set is refused, and the refusals and the dictionary are
 each written once. Past the 512 cap the oldest refusals lapse first, so a batch larger than the cap
-keeps the newest 512 refused.
+keeps the newest 512 refused. On the Dictionary page each row has a checkbox; Delete selected sends
+the ticked rows still listed to `remove(_:)` in one call, and Restore selected sends the ticked
+retired ones to `restore(_:)`. A ticked row that the search or a filter hides is left alone.
 
 **Everything.** `removeEverything()` is the blunt instrument and takes the user's own words too.
 It also removes the seed record and the refusals, so the next launch offers the shipped words as

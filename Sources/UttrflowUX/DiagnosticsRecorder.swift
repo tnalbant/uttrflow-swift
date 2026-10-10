@@ -53,6 +53,15 @@ public actor DiagnosticsRecorder: MetricsRecording, CleaningRecording, TidyOutco
         if decoding.count > capacity { decoding.removeFirst(decoding.count - capacity) }
     }
 
+    /// The decoder's judgement of each recognised segment, newest last and bounded like the measurements.
+    public private(set) var reliability: [SegmentReliability] = []
+
+    public func recordReliability(_ segments: [SegmentReliability]) async {
+        guard capacity > 0 else { return }
+        reliability += segments
+        if reliability.count > capacity { reliability.removeFirst(reliability.count - capacity) }
+    }
+
     /// What each recording sounded like, newest last and bounded like the measurements.
     public private(set) var captureQualities: [CaptureQuality] = []
 
@@ -91,9 +100,24 @@ public actor DiagnosticsRecorder: MetricsRecording, CleaningRecording, TidyOutco
         waits.keep(wait)
     }
 
-    /// Drops the last dictation's words and the tally, so a reset leaves neither on the diagnostics page.
+    /// Why the last dictation's screen read carried no field text, or `nil` when it did or none was read.
+    public private(set) var screenTextUnavailable: ContextUnavailableReason?
+
+    public func recordScreenText(_ unavailable: ContextUnavailableReason?) async {
+        screenTextUnavailable = unavailable
+    }
+
+    /// Which rung answered each screen read, per application, counted without a word of the field.
+    public private(set) var readRungs = ContextReadTally()
+
+    public func recordContextRead(_ rung: ContextReadRung, in bundleIdentifier: String) async {
+        readRungs.add(rung, in: bundleIdentifier)
+    }
+
+    /// Drops the last dictation's words and the tallies, so a reset leaves none of them on the diagnostics page.
     public func forget() {
         tidyTally = TidyTally()
+        readRungs = ContextReadTally()
         lastCleaning = nil
         vocabularyPrompt = []
     }

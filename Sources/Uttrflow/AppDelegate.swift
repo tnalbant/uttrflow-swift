@@ -1737,6 +1737,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             let removal = NSAlert()
             removal.messageText = "Remove an excluded app"
             let menu = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 300, height: 26))
+            menu.setAccessibilityLabel(removal.messageText)
             menu.addItems(withTitles: identifiers)
             removal.accessoryView = menu
             removal.addButton(withTitle: "Remove")
@@ -3120,6 +3121,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         lastCleaning = nil
         lastTidyTally = TidyTally()
+        lastReadRungs = ContextReadTally()
         lastCleanedBy = nil
         forgetLastTranscript()
         Task { [weak self] in
@@ -3173,9 +3175,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             lastWaits = await diagnostics.waits.timed
             lastMeasurements = measurements
             lastDecoding = decoding
+            lastSegmentReliability = await diagnostics.reliability
             lastSpeechModelLoads = speechModelLoadLog.history().records
             lastCleaning = await diagnostics.lastCleaning
             lastTidyTally = await diagnostics.tidyTally
+            lastScreenTextUnavailable = await diagnostics.screenTextUnavailable
+            lastReadRungs = await diagnostics.readRungs
             lastVocabularyPrompt = await diagnostics.vocabularyPrompt
             let kept = await history.records(
                 keeping: Retention(days: settings.transcriptRetentionDays, now: Date()))
@@ -3290,10 +3295,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                         && shortcutArming.failure == nil,
                     hasDefaultInputDevice: SettingsCapabilities.hasAudioInput,
                     measurements: measurements, vocabularyPrompt: lastVocabularyPrompt,
-                    decoding: lastDecoding, waits: lastWaits,
+                    decoding: lastDecoding, segmentReliability: lastSegmentReliability,
+                    waits: lastWaits,
                     speechModelLoads: lastSpeechModelLoads,
                     cleaning: lastCleaning,
-                    tidyTally: lastTidyTally,
+                    tidyTally: lastTidyTally, screenTextUnavailable: lastScreenTextUnavailable,
+                    readRungs: lastReadRungs,
                     lastCleanedBy: lastCleanedBy,
                     suggestionModel: suggestionModel, version: .ofThisBuild,
                     machine: MachineDescription.current, arrivals: entries.map(\.arrival),
@@ -3352,6 +3359,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var lastCleaning: CleaningRecord?
     /// How the tidy route ended for recent pieces, read on the same hop as the timings.
     private var lastTidyTally = TidyTally()
+    /// Why the last dictation's screen read carried no field text, read on the same hop as the timings.
+    private var lastScreenTextUnavailable: ContextUnavailableReason?
+    /// Which rung answered each screen read, per application, read on the same hop as the timings.
+    private var lastReadRungs = ContextReadTally()
     /// The word spellings in the last recogniser prompt, held locally for Diagnostics.
     private var lastVocabularyPrompt: [String] = []
     /// What the dictation pipeline last reported. See where it is written.
@@ -3410,6 +3421,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var lastMeasurements: [StageMeasurement] = []
     /// The decode effort last read, so a keystroke redraw uses the same bounded session window.
     private var lastDecoding: [DecodeEffort] = []
+    /// The decoder's judgement of recent segments, read with the decode effort.
+    private var lastSegmentReliability: [SegmentReliability] = []
     /// The last dictations' waits after key-up, as Diagnostics last read them.
     private var lastWaits: [TimedWait] = []
     /// The speech model loads last read from their log.
@@ -3596,6 +3609,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case .tryWord(let id):
             guard let entry = knownWords.first(where: { $0.id == id }) else { return }
             tryWord(entry, as: .word(id))
+        case .sayDraft(let word):
+            sayDraft(word)
         case .useSayItLike(let id, let heard):
             if let id, let entry = knownWords.first(where: { $0.id == id }) {
                 editWord(
@@ -3812,7 +3827,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             do {
                 let archive = PersonalDataExport.archive(
                     dictionary: await dictionary.allEntries(), snippets: await snippets.snippets(),
-                    choice: choice)
+                    refused: Array(await dictionary.refusedWords().reversed()), choice: choice)
                 try PrivateFile.writeOwnerOnlyAtomically(try archive.encoded(), to: destination)
                 self?.showPersonalDataNotice(
                     title: "Personal data exported",
@@ -3854,6 +3869,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     message +=
                         " \(merged.snippetsSayingCommands) imported \(merged.snippetsSayingCommands == 1 ? "snippet has a trigger" : "snippets have triggers") that \(merged.snippetsSayingCommands == 1 ? "says" : "say") a spoken command, so the command runs and the snippet never does."
                 }
+                if merged.refusedWords > 0 {
+                    message +=
+                        " \(merged.refusedWords) deleted \(merged.refusedWords == 1 ? "word stays" : "words stay") unlearned on this Mac."
+                }
+                if merged.lapsedRefusals > 0 {
+                    message +=
+                        " Kept the newest \(PersonalDictionaryStore.maximumRefusedWords) deleted words and let \(merged.lapsedRefusals) older \(merged.lapsedRefusals == 1 ? "one" : "ones") be learned again."
+                }
                 self?.showPersonalDataNotice(title: "Import complete", message: message)
             } catch let error as PersonalDataArchiveError {
                 let message: String
@@ -3868,6 +3891,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     message = "A dictionary word is longer than the import limit. Nothing was imported."
                 case .tooManyDictionaryEntries:
                     message = "The archive exceeds the dictionary word limit. Nothing was imported."
+                case .tooManyRefusedWords:
+                    message = "The archive exceeds the deleted word limit. Nothing was imported."
                 case .hiddenCharacters:
                     message = "A word or trigger holds a hidden character. Nothing was imported."
                 case .unsupportedVersion, .invalidContents:
@@ -3929,6 +3954,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Records the word said once on the chosen microphone and probes it; nothing reaches history, recordings or the clipboard.
     private func tryWord(_ entry: DictionaryEntry, as subject: DictionaryTrial.Subject) {
+        listenToWord(entry, as: subject) { probe, microphone in
+            let outcome = try await probe.probe(listeningTo: microphone, for: entry).outcome
+            return .result(line: outcome.resultLine, offer: outcome.sayItLikeOffer)
+        }
+    }
+
+    /// Records the typed word said once and adds what the recogniser writes alone to the open editor's "Say it like".
+    private func sayDraft(_ word: String) {
+        let entry = DictionaryEntry(word: word, origin: .added, firstSeen: Date())
+        listenToWord(entry, as: .draftPronunciation) { [weak self] probe, microphone in
+            let heard = try await probe.heardSpelling(listeningTo: microphone, of: word)
+            if !Task.isCancelled, let fill = heard.sayItLikeFill, let self, let draft = self.wordDraft {
+                self.mainWindow?.editWord(DictionaryPresenter.offering(fill, to: draft))
+            }
+            return .result(line: heard.resultLine, offer: nil)
+        }
+    }
+
+    /// One spoken try of `entry` on the chosen microphone, drawn as `subject`'s row; the clip lives only in memory.
+    private func listenToWord(
+        _ entry: DictionaryEntry, as subject: DictionaryTrial.Subject,
+        _ hear:
+            @escaping @MainActor (DictionaryWordProbe, AVAudioCaptureEngine) async throws ->
+            DictionaryTrial.Phase
+    ) {
         endWordTrial()
         guard !lastDictationState.isBusy else {
             return showWordTrial(
@@ -3952,8 +4002,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             defer { checking.cancel() }
             let phase: DictionaryTrial.Phase
             do {
-                let outcome = try await probe.probe(listeningTo: microphone, for: entry).outcome
-                phase = .result(line: outcome.resultLine, offer: outcome.sayItLikeOffer)
+                phase = try await hear(probe, microphone)
             } catch let error as AudioCaptureError {
                 phase = .failed(error.userMessage)
             } catch let error as SpeechEngineError {

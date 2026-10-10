@@ -28,8 +28,11 @@ struct NotationAlignment: Sendable {
         }
     }
 
+    /// A percent said by name is a mark too: "percent s" written as the format specifier `%s`.
     private static let standard = NotationLexicon(
-        notationRows, naming: MeaningPreservationGuard.symbolNames)
+        notationRows,
+        naming: MeaningPreservationGuard.symbolNames.merging(Quantities.percentWords) { joining, _ in joining
+        })
 
     /// Aligns `written` to `spoken` in order with the shared word alignment, each spoken name standing as its row's mark.
     static func align(spoken: String, written: String) -> NotationAlignment {
@@ -53,7 +56,7 @@ struct NotationAlignment: Sendable {
         let dropped = said.indices.filter { landed[$0] == nil && lexicon.isJudged(said[$0]) }
         let names = said.indices.compactMap { index in
             said[index].name.map {
-                Name(words: $0, standing: lexicon.standing(of: landed[index].map { wrote[$0] }))
+                Name(words: $0, standing: lexicon.standing(of: landed[index].map { wrote[$0] }, for: $0))
             }
         }
         return NotationAlignment(
@@ -100,10 +103,16 @@ private struct NotationLexicon: Sendable {
     private let notationOnly: Set<Int>
     /// The side each mark a row writes goes on, which says what it must touch to stand for its name.
     private let placements: [String: SpokenMarkKind]
+    /// The names a code or flag row writes, whose mark may stand as a word of its own.
+    private let codeNames: Set<[String]>
+    /// The names some row says, whose mark is placed as that row places it.
+    private let rowNames: Set<[String]>
 
     /// The rows, and names the guard reads as marks without a row of their own, which source a mark but are never judged.
     init(_ rows: [SpokenCommand], naming extra: [String: String]) {
-        let pairs = rows.map { ($0.words, $0.text) } + extra.map { ([$0.key], $0.value) }
+        let pairs =
+            rows.map { ($0.words, $0.text) }
+            + extra.map { ($0.key.split(separator: " ").map(String.init), $0.value) }
         var classes = MarkClasses()
         for (words, text) in pairs { classes.join("name:" + words.joined(separator: " "), "mark:" + text) }
         let named = pairs.map { (words: $0.0, mark: classes.find("mark:" + $0.1)) }
@@ -116,13 +125,20 @@ private struct NotationLexicon: Sendable {
         notationOnly = Set(rows.filter { $0.action != .mark }.map { classes.find("mark:" + $0.text) })
             .subtracting(prose)
         placements = Dictionary(rows.map { ($0.text, $0.placement) }, uniquingKeysWith: { first, _ in first })
+        codeNames = Set(rows.filter { $0.action != .mark }.map(\.words))
+        rowNames = Set(rows.map(\.words))
     }
 
     /// What stands for a spoken name: nothing, the name as said, or its mark; a prose mark spaced as prose may be the rewrite's own.
-    func standing(of written: Unit?) -> NotationAlignment.Name.Standing {
+    func standing(of written: Unit?, for name: [String]) -> NotationAlignment.Name.Standing {
         guard let written else { return .dropped }
         guard let mark = written.mark, written.name == nil else { return .asSaid }
-        return notationOnly.contains(mark) || isAttached(written) ? .asMark : .dropped
+        // A code symbol's name written as its mark standing alone is the mark as an argument: `docker build .`.
+        let standsAlone = !written.touches.before && !written.touches.after && codeNames.contains(name)
+        // A name no row says, such as "percent" in `%s`, is read by the mark touching a word on either side.
+        let attached =
+            rowNames.contains(name) ? isAttached(written) : written.touches.before || written.touches.after
+        return notationOnly.contains(mark) || attached || standsAlone ? .asMark : .dropped
     }
 
     /// Whether a mark touches what its side asks for: an opening mark what follows, a closing one what precedes, the rest both.

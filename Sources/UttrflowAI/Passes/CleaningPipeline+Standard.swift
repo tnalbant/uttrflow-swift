@@ -42,7 +42,8 @@ extension CleaningPipeline {
         var cleanings: [any PieceCleaningPass] = [
             FillersPass(), RepeatedPhrasePass(), StammersPass(), SelfCorrectionPass(),
             // Spoken punctuation must mark a stop before LayoutWordsPass checks for a break after it.
-            SpokenPunctuationPass(destination: destination, fieldRole: intent.fieldRole),
+            SpokenPunctuationPass(
+                destination: destination, fieldRole: intent.fieldRole, region: intent.region),
             SpokenEmojiPass(destination: destination),
             LayoutWordsPass(layout: layout, insertionPoint: insertionPoint),
             NumberFormsPass(policy: numbers, digits: digits),
@@ -51,9 +52,11 @@ extension CleaningPipeline {
             PauseStopPass(destination: destination, pauses: pauses),
         ]
         let inCode = destination == .codeEditor && intent.region.isCode
+        let notation = NotationEvidence.applicability(destination: destination, region: intent.region)
         if let layoutPosition = cleanings.firstIndex(where: { $0.id == .layoutWords }) {
-            if inCode || destination == .terminal {
-                cleanings.insert(CodeEditorCommandsPass(destination: destination), at: layoutPosition)
+            if notation.activates(at: NotationEvidence.activationThreshold) {
+                cleanings.insert(
+                    CodeEditorCommandsPass(destination: destination, evidence: notation), at: layoutPosition)
             }
             // A code editor's comments take no casing: its rows are identifiers, which a comment is not.
             if destination != .codeEditor || inCode {
@@ -82,7 +85,9 @@ extension CleaningPipeline {
         digits: DigitGrouping, situation: Situation, heard: String? = nil, spoken: String? = nil
     ) -> CleaningPipeline {
         CleaningPipeline(piece: [
-            SpokenPunctuationPass(destination: situation.destination, fieldRole: situation.intent.fieldRole),
+            SpokenPunctuationPass(
+                destination: situation.destination, fieldRole: situation.intent.fieldRole,
+                region: situation.intent.region),
             CaretEchoPass(
                 state: situation.insertion.sentenceState, precedingText: situation.insertion.precedingText,
                 spokenText: heard),

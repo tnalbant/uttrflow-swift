@@ -30,6 +30,7 @@ public struct TerminalStopPass: WholeTextCleaningPass {
         Self.separateLeadingQuestionOpener(&draft, layout: layout)
         Self.separateTrailingRequest(&draft, layout: layout)
         Self.separateTrailingTag(&draft, layout: layout)
+        Self.separateHindiAsides(&draft, layout: layout)
         guard let last = draft.presentIndices.last, !draft.words[last].isLayoutMark else { return draft }
         let word = draft.words[last].text
         if destination == .email, Self.isEmailGreetingOrSignOff(draft) {
@@ -106,6 +107,45 @@ public struct TerminalStopPass: WholeTextCleaningPass {
         draft.replace(at: index, with: WordShape.marked(draft.words[index].text, with: ","), by: id)
     }
 
+    /// Sets off an English aside opening or closing a Hindi sentence, "actually mujhe nahi pata" → "actually, mujhe nahi pata".
+    private static func separateHindiAsides(_ draft: inout Draft, layout: LayoutPolicy) {
+        guard layout.contains(.paragraphs) else { return }
+        for sentence in sentences(in: draft) {
+            let keys = sentence.map { draft.shape(at: $0).key }
+            guard keys.count >= 3 else { continue }
+            if AsideWords.holds(keys[0], at: .opening), AsideWords.areHindiClause(Array(keys.dropFirst())) {
+                setOff(sentence[0], in: &draft)
+            }
+            if AsideWords.holds(keys[keys.count - 1], at: .closing),
+                AsideWords.areHindiClause(Array(keys.dropLast()))
+            {
+                setOff(sentence[sentence.count - 2], in: &draft)
+            }
+        }
+    }
+
+    /// Puts a comma after the word unless it already carries a mark.
+    private static func setOff(_ index: Int, in draft: inout Draft) {
+        guard !draft.shape(at: index).suffix.contains(where: { ".!?;,:".contains($0) }) else { return }
+        draft.replace(at: index, with: WordShape.marked(draft.words[index].text, with: ","), by: id)
+    }
+
+    /// The spoken words of each sentence, split at sentence ends and layout marks.
+    private static func sentences(in draft: Draft) -> [[Int]] {
+        let live = draft.presentIndices
+        var sentences: [[Int]] = [[]]
+        for (position, index) in live.enumerated() {
+            if draft.words[index].isLayoutMark {
+                sentences.append([])
+                continue
+            }
+            if !draft.shape(at: index).key.isEmpty { sentences[sentences.count - 1].append(index) }
+            let next = live.indices.contains(position + 1) ? draft.words[live[position + 1]].text : nil
+            if Abbreviations.endsSentence(draft.words[index].text, followedBy: next) { sentences.append([]) }
+        }
+        return sentences.filter { !$0.isEmpty }
+    }
+
     /// The last word with a stop unless it ends a list item, or the layout keeps newlines and the text holds one.
     private func finishedLast(_ word: String, in draft: Draft) -> String {
         let spokenAsHindi = draft.presentIndices.last.map(draft.isHindi(at:)) ?? false
@@ -119,6 +159,7 @@ public struct TerminalStopPass: WholeTextCleaningPass {
         if Self.isLiteral(Self.paragraphWords(in: draft).last ?? [], in: draft) {
             return WordShape.withoutTrailingStop(word)
         }
+        if Self.endsOnHashtags(draft) { return WordShape.withoutTrailingStop(word) }
         if layout.contains(.preserveNewlines), draft.text.contains(where: \.isNewline) { return word }
         // Only prose asks: "where total is greater than 12000" in a SQL editor is a clause, not a question.
         let asks = layout.contains(.paragraphs) && Self.lastSentenceAsks(draft)
@@ -155,6 +196,11 @@ public struct TerminalStopPass: WholeTextCleaningPass {
 
     /// Whether the sentence the draft ends on asks a direct question by its word order.
     static func lastSentenceAsks(_ draft: Draft) -> Bool {
+        QuestionShape.asks(lastSentence(of: draft).map { draft.shape(at: $0) })
+    }
+
+    /// The words of the sentence the draft ends on, after the last sentence end or layout mark.
+    private static func lastSentence(of draft: Draft) -> ArraySlice<Int> {
         let live = draft.presentIndices
         let start = live.indices.dropLast().lastIndex { position in
             let index = live[position]
@@ -163,8 +209,13 @@ public struct TerminalStopPass: WholeTextCleaningPass {
                 draft.words[index].text, followedBy: draft.words[live[position + 1]].text
             )
         }
-        let sentence = live[(start.map { $0 + 1 } ?? 0)...]
-        return QuestionShape.asks(sentence.map { draft.shape(at: $0) })
+        return live[(start.map { $0 + 1 } ?? 0)...]
+    }
+
+    /// Whether the draft ends on a run of hashtags standing as their own sentence, which closes a post without a stop.
+    private static func endsOnHashtags(_ draft: Draft) -> Bool {
+        let sentence = lastSentence(of: draft)
+        return !sentence.isEmpty && sentence.allSatisfy { WordShape(draft.words[$0].text).isHashtag }
     }
 
     /// Ends each paragraph of three or more words before a blank line with a full stop; a list item gets none.
